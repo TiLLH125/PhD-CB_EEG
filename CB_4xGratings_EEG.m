@@ -1598,12 +1598,33 @@ function drawQuadrantPrompt(window, windowRect, colour, bg, promptText, cfg)
 
     Screen('FillRect', window, bg);
     [xc,yc] = RectCenter(windowRect);
+    xLeft = windowRect(1);
+    xRight = windowRect(3);
+    yTop = windowRect(2);
+    yBottom = windowRect(4);
     w = windowRect(3) - windowRect(1);
     h = windowRect(4) - windowRect(2);
     minDim = min(w, h);
 
+    margin = round(minDim * qcfg.quadOuterMarginFrac);
+    topReserve = round(h * qcfg.quadTopReserveFrac);
+    bottomReserve = round(h * qcfg.quadBottomReserveFrac);
+
     gap = round(minDim * qcfg.quadGapFrac);
-    box = round(minDim * qcfg.quadBoxFrac);
+    boxDesired = round(minDim * qcfg.quadBoxFrac);
+
+    % Fit quadrants to available area to avoid clipping on high-density displays.
+    maxBoxByWidth = floor((w - 2 * margin - gap) / 2);
+    maxBoxByHeightTop = floor(yc - (yTop + topReserve) - gap/2);
+    maxBoxByHeightBottom = floor((yBottom - bottomReserve) - yc - gap/2);
+    maxBoxByHeight = min(maxBoxByHeightTop, maxBoxByHeightBottom);
+    box = max(60, min([boxDesired, maxBoxByWidth, maxBoxByHeight]));
+
+    if box < 60
+        box = 60;
+        gap = max(30, min(gap, round(minDim * 0.06)));
+    end
+
     half = box/2;
     offset = half + gap/2;
 
@@ -1626,7 +1647,8 @@ function drawQuadrantPrompt(window, windowRect, colour, bg, promptText, cfg)
 
     % prompt line (now customisable)
     Screen('TextSize', window, qcfg.quadPromptSize);
-    promptY = yc - offset - half - round(h * qcfg.quadPromptYOffsetFrac);
+    quadTop = yc - (offset + half);
+    promptY = max(yTop + round(h * 0.03), quadTop - round(h * qcfg.quadPromptYOffsetFrac));
     DrawFormattedText(window, promptText, 'center', promptY, colour, qcfg.quadPromptWrap);
 end
 
@@ -1752,6 +1774,9 @@ function displayCfg = makeDisplayProfile(profileName)
             qCfg.quadPromptSize = 28;
             qCfg.quadPromptWrap = 120;
             qCfg.quadPromptYOffsetFrac = 0.04;
+            qCfg.quadOuterMarginFrac = 0.05;
+            qCfg.quadTopReserveFrac = 0.20;
+            qCfg.quadBottomReserveFrac = 0.06;
 
             qCfg.pasQuestionSize = 32;
             qCfg.pasQuestionWrap = 120;
@@ -1765,6 +1790,14 @@ function displayCfg = makeDisplayProfile(profileName)
             qCfg.pasLineStepFrac = 0.028;
             qCfg.pasLabelGapFrac = 0.010;
             textCfg.questions = qCfg;
+
+            fbCfg = struct();
+            fbCfg.promptYFrac = 0.92;
+            fbCfg.textSize = 32;
+            fbCfg.textWrap = 120;
+            fbCfg.lineSpacing = 1.25;
+            fbCfg.promptSize = 28;
+            textCfg.feedback = fbCfg;
             displayCfg.text = textCfg;
 
         case 'default'
@@ -1802,6 +1835,9 @@ function displayCfg = makeDisplayProfile(profileName)
             qCfg.quadPromptSize = 24;
             qCfg.quadPromptWrap = 100;
             qCfg.quadPromptYOffsetFrac = 0.04;
+            qCfg.quadOuterMarginFrac = 0.05;
+            qCfg.quadTopReserveFrac = 0.20;
+            qCfg.quadBottomReserveFrac = 0.06;
 
             qCfg.pasQuestionSize = 28;
             qCfg.pasQuestionWrap = 110;
@@ -1815,6 +1851,14 @@ function displayCfg = makeDisplayProfile(profileName)
             qCfg.pasLineStepFrac = 0.030;
             qCfg.pasLabelGapFrac = 0.012;
             textCfg.questions = qCfg;
+
+            fbCfg = struct();
+            fbCfg.promptYFrac = 0.92;
+            fbCfg.textSize = 28;
+            fbCfg.textWrap = 100;
+            fbCfg.lineSpacing = 1.25;
+            fbCfg.promptSize = 24;
+            textCfg.feedback = fbCfg;
             displayCfg.text = textCfg;
 
         otherwise
@@ -2355,13 +2399,15 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                     end
                 end
         
-                promptY = windowRect(4) * 0.92;
+                fbcfg = cfg.display.text.feedback;
+                promptY = windowRect(4) * fbcfg.promptYFrac;
         
-                Screen('TextSize', window, 45); 
+                Screen('TextSize', window, fbcfg.textSize);
                 Screen('FillRect', window, bg);
-                DrawFormattedText(window, fb, 'center', 'center', black, 80, [], [], 1.3);
+                DrawFormattedText(window, fb, 'center', 'center', black, fbcfg.textWrap, [], [], fbcfg.lineSpacing);
                 
                 if cfg.practice.feedbackWaitForSpace
+                    Screen('TextSize', window, fbcfg.promptSize);
                     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
                 end
                 
