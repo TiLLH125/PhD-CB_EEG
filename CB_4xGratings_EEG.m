@@ -11,7 +11,7 @@
 
 
 
-function CB_4xGratings_Q1PAS4_Calibration_CoPilotTEST
+function CB_4xGratings_EEG
 
 close all;
 
@@ -43,6 +43,11 @@ cfg.screenNumber = 2;
 
 % Keyboard device: -1 = default keyboard
 cfg.kbDev = -1;
+
+% ---- Display profile ----
+% Options: 'viewpixx' (lab monitor), 'default' (general monitor fallback)
+cfg.displayProfile = 'viewpixx';
+cfg.display = makeDisplayProfile(cfg.displayProfile);
 
 % ---- Practice flow ----
 cfg.practice.enable = true;
@@ -148,18 +153,18 @@ cfg.minDurFrames   = 1;
 cfg.maxDurFrames   = 100;
 cfg.startDurFrames = 30;
 
-% Grating/mask appearance
-cfg.stim.squareSizePx   = 260;
-cfg.stim.spacingPx      = 130;
+% Grating/mask appearance (visual-angle locked; converted to px at runtime)
+cfg.stim.squareSizeDeg  = 6.9;
+cfg.stim.spacingDeg     = 3.4;
 cfg.stim.cyclesPerStim  = 10;
 cfg.stim.contrast       = 0.8;
 cfg.stim.backgroundGrey = 0.5;
 cfg.stim.gaborSigmaFrac = 0.40;
 cfg.stim.allowedOri = 0:22.5:157.5;
 
-% Fixation
-cfg.fix.sizePx      = 14;
-cfg.fix.lineWidthPx = 3;
+% Fixation (visual-angle locked; converted to px at runtime)
+cfg.fix.sizeDeg      = 0.37;
+cfg.fix.lineWidthDeg = 0.08;
 
 % ---- EEG serial trigger settings ----
 cfg.eeg.enable            = false;
@@ -233,6 +238,23 @@ try
 
     ifi = Screen('GetFlipInterval', window);
     [xCentre, yCentre] = RectCenter(windowRect);
+
+    % ---- Display geometry conversion for visual-angle locked stimuli ----
+    geom = computeDisplayGeometry(cfg.display, windowRect);
+    cfg.display.geom = geom;
+
+    cfg.stim.squareSizePx = max(10, round(degToPx(cfg.stim.squareSizeDeg, geom)));
+    cfg.stim.spacingPx    = max(5,  round(degToPx(cfg.stim.spacingDeg, geom)));
+    cfg.fix.sizePx        = max(4,  round(degToPx(cfg.fix.sizeDeg, geom)));
+    cfg.fix.lineWidthPx   = max(1,  round(degToPx(cfg.fix.lineWidthDeg, geom)));
+
+    fprintf(['Display geometry (%s): pxPerCm=%.3f | pxPerDeg=%.3f | ', ...
+             'square=%.2fdeg->%dpx | spacing=%.2fdeg->%dpx | fix=%.2fdeg->%dpx | fixLW=%.2fdeg->%dpx\n'], ...
+        cfg.display.profile, geom.pixelsPerCm, geom.pxPerDeg, ...
+        cfg.stim.squareSizeDeg, cfg.stim.squareSizePx, ...
+        cfg.stim.spacingDeg, cfg.stim.spacingPx, ...
+        cfg.fix.sizeDeg, cfg.fix.sizePx, ...
+        cfg.fix.lineWidthDeg, cfg.fix.lineWidthPx);
 
     % Convert timing to frames
     cfg.ISI_frames      = 9;                  % fixed globally for practice + main
@@ -793,18 +815,22 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     ];
 
     % ---- Lockout settings ----
-    lockSec  = 10;
-    greyText = 0.40;  % lighter than black (0), still readable on bg=0.5
-    promptY  = windowRect(4) * 0.92;
+    tcfg = cfg.display.text;
+    lockSec  = tcfg.lockSec;
+    greyText = tcfg.greyText;
+    promptY  = windowRect(4) * tcfg.promptYFrac;
+    titleY   = windowRect(4) * tcfg.instructionTitleY;
+    bodyY    = windowRect(4) * tcfg.instructionBodyY;
 
     % ---- PASS 1: greyed-out prompt ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleFirstInstructions, 'center', 120, black);
+    DrawFormattedText(window, titleFirstInstructions, 'center', titleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, FirstInstructions, 'center', 220, black, 200, [], [], 1.4);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, FirstInstructions, 'center', bodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
     tOn = Screen('Flip', window);
@@ -815,12 +841,13 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
 
     % ---- PASS 2: active prompt (black) ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleFirstInstructions, 'center', 120, black);
+    DrawFormattedText(window, titleFirstInstructions, 'center', titleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, FirstInstructions, 'center', 220, black, 200, [], [], 1.4);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, FirstInstructions, 'center', bodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
 
     Screen('Flip', window);
@@ -831,8 +858,9 @@ end
 
 function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
 
-    lockSec  = 10;
-    greyText = 0.40;   
+    tcfg = cfg.display.text;
+    lockSec  = tcfg.lockSec;
+    greyText = tcfg.greyText;
     titleTrialOverview = 'Trial Overview';
 
     % --- Load PNG as texture ---
@@ -868,12 +896,12 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     % ---- Draw with greyed prompt ----
     Screen('FillRect', window, bg);
 
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTrialOverview, 'center', 90, black);
+    DrawFormattedText(window, titleTrialOverview, 'center', windowRect(4) * tcfg.trialOverviewTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    [~, ~, topBounds] = DrawFormattedText(window, topText, 'center', 170, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    [~, ~, topBounds] = DrawFormattedText(window, topText, 'center', windowRect(4) * tcfg.trialOverviewTopY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     topBottomY = topBounds(4);
 
     % --- Fit + place image ---
@@ -881,7 +909,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     imgW = size(img,2);
     imgH = size(img,1);
 
-    reserveBottomPx = 260; % room for bottomText + prompt
+    reserveBottomPx = tcfg.trialOverviewReserveBottomPx; % room for bottomText + prompt
     maxW = windowRect(3) * 0.90;
     maxH = (windowRect(4) - topBottomY - reserveBottomPx) * 0.95;
     maxH = max(maxH, 50);
@@ -897,12 +925,13 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     Screen('DrawTexture', window, tex, [], dstRect);
 
     % --- Bottom explanatory text ---
-    Screen('TextSize', window, 45);
+    Screen('TextSize', window, tcfg.bodySize);
     bottomY = dstRect(4) + 30;
-    DrawFormattedText(window, bottomText, 'center', bottomY, black, 120, [], [], 1.3);
+    DrawFormattedText(window, bottomText, 'center', bottomY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
 
     % --- Greyed "Press SPACE…" line ---
-    promptY = windowRect(4) * 0.92;
+    promptY = windowRect(4) * tcfg.promptYFrac;
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
     tOn = Screen('Flip', window);
@@ -915,22 +944,23 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     % ---- Redraw identical screen but prompt in black ----
     Screen('FillRect', window, bg);
 
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTrialOverview, 'center', 90, black);
+    DrawFormattedText(window, titleTrialOverview, 'center', windowRect(4) * tcfg.trialOverviewTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    [~, ~, topBounds] = DrawFormattedText(window, topText, 'center', 170, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    [~, ~, topBounds] = DrawFormattedText(window, topText, 'center', windowRect(4) * tcfg.trialOverviewTopY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     topBottomY = topBounds(4);
 
     imgTopY = topBottomY + 20;
     dstRect = CenterRectOnPoint([0 0 dstW dstH], xc, imgTopY + dstH/2);
     Screen('DrawTexture', window, tex, [], dstRect);
 
-    Screen('TextSize', window, 45);
+    Screen('TextSize', window, tcfg.bodySize);
     bottomY = dstRect(4) + 30;
-    DrawFormattedText(window, bottomText, 'center', bottomY, black, 120, [], [], 1.3);
+    DrawFormattedText(window, bottomText, 'center', bottomY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
 
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
 
     Screen('Flip', window);
@@ -945,9 +975,10 @@ end
 function showPractice1Intro(window, windowRect, bg, black, cfg)
 
     % --- Settings (match your other screens) ---
-    lockSec  = 10;      % set to 0 if you don't want lockout
-    greyText = 0.40;
-    promptY  = windowRect(4) * 0.92;
+    tcfg = cfg.display.text;
+    lockSec  = tcfg.lockSec;
+    greyText = tcfg.greyText;
+    promptY  = windowRect(4) * tcfg.promptYFrac;
     titlePractice1 = 'Practice Block #1\n\n';
 
     % --- Notice text (tight + readable) ---
@@ -963,12 +994,13 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
 
     % ---- PASS 1: greyed prompt (optional lockout) ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice1, 'center', 140, black);
+    DrawFormattedText(window, titlePractice1, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, PracticeText1, 'center', 220, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, PracticeText1, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to begin practice.', 'center', promptY, greyText);
 
     tOn = Screen('Flip', window);
@@ -982,12 +1014,13 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
 
     % ---- PASS 2: active prompt ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice1, 'center', 140, black);
+    DrawFormattedText(window, titlePractice1, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, PracticeText1, 'center', 220, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, PracticeText1, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to begin practice.', 'center', promptY, black);
     Screen('Flip', window);
 
@@ -1005,9 +1038,10 @@ end
 function showPractice2Intro(window, windowRect, bg, black, cfg)
 
     % --- Settings (match your other screens) ---
-    lockSec  = 10;      % set to 0 if you don't want lockout
-    greyText = 0.40;
-    promptY  = windowRect(4) * 0.92;
+    tcfg = cfg.display.text;
+    lockSec  = tcfg.lockSec;
+    greyText = tcfg.greyText;
+    promptY  = windowRect(4) * tcfg.promptYFrac;
     titlePractice2 = 'Practice Block #2';
 
     PracticeText2 = [ ...
@@ -1023,12 +1057,13 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
 
     % ---- PASS 1: greyed prompt (optional lockout) ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice2, 'center', 160, black);
+    DrawFormattedText(window, titlePractice2, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, PracticeText2, 'center', 240, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, PracticeText2, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue practice.', 'center', promptY, greyText);
 
     tOn = Screen('Flip', window);
@@ -1042,12 +1077,13 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
 
     % ---- PASS 2: active prompt ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice2, 'center', 160, black);
+    DrawFormattedText(window, titlePractice2, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, PracticeText2, 'center', 240, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, PracticeText2, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue practice.', 'center', promptY, black);
     Screen('Flip', window);
 
@@ -1058,9 +1094,10 @@ end
 function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
 
     % --- Settings (match your other screens) ---
-    lockSec  = 10;      % set to 0 if you don't want lockout
-    greyText = 0.40;
-    promptY  = windowRect(4) * 0.92;
+    tcfg = cfg.display.text;
+    lockSec  = tcfg.lockSec;
+    greyText = tcfg.greyText;
+    promptY  = windowRect(4) * tcfg.promptYFrac;
     titleMainExperiment = 'Main Experimental Trials';
 
     txt = [ ...
@@ -1077,12 +1114,13 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
 
     % ---- PASS 1: greyed prompt ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleMainExperiment, 'center', 160, black);
+    DrawFormattedText(window, titleMainExperiment, 'center', windowRect(4) * tcfg.mainTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, txt, 'center', 240, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to begin the main run.', 'center', promptY, greyText);
 
     tOn = Screen('Flip', window);
@@ -1096,12 +1134,13 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
 
     % ---- PASS 2: active prompt ----
     Screen('FillRect', window, bg);
-    Screen('TextSize', window, 60);
+    Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleMainExperiment, 'center', 160, black);
+    DrawFormattedText(window, titleMainExperiment, 'center', windowRect(4) * tcfg.mainTitleY, black);
     Screen('TextStyle', window, 0);
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, txt, 'center', 240, black, 120, [], [], 1.3);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to begin the main run.', 'center', promptY, black);
     Screen('Flip', window);
 
@@ -1661,6 +1700,92 @@ end
 
 function v = clamp(v, lo, hi)
     v = max(lo, min(hi, v));
+end
+
+function displayCfg = makeDisplayProfile(profileName)
+    name = lower(strtrim(profileName));
+
+    switch name
+        case 'viewpixx'
+            displayCfg = struct();
+            displayCfg.profile = 'viewpixx';
+            displayCfg.viewDistanceCm = 60;
+            displayCfg.screenWidthCm = 53.1;   % nominal 24" 16:9 active width
+            displayCfg.screenWidthPx = 1920;
+
+            textCfg = struct();
+            textCfg.lockSec = 10;
+            textCfg.greyText = 0.40;
+            textCfg.promptYFrac = 0.92;
+            textCfg.titleSize = 44;
+            textCfg.bodySize = 30;
+            textCfg.promptSize = 28;
+            textCfg.bodyWrap = 140;
+            textCfg.bodyLineSpacing = 1.25;
+
+            textCfg.instructionTitleY = 0.08;
+            textCfg.instructionBodyY = 0.18;
+            textCfg.trialOverviewTitleY = 0.06;
+            textCfg.trialOverviewTopY = 0.13;
+            textCfg.trialOverviewReserveBottomPx = 240;
+            textCfg.practiceTitleY = 0.10;
+            textCfg.practiceBodyY = 0.18;
+            textCfg.mainTitleY = 0.10;
+            textCfg.mainBodyY = 0.18;
+            displayCfg.text = textCfg;
+
+        case 'default'
+            displayCfg = struct();
+            displayCfg.profile = 'default';
+            displayCfg.viewDistanceCm = 60;
+            displayCfg.screenWidthCm = 53.1;
+            displayCfg.screenWidthPx = 1920;
+
+            textCfg = struct();
+            textCfg.lockSec = 10;
+            textCfg.greyText = 0.40;
+            textCfg.promptYFrac = 0.92;
+            textCfg.titleSize = 38;
+            textCfg.bodySize = 26;
+            textCfg.promptSize = 24;
+            textCfg.bodyWrap = 120;
+            textCfg.bodyLineSpacing = 1.30;
+
+            textCfg.instructionTitleY = 0.08;
+            textCfg.instructionBodyY = 0.17;
+            textCfg.trialOverviewTitleY = 0.06;
+            textCfg.trialOverviewTopY = 0.12;
+            textCfg.trialOverviewReserveBottomPx = 220;
+            textCfg.practiceTitleY = 0.10;
+            textCfg.practiceBodyY = 0.17;
+            textCfg.mainTitleY = 0.10;
+            textCfg.mainBodyY = 0.17;
+            displayCfg.text = textCfg;
+
+        otherwise
+            error('Unknown display profile: %s. Use ''viewpixx'' or ''default''.', profileName);
+    end
+end
+
+function geom = computeDisplayGeometry(displayCfg, windowRect)
+    geom = struct();
+
+    activeWidthPx = windowRect(3) - windowRect(1);
+    if isfield(displayCfg,'screenWidthPx') && displayCfg.screenWidthPx > 0
+        activeWidthPx = displayCfg.screenWidthPx;
+    end
+
+    geom.activeWidthPx = activeWidthPx;
+    geom.screenWidthCm = displayCfg.screenWidthCm;
+    geom.viewDistanceCm = displayCfg.viewDistanceCm;
+    geom.pixelsPerCm = geom.activeWidthPx / geom.screenWidthCm;
+
+    cmPerDeg = 2 * geom.viewDistanceCm * tan((1 * pi / 180) / 2);
+    geom.pxPerDeg = geom.pixelsPerCm * cmPerDeg;
+end
+
+function px = degToPx(deg, geom)
+    px = deg * geom.pxPerDeg;
 end
 
 function r = emptyResultRow()
