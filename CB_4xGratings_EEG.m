@@ -505,7 +505,7 @@ try
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
-        drawPAS(window, windowRect, black, bg);
+        drawPAS(window, windowRect, black, bg, cfg);
         tQ1 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q1On);
         
@@ -527,7 +527,7 @@ try
         end
                 
         % Q2 (Localise) — ALWAYS ask (even if PAS == 1)
-        drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt);
+        drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
         tQ2 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q2On);
         
@@ -1589,17 +1589,21 @@ function drawFixationOnly(window, bg, fixationCoords, lineWidthPx, colour, xCent
     drawFixation(window, fixationCoords, lineWidthPx, colour, xCentre, yCentre);
 end
 
-function drawQuadrantPrompt(window, windowRect, colour, bg, promptText)
+function drawQuadrantPrompt(window, windowRect, colour, bg, promptText, cfg)
 
     if nargin < 5 || isempty(promptText)
         promptText = 'Where was the change?';
     end
+    qcfg = cfg.display.text.questions;
 
     Screen('FillRect', window, bg);
     [xc,yc] = RectCenter(windowRect);
+    w = windowRect(3) - windowRect(1);
+    h = windowRect(4) - windowRect(2);
+    minDim = min(w, h);
 
-    gap = 80;
-    box = 500;
+    gap = round(minDim * qcfg.quadGapFrac);
+    box = round(minDim * qcfg.quadBoxFrac);
     half = box/2;
     offset = half + gap/2;
 
@@ -1611,25 +1615,32 @@ function drawQuadrantPrompt(window, windowRect, colour, bg, promptText)
     ];
 
     for i = 1:4
-        Screen('FrameRect', window, colour, quadRects(i,:), 3);
+        Screen('FrameRect', window, colour, quadRects(i,:), qcfg.quadFrameWidthPx);
         [cx,cy] = RectCenter(quadRects(i,:));
-        Screen('TextSize', window, 45);
-        DrawFormattedText(window, num2str(i), cx-10, cy-20, colour);
+        Screen('TextSize', window, qcfg.quadNumberSize);
+        nb = Screen('TextBounds', window, num2str(i));
+        xNum = cx - (nb(3) - nb(1))/2;
+        yNum = cy - (nb(4) - nb(2))/2;
+        DrawFormattedText(window, num2str(i), xNum, yNum, colour);
     end
 
     % prompt line (now customisable)
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, promptText, 'center', yc - offset - half - 100, colour, 100);
+    Screen('TextSize', window, qcfg.quadPromptSize);
+    promptY = yc - offset - half - round(h * qcfg.quadPromptYOffsetFrac);
+    DrawFormattedText(window, promptText, 'center', promptY, colour, qcfg.quadPromptWrap);
 end
 
 
-function drawPAS(window, windowRect, colour, bg)
+function drawPAS(window, windowRect, colour, bg, cfg)
     Screen('FillRect', window, bg);
     [~, yc] = RectCenter(windowRect);
+    w = windowRect(3) - windowRect(1);
+    h = windowRect(4) - windowRect(2);
+    qcfg = cfg.display.text.questions;
 
     % Question
-    Screen('TextSize', window, 45);
-    DrawFormattedText(window, 'How clearly did you see the change?', 'center', yc - 160, colour);
+    Screen('TextSize', window, qcfg.pasQuestionSize);
+    DrawFormattedText(window, 'How clearly did you see the change?', 'center', yc - round(h * qcfg.pasQuestionYOffsetFrac), colour, qcfg.pasQuestionWrap);
 
     % Numbers + your current descriptions
     nums = {'1', '2', '3', '4'};
@@ -1648,19 +1659,19 @@ function drawPAS(window, windowRect, colour, bg)
         '(Clear experience)' ...
     };
 
-    sideMargin = 450;
+    sideMargin = round(w * qcfg.pasSideMarginFrac);
     n  = numel(nums);
     xs = linspace(windowRect(1) + sideMargin, windowRect(3) - sideMargin, n);
 
     % Layout tuning
-    yNum      = yc + 110;
-    yDescTop  = yNum + 60;
+    yNum      = yc + round(h * qcfg.pasNumYOffsetFrac);
+    yDescTop  = yNum + round(h * qcfg.pasDescTopGapFrac);
 
-    numSize    = 40;
-    textSize   = 36;
-    labelSize  = 30;   % <-- bracket label font size
-    lineStep   = 32;   % spacing between description lines
-    labelGap   = 10;   % gap between last desc line and bracket label
+    numSize    = qcfg.pasNumberSize;
+    textSize   = qcfg.pasDescSize;
+    labelSize  = qcfg.pasLabelSize;
+    lineStep   = round(h * qcfg.pasLineStepFrac);
+    labelGap   = round(h * qcfg.pasLabelGapFrac);
 
     for i = 1:n
         % --- draw number (centred) ---
@@ -1732,6 +1743,28 @@ function displayCfg = makeDisplayProfile(profileName)
             textCfg.practiceBodyY = 0.18;
             textCfg.mainTitleY = 0.10;
             textCfg.mainBodyY = 0.18;
+
+            qCfg = struct();
+            qCfg.quadGapFrac = 0.08;
+            qCfg.quadBoxFrac = 0.42;
+            qCfg.quadFrameWidthPx = 3;
+            qCfg.quadNumberSize = 34;
+            qCfg.quadPromptSize = 28;
+            qCfg.quadPromptWrap = 120;
+            qCfg.quadPromptYOffsetFrac = 0.04;
+
+            qCfg.pasQuestionSize = 32;
+            qCfg.pasQuestionWrap = 120;
+            qCfg.pasQuestionYOffsetFrac = 0.18;
+            qCfg.pasSideMarginFrac = 0.16;
+            qCfg.pasNumYOffsetFrac = 0.06;
+            qCfg.pasDescTopGapFrac = 0.05;
+            qCfg.pasNumberSize = 32;
+            qCfg.pasDescSize = 26;
+            qCfg.pasLabelSize = 22;
+            qCfg.pasLineStepFrac = 0.028;
+            qCfg.pasLabelGapFrac = 0.010;
+            textCfg.questions = qCfg;
             displayCfg.text = textCfg;
 
         case 'default'
@@ -1760,6 +1793,28 @@ function displayCfg = makeDisplayProfile(profileName)
             textCfg.practiceBodyY = 0.17;
             textCfg.mainTitleY = 0.10;
             textCfg.mainBodyY = 0.17;
+
+            qCfg = struct();
+            qCfg.quadGapFrac = 0.09;
+            qCfg.quadBoxFrac = 0.40;
+            qCfg.quadFrameWidthPx = 3;
+            qCfg.quadNumberSize = 30;
+            qCfg.quadPromptSize = 24;
+            qCfg.quadPromptWrap = 100;
+            qCfg.quadPromptYOffsetFrac = 0.04;
+
+            qCfg.pasQuestionSize = 28;
+            qCfg.pasQuestionWrap = 110;
+            qCfg.pasQuestionYOffsetFrac = 0.18;
+            qCfg.pasSideMarginFrac = 0.18;
+            qCfg.pasNumYOffsetFrac = 0.06;
+            qCfg.pasDescTopGapFrac = 0.05;
+            qCfg.pasNumberSize = 28;
+            qCfg.pasDescSize = 22;
+            qCfg.pasLabelSize = 20;
+            qCfg.pasLineStepFrac = 0.030;
+            qCfg.pasLabelGapFrac = 0.012;
+            textCfg.questions = qCfg;
             displayCfg.text = textCfg;
 
         otherwise
@@ -2171,7 +2226,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % ---- Questions ----
 
             % Q1 (PAS)
-            drawPAS(window, windowRect, black, bg);
+            drawPAS(window, windowRect, black, bg, cfg);
             tQ1 = Screen('Flip', window);
             [pasKey, ~] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
             pas = keyToDigit(pasKey);
@@ -2185,7 +2240,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             end
             
             % Q2 (ALWAYS)
-            drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt);
+            drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
             Screen('Flip', window);
             [resp2Key, ~] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
             resp2 = keyToDigit(resp2Key);
