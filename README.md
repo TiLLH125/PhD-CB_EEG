@@ -14,3 +14,18 @@ Error in ViewPixx_PixelModeTest>datapixxEnablePixelMode (line 153)
 Error in ViewPixx_PixelModeTest (line 70)
     datapixxEnablePixelMode(pixelMode);
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ERROR 2:
+Error in function EnablePixelMode: 	Usage error
+Datapixx is not open! Call: Datapixx('Open').
+Error using Datapixx
+Usage:
+
+Datapixx('EnablePixelMode', [mode = 0]);
+
+Error in ViewPixx_PixelModeTest>datapixxEnablePixelMode (line 155)
+        Datapixx('EnablePixelMode', 0);
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error in ViewPixx_PixelModeTest (line 68)
+    datapixxEnablePixelMode(pixelMode);
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
