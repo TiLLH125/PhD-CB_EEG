@@ -12,9 +12,10 @@ function ViewPixx_PixelMode_Test
 % Notes:
 % - Pixel Mode trigger is drawn as a single pixel at top-left.
 % - This script enables Pixel Mode on start and disables it on exit.
-% - On VPixx-shipped Datapixx.mex, call Datapixx('Open') AFTER PsychImaging
-%   OpenWindow; opening before the onscreen window can leave "Datapixx is not open"
-%   when EnablePixelMode runs.
+% - Use PsychImaging AddTask UseDataPixx before OpenWindow so PsychDataPixx opens
+%   the device and runs PerformPostWindowOpenSetup. Raw Datapixx('Open') after
+%   OpenWindow still yields "Datapixx is not open" for EnablePixelMode on current
+%   VPixx Datapixx.mex builds.
 %
 % TROUBLESHOOTING "Invalid MEX-file ... The specified module could not be found"
 % ---------------------------------------------------------------------------
@@ -54,17 +55,16 @@ cleanupObj = onCleanup(@() localCleanup(ctx));
 
 try
     Screen('Preference', 'SkipSyncTests', 1);
+    PsychImaging('PrepareConfiguration');
+    PsychImaging('AddTask', 'General', 'UseDataPixx');
     [window, ~] = PsychImaging('OpenWindow', screenid, bgColor);
     ctx{1} = window;
+    ctx{2} = true;   % PsychDataPixx refcount from OpenWindow — close with PsychDataPixx('Close')
 
     Screen('TextFont', window, 'Arial');
     Screen('TextSize', window, 28);
 
-    % Open device after the onscreen window (VPixx MEX invalidates / loses session otherwise).
-    Datapixx('Open');
-    ctx{2} = true;
-
-    % Newer VPixx Datapixx.mex often treats mode as optional: default RGB = no 2nd arg.
+    % Newer VPixx Datapixx.mex: default RGB = no 2nd arg to EnablePixelMode.
     datapixxEnablePixelMode(pixelMode);
     datapixxRegApply();
     ctx{3} = true;
@@ -142,18 +142,11 @@ function printDatapixxLoadHelp(~)
 end
 
 function datapixxEnablePixelMode(mode)
-% Call EnablePixelMode in a way that works with both strict (VPixx-shipped) and PTB-era MEX builds.
+% VPixx-shipped MEX: mode 0 = one-arg form; do not fall back to EnablePixelMode(0) on errors
+% (that masks "not open" with a generic Usage line).
 mode = double(mode);
 if mode == 0
-    try
-        Datapixx('EnablePixelMode');
-    catch ME
-        rpt = getReport(ME, 'basic', 'hyperlinks', 'off');
-        if contains(rpt, 'not open', 'IgnoreCase', true)
-            rethrow(ME);
-        end
-        Datapixx('EnablePixelMode', 0);
-    end
+    Datapixx('EnablePixelMode');
 else
     Datapixx('EnablePixelMode', mode);
 end
@@ -169,15 +162,7 @@ window = ctx{1};
 datapixxOpen = ctx{2};
 pixelModeEnabled = ctx{3};
 
-try
-    if ~isempty(window)
-        sca;
-    else
-        try Screen('CloseAll'); catch, end
-    end
-catch
-end
-
+% Tear down VPixx video mode before closing the GL window when possible.
 try
     if datapixxOpen
         if pixelModeEnabled
@@ -188,9 +173,22 @@ try
             end
         end
         try
-            Datapixx('Close');
+            PsychDataPixx('Close');
         catch
+            try
+                Datapixx('Close');
+            catch
+            end
         end
+    end
+catch
+end
+
+try
+    if ~isempty(window)
+        sca;
+    else
+        try Screen('CloseAll'); catch, end
     end
 catch
 end
