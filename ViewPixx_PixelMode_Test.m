@@ -54,12 +54,6 @@ try
     try
         Datapixx('Open');
         ctx{2} = true;
-        % Refresh device state; some VPixx MEX builds expect this before mode changes.
-        try
-            Datapixx('RegWrRd');
-        catch
-            Datapixx('RegWr');
-        end
     catch ME
         rethrow(ME);
     end
@@ -74,7 +68,7 @@ try
     % Newer VPixx Datapixx.mex often treats mode as optional: default RGB = no 2nd arg.
     % Passing an explicit 0 can trigger "Usage: ... [mode = 0]" errors on some builds.
     datapixxEnablePixelMode(pixelMode);
-    Datapixx('RegWr');
+    datapixxRegApply();
     ctx{3} = true;
 
     currentCode = 0;
@@ -163,6 +157,11 @@ else
 end
 end
 
+function datapixxRegApply()
+% Commit register writes (write + readback). Current VPixx Datapixx.mex uses this; plain RegWr can error.
+Datapixx('RegWrRd');
+end
+
 function localCleanup(ctx)
 window = ctx{1};
 datapixxOpen = ctx{2};
@@ -182,7 +181,7 @@ try
         if pixelModeEnabled
             try
                 Datapixx('DisablePixelMode');
-                Datapixx('RegWr');
+                datapixxRegApply();
             catch
             end
         end
