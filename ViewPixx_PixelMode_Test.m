@@ -12,6 +12,9 @@ function ViewPixx_PixelMode_Test
 % Notes:
 % - Pixel Mode trigger is drawn as a single pixel at top-left.
 % - This script enables Pixel Mode on start and disables it on exit.
+% - On VPixx-shipped Datapixx.mex, call Datapixx('Open') AFTER PsychImaging
+%   OpenWindow; opening before the onscreen window can leave "Datapixx is not open"
+%   when EnablePixelMode runs.
 %
 % TROUBLESHOOTING "Invalid MEX-file ... The specified module could not be found"
 % ---------------------------------------------------------------------------
@@ -50,14 +53,6 @@ ctx = {[], false, false};  % {window, datapixxOpen, pixelModeEnabled}
 cleanupObj = onCleanup(@() localCleanup(ctx));
 
 try
-    % Fail fast: if DLLs are missing, show help before opening a window.
-    try
-        Datapixx('Open');
-        ctx{2} = true;
-    catch ME
-        rethrow(ME);
-    end
-
     Screen('Preference', 'SkipSyncTests', 1);
     [window, ~] = PsychImaging('OpenWindow', screenid, bgColor);
     ctx{1} = window;
@@ -65,8 +60,11 @@ try
     Screen('TextFont', window, 'Arial');
     Screen('TextSize', window, 28);
 
+    % Open device after the onscreen window (VPixx MEX invalidates / loses session otherwise).
+    Datapixx('Open');
+    ctx{2} = true;
+
     % Newer VPixx Datapixx.mex often treats mode as optional: default RGB = no 2nd arg.
-    % Passing an explicit 0 can trigger "Usage: ... [mode = 0]" errors on some builds.
     datapixxEnablePixelMode(pixelMode);
     datapixxRegApply();
     ctx{3} = true;
@@ -149,7 +147,11 @@ mode = double(mode);
 if mode == 0
     try
         Datapixx('EnablePixelMode');
-    catch
+    catch ME
+        rpt = getReport(ME, 'basic', 'hyperlinks', 'off');
+        if contains(rpt, 'not open', 'IgnoreCase', true)
+            rethrow(ME);
+        end
         Datapixx('EnablePixelMode', 0);
     end
 else
@@ -193,4 +195,3 @@ try
 catch
 end
 end
-
