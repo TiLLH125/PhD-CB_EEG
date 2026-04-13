@@ -156,3 +156,14 @@ WARNING: may have been wrong. This is fine for development and debugging of your
 WARNING: study, please make sure to set Screen('Preference', 'SkipSyncTests', 0) for maximum accuracy and reliability.
 Error using ViewPixx_PixelModeTest (line 51)
 Datapixx opened but IsReady==0. Control link is not working.\nCheck USB/control cable, power, drivers, and ensure no other app has the device open.
+
+ERRORS 7:
+>> CB_4xGratings_EEG
+Enter Participant ID (e.g., S001): TEST
+IOPort-Info: Configuration for device COM3:
+IOPort-Info: Current baud rate is 1200
+IOPort-Info: Baud rate changed to 115200
+EEG serial trigger enabled on COM3 @ 115200 baud.
+Reached: OpenWindow OK
+ViewPixx Pixel Mode ENABLED (R = marker/255 on top-left pixel).
+Display geometry (viewpixx): pxPerCm=36.158 | pxPerDeg=37.866 | square=6.90deg->261px | spacing=3.40deg->129px | fix=0.37deg->14px | fixLW=0.08deg->3px
