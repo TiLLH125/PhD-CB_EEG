@@ -185,6 +185,19 @@ cfg.eeg.codes.q2On       = 32;
 cfg.eeg.codes.locBase    = 50; % sent as locBase + localisation digit (1..4)
 cfg.eeg.codes.trialEnd   = 12;
 
+% ---- ViewPixx Pixel Mode (optional; parallel trigger path via video pixel) ----
+% Set cfg.viewpixx.pixelModeEnable = true on the ViewPixx stimulus PC to mirror
+% marker bytes on the top-left pixel (R = code/255, PsychDefaultSetup(2) norm).
+% Requires USB control to VPixx (Datapixx IsReady). If init fails, the run
+% continues with serial triggers only. PAS/loc serial-after-keypress markers
+% have no matching Flip here and are not mirrored as pixels.
+cfg.viewpixx = struct( ...
+    'pixelModeEnable', true, ...
+    'pixelPos', [0 0], ...
+    'pixelSize', 1, ...
+    'datapixxOpen', false, ...
+    'pixelModeEnabled', false);
+
 %% ------------------------- DEPENDENCY CHECKS -------------------------
 KbName('UnifyKeyNames');
 
@@ -235,6 +248,8 @@ try
     Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
     Screen('TextFont', window, 'Arial');
     Screen('TextSize', window, 45);
+
+    cfg = viewpixxInitPixelMode(cfg);
 
     ifi = Screen('GetFlipInterval', window);
     [xCentre, yCentre] = RectCenter(windowRect);
@@ -432,6 +447,7 @@ try
             blockMsg = sprintf('Block %d of %d\n\nPress SPACEBAR to start.\n', blockNum, cfg.nBlocks);
             Screen('FillRect', window, bg);
             DrawFormattedText(window, blockMsg, 'center', 'center', black);
+            drawViewPixxPixelIfNeeded(window, cfg, 0);
             Screen('Flip', window);
 
             waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -473,6 +489,7 @@ try
         % Fixation jitter
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.trialStart);
         tFixOn = Screen('Flip', window);
         tTrialStart = tFixOn;
         holdForSecondsWithAbort(tFixOn + jitterFrames*ifi, cfg);
@@ -480,6 +497,7 @@ try
         % S1
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.s1On);
         tS1 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.s1On);
         holdForSecondsWithAbort(tS1 + durFrames*ifi, cfg);
@@ -487,6 +505,7 @@ try
         % ISI
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.isiOn);
         tISI = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.isiOn);
         holdForSecondsWithAbort(tISI + cfg.ISI_frames*ifi, cfg);
@@ -494,18 +513,21 @@ try
         % S2
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.s2On);
         tS2 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.s2On);
         holdForSecondsWithAbort(tS2 + durFrames*ifi, cfg);
 
         % Gap
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawViewPixxPixelIfNeeded(window, cfg, 0);
         tGap = Screen('Flip', window);
         holdForSecondsWithAbort(tGap + cfg.gap_frames*ifi, cfg);
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
         drawPAS(window, windowRect, black, bg, cfg);
+        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.q1On);
         tQ1 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q1On);
         
@@ -528,6 +550,7 @@ try
                 
         % Q2 (Localise) — ALWAYS ask (even if PAS == 1)
         drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
+        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.q2On);
         tQ2 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q2On);
         
@@ -555,6 +578,7 @@ try
         % ITI
         % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         Screen('FillRect', window, bg);
+        drawViewPixxPixelIfNeeded(window, cfg, 0);
         tITI = Screen('Flip', window);
         holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
 
@@ -664,6 +688,7 @@ try
             if t < cfg.nTotal
                 Screen('FillRect', window, bg);
                 DrawFormattedText(window, 'Take a break.\n\nPress SPACEBAR to continue.', 'center', 'center', black);
+                drawViewPixxPixelIfNeeded(window, cfg, 0);
                 Screen('Flip', window);
                 waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
             end
@@ -712,6 +737,9 @@ try
     T.convB          = repmat(convB, height(T), 1);
     T.freezeAFramesFinal = repmat(freezeAFrames, height(T), 1);
     T.freezeBFramesFinal = repmat(freezeBFrames, height(T), 1);
+
+    T.viewpixxPixelModeEnabled = repmat(logical( ...
+        isfield(cfg, 'viewpixx') && isfield(cfg.viewpixx, 'pixelModeEnabled') && cfg.viewpixx.pixelModeEnabled), height(T), 1);
     
     writetable(T, outFile);
 
@@ -1997,6 +2025,7 @@ function cleanup(~, cfg)
         try ListenChar(0); catch, end
         try Priority(0); catch, end
         try KbQueueRelease(cfg.kbDev); catch, end
+        try viewpixxPixelModeShutdown(cfg); catch, end
         try closeSerialTrigger(cfg); catch, end
         try ShowCursor; catch, end
 
@@ -2007,6 +2036,71 @@ function cleanup(~, cfg)
         end
     catch
         try Screen('CloseAll'); catch, end
+    end
+end
+
+function cfg = viewpixxInitPixelMode(cfg)
+% Initialise Datapixx Pixel Mode when cfg.viewpixx.pixelModeEnable is true.
+    cfg.viewpixx.datapixxOpen = false;
+    cfg.viewpixx.pixelModeEnabled = false;
+    if ~isfield(cfg, 'viewpixx') || ~cfg.viewpixx.pixelModeEnable
+        return;
+    end
+    try
+        Datapixx('Open');
+        if ~logical(Datapixx('IsReady'))
+            warning(['ViewPixx: Datapixx IsReady==0 after Open. ' ...
+                'Connect VPixx USB control; continuing without Pixel Mode.']);
+            try Datapixx('Close'); catch, end
+            return;
+        end
+        cfg.viewpixx.datapixxOpen = true;
+        try
+            Datapixx('EnablePixelMode');
+        catch
+            Datapixx('EnablePixelMode', 0);
+        end
+        Datapixx('RegWrRd');
+        cfg.viewpixx.pixelModeEnabled = true;
+        fprintf('ViewPixx Pixel Mode ENABLED (R = marker/255 on top-left pixel).\n');
+    catch ME
+        warning('ViewPixx Pixel Mode init failed (%s). Continuing without pixel markers.', ME.message);
+        try
+            Datapixx('Close');
+        catch
+        end
+        cfg.viewpixx.datapixxOpen = false;
+        cfg.viewpixx.pixelModeEnabled = false;
+    end
+end
+
+function drawViewPixxPixelIfNeeded(window, cfg, code)
+% Draw Pixel Mode marker dot before Screen(''Flip'') when Pixel Mode is active.
+    if ~isfield(cfg, 'viewpixx') || ~isfield(cfg.viewpixx, 'pixelModeEnabled') || ...
+            ~cfg.viewpixx.pixelModeEnabled
+        return;
+    end
+    if nargin < 3 || isnan(code) || code < 0 || code > 255
+        return;
+    end
+    rgb = [double(code) / 255, 0, 0];
+    Screen('DrawDots', window, cfg.viewpixx.pixelPos, cfg.viewpixx.pixelSize, rgb, [], 1);
+end
+
+function viewpixxPixelModeShutdown(cfg)
+    if ~isfield(cfg, 'viewpixx') || ~cfg.viewpixx.datapixxOpen
+        return;
+    end
+    try
+        if isfield(cfg.viewpixx, 'pixelModeEnabled') && cfg.viewpixx.pixelModeEnabled
+            Datapixx('DisablePixelMode');
+            Datapixx('RegWrRd');
+        end
+    catch
+    end
+    try
+        Datapixx('Close');
+    catch
     end
 end
 
