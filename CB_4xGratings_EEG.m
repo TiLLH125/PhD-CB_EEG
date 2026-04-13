@@ -1984,7 +1984,7 @@ function trigger = initSerialTrigger(eegCfg)
     catch ME
         trigger.enabled = false;
         trigger.handle = [];
-        warning('EEG serial trigger disabled: %s', ME.message);
+        warning('EEG serial trigger disabled: %s', mExceptionText(ME));
     end
 end
 
@@ -2005,7 +2005,7 @@ function sendTrigger(trigger, code)
         end
     catch ME
         if trigger.warnOnSendError
-            warning('EEG trigger send failed (%d): %s', code, ME.message);
+            warning('EEG trigger send failed (%d): %s', code, mExceptionText(ME));
         end
     end
 end
@@ -2064,7 +2064,7 @@ function cfg = viewpixxInitPixelMode(cfg)
         cfg.viewpixx.pixelModeEnabled = true;
         fprintf('ViewPixx Pixel Mode ENABLED (R = marker/255 on top-left pixel).\n');
     catch ME
-        warning('ViewPixx Pixel Mode init failed (%s). Continuing without pixel markers.', ME.message);
+        warning('ViewPixx Pixel Mode init failed: %s. Continuing without pixel markers.', mExceptionText(ME));
         try
             Datapixx('Close');
         catch
@@ -2104,6 +2104,29 @@ function viewpixxPixelModeShutdown(cfg)
     end
 end
 
+function txt = mExceptionText(ME)
+% One-line text from a caught exception for warnings/logs (safe if message is empty).
+    txt = 'unknown error';
+    if isempty(ME)
+        return;
+    end
+    if isa(ME, 'MException')
+        if ~isempty(ME.message)
+            txt = char(ME.message);
+        else
+            try
+                txt = strtrim(getReport(ME, 'basic', 'hyperlinks', 'off'));
+            catch
+            end
+        end
+        return;
+    end
+    try
+        txt = char(ME);
+    catch
+    end
+end
+
 
 function checkpointSave(results, t, outFile)
     try
@@ -2123,7 +2146,7 @@ function checkpointSave(results, t, outFile)
         fprintf('Checkpoint saved (%d trials): %s\n', height(T), outFile);
 
     catch saveME
-        warning(['Checkpoint save failed: ' saveME.message]);
+        warning('%s', ['Checkpoint save failed: ' mExceptionText(saveME)]);
     end
 end
 
