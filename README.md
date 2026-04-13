@@ -168,9 +168,20 @@ Reached: OpenWindow OK
 ViewPixx Pixel Mode ENABLED (R = marker/255 on top-left pixel).
 Display geometry (viewpixx): pxPerCm=36.158 | pxPerDeg=37.866 | square=6.90deg->261px | spacing=3.40deg->129px | fix=0.37deg->14px | fixLW=0.08deg->3px
 
-TRIGGER CODES:
+TRIGGER CODES1:
 
 Observed mapping summary (sent -> observed set):
+   21 -> 3
+   31 -> 3
+   32 -> 0
+   41 -> 0
+   64 -> 4
+  127 -> 7
+  128 -> 0
+  255 -> 7
+
+  TRIGGER COE TEST2
+  Observed mapping summary (sent -> observed set):
    21 -> 3
    31 -> 3
    32 -> 0
