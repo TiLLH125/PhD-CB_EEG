@@ -1,6 +1,6 @@
 function CB_Actiview_TriggerMappingTest
 % CB_Actiview_TriggerMappingTest
-% Send a known sequence of serial trigger bytes to map:
+% Send a known sequence of dual-path trigger bytes to map:
 %   "code sent by MATLAB" -> "code shown in Actiview".
 %
 % Usage:
@@ -10,6 +10,7 @@ function CB_Actiview_TriggerMappingTest
 %   4) A CSV mapping file is saved in ./data.
 %
 % Notes:
+% - This script can send SERIAL and ViewPixx PIXEL markers together.
 % - Defaults are set for Actiview visibility (hold codes longer, no immediate reset).
 % - This is for mapping/debugging, not exact experiment timing.
 
@@ -17,6 +18,7 @@ close all;
 clc;
 
 cfg = struct();
+cfg.useSerial = true;
 cfg.serialPort = 'COM3';
 cfg.baudRate = 115200;
 cfg.pulseWidthSec = 0.050;
@@ -24,8 +26,17 @@ cfg.sendResetAfterCode = false;
 cfg.warnOnSendError = true;
 cfg.resetAtEnd = true;
 
+cfg.usePixel = true;
+cfg.screenNumber = 2;
+cfg.skipSyncTests = 1;
+cfg.debugWindow = false;
+cfg.pixelPos = [0 0];
+cfg.pixelSize = 1;
+cfg.minRNorm = 19/255;
+
+cfg.holdCodeSec = 0.60;       % visible code duration
 cfg.waitBeforeReadSec = 0.60; % time to read Actiview display
-cfg.waitBetweenCodesSec = 0.25;
+cfg.waitBetweenCodesSec = 0.20;
 cfg.repeatsPerCode = 2;
 
 % Bit-walk + common diagnostics + experiment codes
@@ -44,27 +55,48 @@ timestamp = datestr(now, 'yyyymmdd_HHMMSS');
 outCsv = fullfile(outDir, sprintf('Actiview_CodeMapping_%s.csv', timestamp));
 
 fprintf('\n=== Actiview Trigger Mapping Test ===\n');
-fprintf('Port: %s @ %d baud\n', cfg.serialPort, cfg.baudRate);
-fprintf('sendResetAfterCode: %d\n', cfg.sendResetAfterCode);
+fprintf('Serial enabled: %d\n', cfg.useSerial);
+fprintf('Pixel enabled:  %d\n', cfg.usePixel);
+if cfg.useSerial
+    fprintf('Port: %s @ %d baud\n', cfg.serialPort, cfg.baudRate);
+    fprintf('sendResetAfterCode: %d\n', cfg.sendResetAfterCode);
+end
 fprintf('Total sends: %d (%d codes x %d repeats)\n\n', numel(sendList), numel(allCodes), cfg.repeatsPerCode);
 fprintf('For each send, type what Actiview shows.\n');
 fprintf('If missed/unclear, press Enter for NaN.\n\n');
 
-trigger = initSerialTrigger(cfg);
-cleanupObj = onCleanup(@() closeSerialTrigger(trigger)); %#ok<NASGU>
+KbName('UnifyKeyNames');
+PsychDefaultSetup(2);
+Screen('Preference', 'SkipSyncTests', cfg.skipSyncTests);
+Screen('Preference', 'VisualDebugLevel', 1);
 
-if ~trigger.enabled
-    error('Could not open serial trigger. Check COM port and device connection.');
+trigger = struct('enabled', false, 'handle', []);
+if cfg.useSerial
+    trigger = initSerialTrigger(cfg);
+    if ~trigger.enabled
+        warning('Serial trigger not available; continuing pixel-only.');
+    end
+end
+
+window = [];
+windowRect = [];
+pixelState = initPixelPath(cfg);
+cleanupObj = onCleanup(@() cleanupAll(window, trigger, pixelState, cfg)); %#ok<NASGU>
+
+if cfg.usePixel
+    if cfg.debugWindow
+        [window, windowRect] = PsychImaging('OpenWindow', cfg.screenNumber, 0.5, [100 100 900 700]);
+    else
+        [window, windowRect] = PsychImaging('OpenWindow', cfg.screenNumber, 0.5);
+    end
+    Screen('TextSize', window, 26);
+    Screen('TextFont', window, 'Arial');
 end
 
 fprintf('Sending startup sanity code 255 for 1 second...\n');
-sendTrigger(trigger, 255);
+emitDualCode(window, windowRect, trigger, pixelState, cfg, 255, 'Startup sanity code 255');
 WaitSecs(1.0);
-if cfg.sendResetAfterCode
-    % already reset in sendTrigger
-else
-    sendTrigger(trigger, 0);
-end
+emitDualCode(window, windowRect, trigger, pixelState, cfg, 0, 'Reset to 0');
 WaitSecs(0.5);
 
 n = numel(sendList);
@@ -76,7 +108,8 @@ for i = 1:n
     code = sendList(i);
     sentCode(i) = code;
 
-    sendTrigger(trigger, code);
+    label = sprintf('Mapping code %d (%d/%d)', code, i, n);
+    emitDualCode(window, windowRect, trigger, pixelState, cfg, code, label);
     WaitSecs(cfg.waitBeforeReadSec);
 
     prompt = sprintf('[%02d/%02d] Sent %3d. Actiview shows: ', i, n, code);
@@ -114,6 +147,22 @@ end
 fprintf('\nDone.\n');
 end
 
+function emitDualCode(window, windowRect, trigger, pixelState, cfg, code, label)
+if cfg.useSerial
+    sendTrigger(trigger, code);
+end
+if cfg.usePixel && ~isempty(window)
+    Screen('FillRect', window, 0.5);
+    if ~isempty(label)
+        text = sprintf('%s\nCode=%d\nSER=%d  PIX=%d', label, code, cfg.useSerial, cfg.usePixel && pixelState.pixelModeEnabled);
+        DrawFormattedText(window, text, 'center', 'center', 0, 90);
+    end
+    drawViewPixxPixelIfNeeded(window, cfg, pixelState, code);
+    Screen('Flip', window);
+    WaitSecs(cfg.holdCodeSec);
+end
+end
+
 function trigger = initSerialTrigger(cfg)
 trigger = struct('enabled', false, 'handle', [], ...
     'pulseWidthSec', cfg.pulseWidthSec, ...
@@ -127,6 +176,46 @@ try
 catch ME
     warning('Serial init failed: %s', mExceptionText(ME));
 end
+end
+
+function pixelState = initPixelPath(cfg)
+pixelState = struct('datapixxOpen', false, 'pixelModeEnabled', false);
+if ~cfg.usePixel
+    return;
+end
+try
+    Datapixx('Open');
+    if ~logical(Datapixx('IsReady'))
+        warning('Datapixx IsReady==0. Continuing without Pixel Mode.');
+        try Datapixx('Close'); catch, end
+        return;
+    end
+    pixelState.datapixxOpen = true;
+    try
+        Datapixx('EnablePixelMode');
+    catch
+        Datapixx('EnablePixelMode', 0);
+    end
+    Datapixx('RegWrRd');
+    pixelState.pixelModeEnabled = true;
+    fprintf('ViewPixx Pixel Mode ENABLED.\n');
+catch ME
+    warning('Pixel mode init failed: %s', mExceptionText(ME));
+    try Datapixx('Close'); catch, end
+end
+end
+
+function drawViewPixxPixelIfNeeded(window, cfg, pixelState, code)
+if ~pixelState.pixelModeEnabled
+    return;
+end
+if isnan(code) || code < 0 || code > 255
+    return;
+end
+rVal = double(code) / 255;
+rVal = max(rVal, cfg.minRNorm);
+rgb = [rVal, 0, 0];
+Screen('DrawDots', window, cfg.pixelPos, cfg.pixelSize, rgb, [], 1);
 end
 
 function sendTrigger(trigger, code)
@@ -147,6 +236,42 @@ catch ME
     if trigger.warnOnSendError
         warning('Trigger send failed (%d): %s', code, mExceptionText(ME));
     end
+end
+end
+
+function cleanupAll(window, trigger, pixelState, cfg)
+if cfg.useSerial && cfg.resetAtEnd
+    try sendTrigger(trigger, 0); catch, end
+end
+
+if cfg.usePixel && ~isempty(window)
+    try
+        Screen('FillRect', window, 0.5);
+        drawViewPixxPixelIfNeeded(window, cfg, pixelState, 0);
+        Screen('Flip', window);
+    catch
+    end
+end
+
+if pixelState.datapixxOpen
+    try
+        if pixelState.pixelModeEnabled
+            Datapixx('DisablePixelMode');
+            Datapixx('RegWrRd');
+        end
+    catch
+    end
+    try Datapixx('Close'); catch, end
+end
+
+closeSerialTrigger(trigger);
+try
+    if ~isempty(window)
+        sca;
+    else
+        Screen('CloseAll');
+    end
+catch
 end
 end
 
