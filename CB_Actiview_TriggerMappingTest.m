@@ -1,6 +1,6 @@
 function CB_Actiview_TriggerMappingTest
 % CB_Actiview_TriggerMappingTest
-% Send a known sequence of dual-path trigger bytes to map:
+% Send a known sequence of dual-path trigger bytes to map (slow step-through):
 %   "code sent by MATLAB" -> "code shown in Actiview".
 %
 % Usage:
@@ -11,7 +11,7 @@ function CB_Actiview_TriggerMappingTest
 %
 % Notes:
 % - This script can send SERIAL and ViewPixx PIXEL markers together.
-% - Defaults are set for Actiview visibility (hold codes longer, no immediate reset).
+% - Defaults are tuned for readability in Actiview (long holds + manual advance).
 % - This is for mapping/debugging, not exact experiment timing.
 
 close all;
@@ -34,18 +34,13 @@ cfg.pixelPos = [0 0];
 cfg.pixelSize = 1;
 cfg.minRNorm = 19/255;
 
-cfg.holdCodeSec = 0.60;       % visible code duration
-cfg.waitBeforeReadSec = 0.60; % time to read Actiview display
-cfg.waitBetweenCodesSec = 0.20;
-cfg.repeatsPerCode = 2;
+cfg.holdCodeSec = 2.00;       % keep each code visible longer
+cfg.waitBeforeReadSec = 0.20; % short settle before prompt
+cfg.resetHoldSec = 1.00;      % show 0 between codes for clarity
+cfg.manualAdvance = true;
 
-% Bit-walk + common diagnostics + experiment codes
-bitwalkCodes = [1 2 4 8 16 32 64 128];
-mainCodes = [11 12 21 22 23 31 32 41 42 43 44 51 52 53 54];
-diagCodes = [3 5 10 15 63 127 255];
-
-allCodes = unique([bitwalkCodes mainCodes diagCodes], 'stable');
-sendList = repelem(allCodes, cfg.repeatsPerCode);
+% Compact diagnostic list (bit-walk + representative experiment codes)
+sendList = [1 2 4 8 16 32 64 128 11 21 31 41 51 127 255];
 
 outDir = fullfile(pwd, 'data');
 if ~exist(outDir, 'dir')
@@ -61,9 +56,12 @@ if cfg.useSerial
     fprintf('Port: %s @ %d baud\n', cfg.serialPort, cfg.baudRate);
     fprintf('sendResetAfterCode: %d\n', cfg.sendResetAfterCode);
 end
-fprintf('Total sends: %d (%d codes x %d repeats)\n\n', numel(sendList), numel(allCodes), cfg.repeatsPerCode);
+fprintf('Total sends: %d\n\n', numel(sendList));
 fprintf('For each send, type what Actiview shows.\n');
 fprintf('If missed/unclear, press Enter for NaN.\n\n');
+if cfg.manualAdvance
+    fprintf('Manual mode: press Enter in MATLAB to send each next code.\n\n');
+end
 
 KbName('UnifyKeyNames');
 PsychDefaultSetup(2);
@@ -105,6 +103,10 @@ activiewObserved = nan(n,1);
 trialIdx = (1:n)';
 
 for i = 1:n
+    if cfg.manualAdvance
+        input(sprintf('Press Enter to send code %d of %d...', i, n), 's');
+    end
+
     code = sendList(i);
     sentCode(i) = code;
 
@@ -119,7 +121,9 @@ for i = 1:n
         activiewObserved(i) = v;
     end
 
-    WaitSecs(cfg.waitBetweenCodesSec);
+    % Force explicit return to zero between codes to make transitions obvious
+    emitDualCode(window, windowRect, trigger, pixelState, cfg, 0, 'Reset 0');
+    WaitSecs(cfg.resetHoldSec);
 end
 
 delta = activiewObserved - sentCode;
