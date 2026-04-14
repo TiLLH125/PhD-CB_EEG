@@ -1,85 +1,67 @@
 function CB_Actiview_TriggerMappingTest
 % CB_Actiview_TriggerMappingTest
-% Slow step-through mapping: sent byte -> what you see in Actiview.
+% Slow step-through mapping: byte sent on the serial trigger port -> Actiview.
 %
-% HARDWARE (your lab topology)
-% ---------------------------
-% If the BioSemi trigger input is fed ONLY from the ViewPixx DB25/DB37 path
-% (Pixel Mode / digital out), then Actiview will NOT see USB serial (COM3).
-% In that case set cfg.useSerial = false (default below). Serial is optional
-% for other equipment (e.g. a separate TTL box); it does not go to BioSemi
-% unless that cable exists.
+% HARDWARE (current lab path)
+% -----------------------------
+% BioSemi trigger box is connected to the stimulus PC via the DB25/DB37 cable.
+% MATLAB sends bytes with IOPort to a serial port (default COM3) that drives
+% that interface (same pattern as CB_4xGratings_EEG.m).
 %
-% ACTIVIEW "ANALOG" TRIGGER DISPLAY — how to read it
-% -------------------------------------------------
-% In analog mode, Actiview draws one horizontal trace per digital TRIGGER BIT
-% (often 8 or 16 lines). Each line is HIGH (coloured / non-baseline) or LOW
-% (grey / baseline) for that sample.
+% Pixel / ViewPixx trigger mode is OFF by default (set cfg.usePixel = true
+% only if you need dual-path tests again).
 %
-% To match a sent BYTE (0–255) to the picture:
-%   1) Note which line is bit0, bit1, ... (order depends on Actiview/BioSemi
-%      labelling — use a known code to learn order: e.g. send 1 and see which
-%      single line toggles; that line is bit 0 if your convention is LSB-first).
-%   2) Read HIGH=1, LOW=0 for each line → binary pattern.
-%   3) Decimal code = b0*2^0 + b1*2^1 + ... (once you know which physical bit
-%      is which power of two).
-%
-% The numeric "trigger" field in digital mode is just those bits packed into
-% a number; if only a subset of lines is wired or displayed, you will only
-% ever see 0..(2^n-1) and high bytes will look "wrong".
-%
-% WHERE SETTINGS LIVE
-% -------------------
-% - Actiview trigger format (digital vs analog): Actiview (acquisition PC).
-% - Pixel Mode enable from this script: stimulus PC (MATLAB + PTB + Datapixx).
-% - Lab Maestro: optional for hardware checks / some modes; your experiment
-%   path here is stimulus-driven unless you intentionally configure Maestro.
-% - GPU dithering, HDR, colour profiles: stimulus PC (GPU control panel).
+% ACTIVIEW
+% --------
+% Digital trigger readout: type the decimal you see.
+% Analog view: each horizontal trace is one bit; see header in older docs or
+% BioSemi notes for bit-to-line mapping.
 %
 % Usage
 % -----
-%   1) Actiview: set trigger display to "Analog" for diagnosis (see above).
-%   2) Run: CB_Actiview_TriggerMappingTest
-%   3) Press Enter in MATLAB when prompted; read Actiview; type the DECIMAL
-%      you see in digital mode, OR type the binary string you read from analog
-%      lines (e.g. 00010101) — the script accepts both.
-%   4) CSV is saved under ./data/Actiview_CodeMapping_*.csv
+%   1) Start Actiview recording; watch trigger channel.
+%   2) Edit cfg.serialPort if needed (default COM3).
+%   3) Run: CB_Actiview_TriggerMappingTest
+%   4) Press Enter to arm each code; after each send, type Actiview value
+%      (decimal or 8-char binary). Enter alone -> NaN in CSV.
+%   5) CSV: ./data/Actiview_CodeMapping_*.csv
 %
-% Notes
-% -----
-% - Default: pixel path ON, serial OFF (matches ViewPixx->BioSemi cable only).
-% - Trigger pixel uses GL_ONE/GL_ZERO blend when drawing the dot to reduce
-%   accidental colour mixing with the background (identity-ish dot).
-% - Startup sanity burst is OFF by default (reduces initial trigger spam).
+% Serial timing
+% -------------
+% Default: no auto-reset pulse (sendResetAfterCode=false); each code is held
+% on the bus for cfg.serialHoldSec so Actiview is easy to read. Between codes
+% an explicit 0 is sent. Match CB_4xGratings_EEG by setting
+% sendResetAfterCode=true and a short pulseWidthSec if your box needs pulses.
 
 close all;
 clc;
 
 cfg = struct();
-% --- Path selection (edit if you add a serial->TTL path to BioSemi again) ---
-cfg.useSerial = false;   % true only if COM (or similar) actually drives BioSemi triggers
+% --- Serial (primary path to BioSemi trigger box) ---
+cfg.useSerial = true;
 cfg.serialPort = 'COM3';
 cfg.baudRate = 115200;
-cfg.pulseWidthSec = 0.050;
-cfg.sendResetAfterCode = false;
+cfg.pulseWidthSec = 0.005;
+cfg.sendResetAfterCode = false;  % true = pulse like main EEG script
 cfg.warnOnSendError = true;
 cfg.resetAtEnd = true;
+cfg.serialHoldSec = 2.00;  % visible hold when sendResetAfterCode is false
 
-cfg.usePixel = true;
+% --- Pixel (optional; off for serial-only) ---
+cfg.usePixel = false;
 cfg.screenNumber = 2;
 cfg.skipSyncTests = 1;
 cfg.debugWindow = false;
 cfg.pixelPos = [0 0];
 cfg.pixelSize = 1;
 cfg.minRNorm = 19/255;
-
 cfg.holdCodeSec = 2.00;
+
 cfg.waitBeforeReadSec = 0.20;
 cfg.resetHoldSec = 1.00;
 cfg.manualAdvance = true;
-cfg.doStartupSanity = false;  % set true to send 255 then 0 once at start
+cfg.doStartupSanity = true;   % serial: brief 255 then 0 at start
 
-% Compact diagnostic list (bit-walk + representative experiment codes)
 sendList = [1 2 4 8 16 32 64 128 11 21 31 41 51 127 255];
 
 outDir = fullfile(pwd, 'data');
@@ -89,40 +71,37 @@ end
 timestamp = datestr(now, 'yyyymmdd_HHMMSS');
 outCsv = fullfile(outDir, sprintf('Actiview_CodeMapping_%s.csv', timestamp));
 
-fprintf('\n=== Actiview Trigger Mapping Test ===\n');
-fprintf('Expected setup: BioSemi trigger port <- ViewPixx digital out (DB cable).\n');
-fprintf('Serial (COM) does NOT reach BioSemi unless that separate path exists.\n\n');
-fprintf('Serial enabled: %d\n', cfg.useSerial);
-fprintf('Pixel enabled:  %d\n', cfg.usePixel);
-if cfg.useSerial
-    fprintf('Port: %s @ %d baud\n', cfg.serialPort, cfg.baudRate);
-    fprintf('sendResetAfterCode: %d\n', cfg.sendResetAfterCode);
-end
-fprintf('Total sends: %d\n\n', numel(sendList));
-fprintf('ACTIVIEW: use Analog trigger view; read each horizontal line as one bit.\n');
-fprintf('MATLAB:  after each hold, type either the decimal Actiview shows,\n');
-fprintf('         or an 8-bit binary string like 00010101 (spaces ok).\n');
-fprintf('Press Enter alone if unclear -> saved as NaN.\n\n');
+fprintf('\n=== Actiview Trigger Mapping Test (SERIAL path) ===\n');
+fprintf('BioSemi trigger box <- DB25/DB37 <- stimulus PC serial trigger (IOPort).\n');
+fprintf('Serial: %s @ %d | usePixel=%d\n', cfg.serialPort, cfg.baudRate, cfg.usePixel);
+fprintf('sendResetAfterCode=%d  pulseWidthSec=%.3f  serialHoldSec=%.2f\n\n', ...
+    cfg.sendResetAfterCode, cfg.pulseWidthSec, cfg.serialHoldSec);
+fprintf('Total codes: %d\n\n', numel(sendList));
+fprintf('After each send, type Actiview decimal OR 8-bit binary; Enter alone = NaN.\n');
 if cfg.manualAdvance
-    fprintf('Manual mode: press Enter in MATLAB to arm each next code.\n\n');
+    fprintf('Manual: press Enter in MATLAB before each code.\n\n');
 end
 
 KbName('UnifyKeyNames');
-PsychDefaultSetup(2);
-Screen('Preference', 'SkipSyncTests', cfg.skipSyncTests);
-Screen('Preference', 'VisualDebugLevel', 1);
 
 trigger = struct('enabled', false, 'handle', []);
 if cfg.useSerial
     trigger = initSerialTrigger(cfg);
     if ~trigger.enabled
-        warning('Serial trigger not available; continuing pixel-only.');
+        error('Serial trigger not available. Check COM port, cable, and that no other app has the port open.');
     end
 end
 
 window = [];
 windowRect = [];
-pixelState = initPixelPath(cfg);
+pixelState = struct('datapixxOpen', false, 'pixelModeEnabled', false);
+if cfg.usePixel
+    PsychDefaultSetup(2);
+    Screen('Preference', 'SkipSyncTests', cfg.skipSyncTests);
+    Screen('Preference', 'VisualDebugLevel', 1);
+    pixelState = initPixelPath(cfg);
+end
+
 cleanupObj = onCleanup(@() cleanupAll(window, trigger, pixelState, cfg)); %#ok<NASGU>
 
 if cfg.usePixel
@@ -136,12 +115,10 @@ if cfg.usePixel
     Screen('TextFont', window, 'Arial');
 end
 
-if cfg.doStartupSanity
-    fprintf('Startup: sending 255 then 0 (optional sanity).\n');
-    emitDualCode(window, windowRect, trigger, pixelState, cfg, 255, 'Startup 255');
-    WaitSecs(1.0);
-    emitDualCode(window, windowRect, trigger, pixelState, cfg, 0, 'Reset 0');
-    WaitSecs(0.5);
+if cfg.doStartupSanity && cfg.useSerial
+    fprintf('Startup: serial bytes 255 (1 s) then 0.\n');
+    sendTriggerHold(trigger, cfg, 255, 1.0);
+    sendTriggerHold(trigger, cfg, 0, 0.3);
 end
 
 n = numel(sendList);
@@ -161,7 +138,8 @@ for i = 1:n
     sentBinaryStr(i) = padLeadingBinary(code, 8);
 
     label = sprintf('Mapping %d of %d', i, n);
-    emitDualCode(window, windowRect, trigger, pixelState, cfg, code, label);
+    emitMark(window, windowRect, trigger, pixelState, cfg, code, label);
+
     WaitSecs(cfg.waitBeforeReadSec);
 
     prompt = sprintf('[%02d/%02d] Sent %3d (bin %s). Actiview (decimal OR 8-bit binary): ', ...
@@ -180,7 +158,7 @@ for i = 1:n
         end
     end
 
-    emitDualCode(window, windowRect, trigger, pixelState, cfg, 0, 'Reset 0');
+    emitMark(window, windowRect, trigger, pixelState, cfg, 0, 'Reset 0');
     WaitSecs(cfg.resetHoldSec);
 end
 
@@ -208,28 +186,49 @@ end
 fprintf('\nDone.\n');
 end
 
-function emitDualCode(window, windowRect, trigger, pixelState, cfg, code, label)
+function emitMark(window, ~, trigger, pixelState, cfg, code, label)
 if cfg.useSerial
-    sendTrigger(trigger, code);
+    if code == 0 && ~cfg.sendResetAfterCode
+        sendTriggerHold(trigger, cfg, 0, 0.05);
+    else
+        sendTriggerHold(trigger, cfg, code, cfg.serialHoldSec);
+    end
 end
 if cfg.usePixel && ~isempty(window)
     Screen('FillRect', window, 0.5);
     bin8 = padLeadingBinary(code, 8);
     if ~isempty(label)
-        text = sprintf([ ...
-            '%s\n' ...
-            'Byte=%d   binary(MSB..LSB)=%s\n' ...
-            'SER=%d  PIX=%d\n\n' ...
-            'Match Analog lines to these bits (order is lab-specific).' ...
-            ], label, code, bin8, cfg.useSerial, cfg.usePixel && pixelState.pixelModeEnabled);
+        text = sprintf('%s\nByte=%d  bin=%s\nSER=%d PIX=%d', ...
+            label, code, bin8, cfg.useSerial, cfg.usePixel && pixelState.pixelModeEnabled);
         DrawFormattedText(window, text, 'center', 'center', 0, 90);
     end
-    % Identity blend for marker dot (reduces accidental blend with background)
     Screen('BlendFunction', window, 'GL_ONE', 'GL_ZERO');
     drawViewPixxPixelIfNeeded(window, cfg, pixelState, code);
     Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
     Screen('Flip', window);
     WaitSecs(cfg.holdCodeSec);
+end
+end
+
+function sendTriggerHold(trigger, cfg, code, holdSec)
+if ~trigger.enabled || isempty(trigger.handle)
+    return;
+end
+if isnan(code) || code < 0 || code > 255
+    return;
+end
+try
+    IOPort('Write', trigger.handle, uint8(code), 0);
+    if cfg.sendResetAfterCode
+        WaitSecs(trigger.pulseWidthSec);
+        IOPort('Write', trigger.handle, uint8(0), 0);
+    elseif nargin >= 4 && ~isempty(holdSec) && holdSec > 0
+        WaitSecs(holdSec);
+    end
+catch ME
+    if cfg.warnOnSendError
+        warning('Trigger send failed (%d): %s', code, mExceptionText(ME));
+    end
 end
 end
 
@@ -260,6 +259,7 @@ try
     cfgString = sprintf('BaudRate=%d DTR=1 RTS=1', cfg.baudRate);
     trigger.handle = IOPort('OpenSerialPort', cfg.serialPort, cfgString);
     trigger.enabled = true;
+    fprintf('Serial trigger port OPEN: %s\n', cfg.serialPort);
 catch ME
     warning('Serial init failed: %s', mExceptionText(ME));
 end
@@ -305,30 +305,9 @@ rgb = [rVal, 0, 0];
 Screen('DrawDots', window, cfg.pixelPos, cfg.pixelSize, rgb, [], 1);
 end
 
-function sendTrigger(trigger, code)
-if ~trigger.enabled || isempty(trigger.handle)
-    return;
-end
-if isnan(code) || code < 0 || code > 255
-    return;
-end
-
-try
-    IOPort('Write', trigger.handle, uint8(code), 0);
-    if trigger.sendResetAfterCode
-        WaitSecs(trigger.pulseWidthSec);
-        IOPort('Write', trigger.handle, uint8(0), 0);
-    end
-catch ME
-    if trigger.warnOnSendError
-        warning('Trigger send failed (%d): %s', code, mExceptionText(ME));
-    end
-end
-end
-
 function cleanupAll(window, trigger, pixelState, cfg)
 if cfg.useSerial && cfg.resetAtEnd
-    try sendTrigger(trigger, 0); catch, end
+    try sendTriggerHold(trigger, cfg, 0, 0.05); catch, end
 end
 
 if cfg.usePixel && ~isempty(window)
@@ -358,7 +337,7 @@ try
     if ~isempty(window)
         sca;
     else
-        Screen('CloseAll');
+        try Screen('CloseAll'); catch, end
     end
 catch
 end
