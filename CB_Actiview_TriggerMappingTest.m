@@ -1,24 +1,63 @@
 function CB_Actiview_TriggerMappingTest
 % CB_Actiview_TriggerMappingTest
-% Send a known sequence of dual-path trigger bytes to map (slow step-through):
-%   "code sent by MATLAB" -> "code shown in Actiview".
+% Slow step-through mapping: sent byte -> what you see in Actiview.
 %
-% Usage:
-%   1) Start Actiview and watch trigger display.
-%   2) Run this function.
-%   3) Type the Actiview code you observed for each prompt.
-%   4) A CSV mapping file is saved in ./data.
+% HARDWARE (your lab topology)
+% ---------------------------
+% If the BioSemi trigger input is fed ONLY from the ViewPixx DB25/DB37 path
+% (Pixel Mode / digital out), then Actiview will NOT see USB serial (COM3).
+% In that case set cfg.useSerial = false (default below). Serial is optional
+% for other equipment (e.g. a separate TTL box); it does not go to BioSemi
+% unless that cable exists.
 %
-% Notes:
-% - This script can send SERIAL and ViewPixx PIXEL markers together.
-% - Defaults are tuned for readability in Actiview (long holds + manual advance).
-% - This is for mapping/debugging, not exact experiment timing.
+% ACTIVIEW "ANALOG" TRIGGER DISPLAY — how to read it
+% -------------------------------------------------
+% In analog mode, Actiview draws one horizontal trace per digital TRIGGER BIT
+% (often 8 or 16 lines). Each line is HIGH (coloured / non-baseline) or LOW
+% (grey / baseline) for that sample.
+%
+% To match a sent BYTE (0–255) to the picture:
+%   1) Note which line is bit0, bit1, ... (order depends on Actiview/BioSemi
+%      labelling — use a known code to learn order: e.g. send 1 and see which
+%      single line toggles; that line is bit 0 if your convention is LSB-first).
+%   2) Read HIGH=1, LOW=0 for each line → binary pattern.
+%   3) Decimal code = b0*2^0 + b1*2^1 + ... (once you know which physical bit
+%      is which power of two).
+%
+% The numeric "trigger" field in digital mode is just those bits packed into
+% a number; if only a subset of lines is wired or displayed, you will only
+% ever see 0..(2^n-1) and high bytes will look "wrong".
+%
+% WHERE SETTINGS LIVE
+% -------------------
+% - Actiview trigger format (digital vs analog): Actiview (acquisition PC).
+% - Pixel Mode enable from this script: stimulus PC (MATLAB + PTB + Datapixx).
+% - Lab Maestro: optional for hardware checks / some modes; your experiment
+%   path here is stimulus-driven unless you intentionally configure Maestro.
+% - GPU dithering, HDR, colour profiles: stimulus PC (GPU control panel).
+%
+% Usage
+% -----
+%   1) Actiview: set trigger display to "Analog" for diagnosis (see above).
+%   2) Run: CB_Actiview_TriggerMappingTest
+%   3) Press Enter in MATLAB when prompted; read Actiview; type the DECIMAL
+%      you see in digital mode, OR type the binary string you read from analog
+%      lines (e.g. 00010101) — the script accepts both.
+%   4) CSV is saved under ./data/Actiview_CodeMapping_*.csv
+%
+% Notes
+% -----
+% - Default: pixel path ON, serial OFF (matches ViewPixx->BioSemi cable only).
+% - Trigger pixel uses GL_ONE/GL_ZERO blend when drawing the dot to reduce
+%   accidental colour mixing with the background (identity-ish dot).
+% - Startup sanity burst is OFF by default (reduces initial trigger spam).
 
 close all;
 clc;
 
 cfg = struct();
-cfg.useSerial = true;
+% --- Path selection (edit if you add a serial->TTL path to BioSemi again) ---
+cfg.useSerial = false;   % true only if COM (or similar) actually drives BioSemi triggers
 cfg.serialPort = 'COM3';
 cfg.baudRate = 115200;
 cfg.pulseWidthSec = 0.050;
@@ -34,10 +73,11 @@ cfg.pixelPos = [0 0];
 cfg.pixelSize = 1;
 cfg.minRNorm = 19/255;
 
-cfg.holdCodeSec = 2.00;       % keep each code visible longer
-cfg.waitBeforeReadSec = 0.20; % short settle before prompt
-cfg.resetHoldSec = 1.00;      % show 0 between codes for clarity
+cfg.holdCodeSec = 2.00;
+cfg.waitBeforeReadSec = 0.20;
+cfg.resetHoldSec = 1.00;
 cfg.manualAdvance = true;
+cfg.doStartupSanity = false;  % set true to send 255 then 0 once at start
 
 % Compact diagnostic list (bit-walk + representative experiment codes)
 sendList = [1 2 4 8 16 32 64 128 11 21 31 41 51 127 255];
@@ -50,6 +90,8 @@ timestamp = datestr(now, 'yyyymmdd_HHMMSS');
 outCsv = fullfile(outDir, sprintf('Actiview_CodeMapping_%s.csv', timestamp));
 
 fprintf('\n=== Actiview Trigger Mapping Test ===\n');
+fprintf('Expected setup: BioSemi trigger port <- ViewPixx digital out (DB cable).\n');
+fprintf('Serial (COM) does NOT reach BioSemi unless that separate path exists.\n\n');
 fprintf('Serial enabled: %d\n', cfg.useSerial);
 fprintf('Pixel enabled:  %d\n', cfg.usePixel);
 if cfg.useSerial
@@ -57,10 +99,12 @@ if cfg.useSerial
     fprintf('sendResetAfterCode: %d\n', cfg.sendResetAfterCode);
 end
 fprintf('Total sends: %d\n\n', numel(sendList));
-fprintf('For each send, type what Actiview shows.\n');
-fprintf('If missed/unclear, press Enter for NaN.\n\n');
+fprintf('ACTIVIEW: use Analog trigger view; read each horizontal line as one bit.\n');
+fprintf('MATLAB:  after each hold, type either the decimal Actiview shows,\n');
+fprintf('         or an 8-bit binary string like 00010101 (spaces ok).\n');
+fprintf('Press Enter alone if unclear -> saved as NaN.\n\n');
 if cfg.manualAdvance
-    fprintf('Manual mode: press Enter in MATLAB to send each next code.\n\n');
+    fprintf('Manual mode: press Enter in MATLAB to arm each next code.\n\n');
 end
 
 KbName('UnifyKeyNames');
@@ -87,19 +131,24 @@ if cfg.usePixel
     else
         [window, windowRect] = PsychImaging('OpenWindow', cfg.screenNumber, 0.5);
     end
+    Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
     Screen('TextSize', window, 26);
     Screen('TextFont', window, 'Arial');
 end
 
-fprintf('Sending startup sanity code 255 for 1 second...\n');
-emitDualCode(window, windowRect, trigger, pixelState, cfg, 255, 'Startup sanity code 255');
-WaitSecs(1.0);
-emitDualCode(window, windowRect, trigger, pixelState, cfg, 0, 'Reset to 0');
-WaitSecs(0.5);
+if cfg.doStartupSanity
+    fprintf('Startup: sending 255 then 0 (optional sanity).\n');
+    emitDualCode(window, windowRect, trigger, pixelState, cfg, 255, 'Startup 255');
+    WaitSecs(1.0);
+    emitDualCode(window, windowRect, trigger, pixelState, cfg, 0, 'Reset 0');
+    WaitSecs(0.5);
+end
 
 n = numel(sendList);
-sentCode = nan(n,1);
-activiewObserved = nan(n,1);
+sentCode = nan(n, 1);
+sentBinaryStr = strings(n, 1);
+activiewObserved = nan(n, 1);
+activiewParsedFromBinary = nan(n, 1);
 trialIdx = (1:n)';
 
 for i = 1:n
@@ -109,31 +158,39 @@ for i = 1:n
 
     code = sendList(i);
     sentCode(i) = code;
+    sentBinaryStr(i) = padLeadingBinary(code, 8);
 
-    label = sprintf('Mapping code %d (%d/%d)', code, i, n);
+    label = sprintf('Mapping %d of %d', i, n);
     emitDualCode(window, windowRect, trigger, pixelState, cfg, code, label);
     WaitSecs(cfg.waitBeforeReadSec);
 
-    prompt = sprintf('[%02d/%02d] Sent %3d. Actiview shows: ', i, n, code);
-    s = input(prompt, 's');
-    v = str2double(strtrim(s));
-    if ~isempty(strtrim(s)) && ~isnan(v)
-        activiewObserved(i) = v;
+    prompt = sprintf('[%02d/%02d] Sent %3d (bin %s). Actiview (decimal OR 8-bit binary): ', ...
+        i, n, code, sentBinaryStr(i));
+    s = strtrim(input(prompt, 's'));
+    if ~isempty(s)
+        vBin = parseBinaryInput(s);
+        if ~isnan(vBin)
+            activiewParsedFromBinary(i) = vBin;
+            activiewObserved(i) = vBin;
+        else
+            vDec = str2double(s);
+            if ~isnan(vDec)
+                activiewObserved(i) = vDec;
+            end
+        end
     end
 
-    % Force explicit return to zero between codes to make transitions obvious
     emitDualCode(window, windowRect, trigger, pixelState, cfg, 0, 'Reset 0');
     WaitSecs(cfg.resetHoldSec);
 end
 
 delta = activiewObserved - sentCode;
-T = table(trialIdx, sentCode, activiewObserved, delta, ...
-    'VariableNames', {'idx', 'sentCode', 'activiewObserved', 'delta'});
+T = table(trialIdx, sentCode, sentBinaryStr, activiewObserved, activiewParsedFromBinary, delta, ...
+    'VariableNames', {'idx', 'sentCode', 'sentBinaryMSB', 'activiewObserved', 'fromBinaryInput', 'delta'});
 writetable(T, outCsv);
 
 fprintf('\nSaved mapping CSV:\n%s\n', outCsv);
 
-% Quick summary in console
 valid = ~isnan(activiewObserved);
 if any(valid)
     U = unique(T.sentCode(valid));
@@ -157,14 +214,40 @@ if cfg.useSerial
 end
 if cfg.usePixel && ~isempty(window)
     Screen('FillRect', window, 0.5);
+    bin8 = padLeadingBinary(code, 8);
     if ~isempty(label)
-        text = sprintf('%s\nCode=%d\nSER=%d  PIX=%d', label, code, cfg.useSerial, cfg.usePixel && pixelState.pixelModeEnabled);
+        text = sprintf([ ...
+            '%s\n' ...
+            'Byte=%d   binary(MSB..LSB)=%s\n' ...
+            'SER=%d  PIX=%d\n\n' ...
+            'Match Analog lines to these bits (order is lab-specific).' ...
+            ], label, code, bin8, cfg.useSerial, cfg.usePixel && pixelState.pixelModeEnabled);
         DrawFormattedText(window, text, 'center', 'center', 0, 90);
     end
+    % Identity blend for marker dot (reduces accidental blend with background)
+    Screen('BlendFunction', window, 'GL_ONE', 'GL_ZERO');
     drawViewPixxPixelIfNeeded(window, cfg, pixelState, code);
+    Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
     Screen('Flip', window);
     WaitSecs(cfg.holdCodeSec);
 end
+end
+
+function s = padLeadingBinary(code, nBits)
+if isnan(code) || code < 0 || code > 255
+    s = repmat('?', 1, nBits);
+    return;
+end
+s = dec2bin(code, nBits);
+end
+
+function v = parseBinaryInput(s)
+v = NaN;
+t = strrep(strrep(strtrim(s), ' ', ''), '_', '');
+if numel(t) ~= 8 || ~all(t == '0' | t == '1')
+    return;
+end
+v = bin2dec(t);
 end
 
 function trigger = initSerialTrigger(cfg)
@@ -251,7 +334,9 @@ end
 if cfg.usePixel && ~isempty(window)
     try
         Screen('FillRect', window, 0.5);
+        Screen('BlendFunction', window, 'GL_ONE', 'GL_ZERO');
         drawViewPixxPixelIfNeeded(window, cfg, pixelState, 0);
+        Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
         Screen('Flip', window);
     catch
     end
