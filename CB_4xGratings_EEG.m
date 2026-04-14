@@ -167,8 +167,8 @@ cfg.fix.sizeDeg      = 0.37;
 cfg.fix.lineWidthDeg = 0.08;
 
 % ---- EEG serial trigger settings ----
-cfg.eeg.enable            = false;
-cfg.eeg.serialPort        = 'COM3';
+cfg.eeg.enable            = true;
+cfg.eeg.serialPort        = 'COM4';
 cfg.eeg.baudRate          = 115200;
 cfg.eeg.pulseWidthSec     = 0.005;
 cfg.eeg.sendResetAfterCode = true;
@@ -213,27 +213,11 @@ cfg.eeg.codes.practice = struct( ...
 cfg.eeg.markerPolicy = struct( ...
     'markAuxScreens', true, ...
     'markPracticeTrials', true, ...
-    'echoPasLocPixel', true, ...
-    'echoAuxSpacePixel', true, ...
-    'alignTrialStartSerialToFixationFlip', true, ...
+    'echoPasLocSerial', false, ...
+    'echoAuxSpaceSerial', false, ...
+    'alignTrialStartToFixationFlip', true, ...
     'alignTrialEndToItiOnset', true, ...
     'echoPulseSec', 0.05);
-
-% ---- ViewPixx Pixel Mode (optional; parallel trigger path via video pixel) ----
-% Set cfg.viewpixx.pixelModeEnable = true on the ViewPixx stimulus PC to mirror
-% marker bytes on the top-left pixel (R = code/255, PsychDefaultSetup(2) norm).
-% Requires USB control to VPixx (Datapixx IsReady). If init fails, the run
-% continues with serial triggers only. markerPolicy controls whether auxiliary
-% screens and practice emit markers and whether PAS/localisation add short
-% echo flips for pixel parity. minRNorm can floor pixel R for visibility;
-% serial always sends the true byte value.
-cfg.viewpixx = struct( ...
-    'pixelModeEnable', true, ...
-    'pixelPos', [0 0], ...
-    'pixelSize', 1, ...
-    'minRNorm', 19/255, ...
-    'datapixxOpen', false, ...
-    'pixelModeEnabled', false);
 
 %% ------------------------- DEPENDENCY CHECKS -------------------------
 KbName('UnifyKeyNames');
@@ -285,8 +269,6 @@ try
     Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
     Screen('TextFont', window, 'Arial');
     Screen('TextSize', window, 45);
-
-    cfg = viewpixxInitPixelMode(cfg);
 
     ifi = Screen('GetFlipInterval', window);
     [xCentre, yCentre] = RectCenter(windowRect);
@@ -484,14 +466,13 @@ try
             blockMsg = sprintf('Block %d of %d\n\nPress SPACEBAR to start.\n', blockNum, cfg.nBlocks);
             Screen('FillRect', window, bg);
             DrawFormattedText(window, blockMsg, 'center', 'center', black);
-            drawViewPixxPixelIfNeeded(window, cfg, 0);
             Screen('Flip', window);
 
             waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
         end
 
         trial = trials(t);
-        if ~cfg.eeg.markerPolicy.alignTrialStartSerialToFixationFlip
+        if ~cfg.eeg.markerPolicy.alignTrialStartToFixationFlip
             sendTrigger(cfg.trigger, cfg.eeg.codes.trialStart);
         end
 
@@ -528,9 +509,8 @@ try
         % Fixation jitter
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.trialStart);
         tFixOn = Screen('Flip', window);
-        if cfg.eeg.markerPolicy.alignTrialStartSerialToFixationFlip
+        if cfg.eeg.markerPolicy.alignTrialStartToFixationFlip
             sendTrigger(cfg.trigger, cfg.eeg.codes.trialStart);
         end
         tTrialStart = tFixOn;
@@ -539,7 +519,6 @@ try
         % S1
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.s1On);
         tS1 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.s1On);
         holdForSecondsWithAbort(tS1 + durFrames*ifi, cfg);
@@ -547,7 +526,6 @@ try
         % ISI
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.isiOn);
         tISI = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.isiOn);
         holdForSecondsWithAbort(tISI + cfg.ISI_frames*ifi, cfg);
@@ -555,21 +533,18 @@ try
         % S2
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.s2On);
         tS2 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.s2On);
         holdForSecondsWithAbort(tS2 + durFrames*ifi, cfg);
 
         % Gap
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        drawViewPixxPixelIfNeeded(window, cfg, 0);
         tGap = Screen('Flip', window);
         holdForSecondsWithAbort(tGap + cfg.gap_frames*ifi, cfg);
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
         drawPAS(window, windowRect, black, bg, cfg);
-        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.q1On);
         tQ1 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q1On);
         
@@ -578,7 +553,7 @@ try
         pas   = keyToDigit(pasKey);
         if ~isnan(pas) && pas >= 1 && pas <= 4
             sendTrigger(cfg.trigger, cfg.eeg.codes.pasBase + pas);
-            if cfg.eeg.markerPolicy.echoPasLocPixel
+            if cfg.eeg.markerPolicy.echoPasLocSerial
                 parallelEchoFlip(window, cfg, cfg.eeg.codes.pasBase + pas, ...
                     xCentre, yCentre, fixationCoords, cfg.fix.lineWidthPx, black, bg, cfg.eeg.markerPolicy.echoPulseSec);
             end
@@ -596,7 +571,6 @@ try
                 
         % Q2 (Localise) — ALWAYS ask (even if PAS == 1)
         drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
-        drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.q2On);
         tQ2 = Screen('Flip', window);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q2On);
         
@@ -605,7 +579,7 @@ try
         resp2   = keyToDigit(resp2Key);
         if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
             sendTrigger(cfg.trigger, cfg.eeg.codes.locBase + resp2);
-            if cfg.eeg.markerPolicy.echoPasLocPixel
+            if cfg.eeg.markerPolicy.echoPasLocSerial
                 parallelEchoFlip(window, cfg, cfg.eeg.codes.locBase + resp2, ...
                     xCentre, yCentre, fixationCoords, cfg.fix.lineWidthPx, black, bg, cfg.eeg.markerPolicy.echoPulseSec);
             end
@@ -628,12 +602,6 @@ try
         % ITI
         % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         Screen('FillRect', window, bg);
-        if cfg.eeg.markerPolicy.alignTrialEndToItiOnset
-            itiCode = cfg.eeg.codes.trialEnd;
-        else
-            itiCode = 0;
-        end
-        drawViewPixxPixelIfNeeded(window, cfg, itiCode);
         tITI = Screen('Flip', window);
         if cfg.eeg.markerPolicy.alignTrialEndToItiOnset
             sendTrigger(cfg.trigger, cfg.eeg.codes.trialEnd);
@@ -748,7 +716,6 @@ try
             if t < cfg.nTotal
                 Screen('FillRect', window, bg);
                 DrawFormattedText(window, 'Take a break.\n\nPress SPACEBAR to continue.', 'center', 'center', black);
-                drawViewPixxPixelIfNeeded(window, cfg, 0);
                 Screen('Flip', window);
                 waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
             end
@@ -798,9 +765,6 @@ try
     T.freezeAFramesFinal = repmat(freezeAFrames, height(T), 1);
     T.freezeBFramesFinal = repmat(freezeBFrames, height(T), 1);
 
-    T.viewpixxPixelModeEnabled = repmat(logical( ...
-        isfield(cfg, 'viewpixx') && isfield(cfg.viewpixx, 'pixelModeEnabled') && cfg.viewpixx.pixelModeEnabled), height(T), 1);
-    
     writetable(T, outFile);
 
     T2 = readtable(outFile);   % uses the file you just saved
@@ -942,7 +906,7 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
-    if cfg.eeg.markerPolicy.echoAuxSpacePixel
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
         emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.instrSpace, bg);
     end
 end
@@ -1058,7 +1022,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
-    if cfg.eeg.markerPolicy.echoAuxSpacePixel
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
         emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.overviewSpace, bg);
     end
 
@@ -1120,7 +1084,7 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
-    if cfg.eeg.markerPolicy.echoAuxSpacePixel
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
         emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.practice1Space, bg);
     end
 end
@@ -1186,7 +1150,7 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
-    if cfg.eeg.markerPolicy.echoAuxSpacePixel
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
         emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.practice2Space, bg);
     end
 end
@@ -1246,7 +1210,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
-    if cfg.eeg.markerPolicy.echoAuxSpacePixel
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
         emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.calibIntroSpace, bg);
     end
 end
@@ -2090,7 +2054,6 @@ function emitSerialAndPixel(window, cfg, code)
         return;
     end
     sendTrigger(cfg.trigger, code);
-    drawViewPixxPixelIfNeeded(window, cfg, code);
 end
 
 function tFlip = emitAuxFlip(window, cfg, code)
@@ -2119,7 +2082,6 @@ function parallelEchoFlip(window, cfg, code, xCentre, yCentre, fixationCoords, f
         echoSec = 0.05;
     end
     drawFixationOnly(window, bg, fixationCoords, fixLWpx, black, xCentre, yCentre);
-    drawViewPixxPixelIfNeeded(window, cfg, code);
     sendTrigger(cfg.trigger, code);
     Screen('Flip', window);
     WaitSecs(echoSec);
@@ -2140,7 +2102,6 @@ function cleanup(~, cfg)
         try ListenChar(0); catch, end
         try Priority(0); catch, end
         try KbQueueRelease(cfg.kbDev); catch, end
-        try viewpixxPixelModeShutdown(cfg); catch, end
         try closeSerialTrigger(cfg); catch, end
         try ShowCursor; catch, end
 
@@ -2151,75 +2112,6 @@ function cleanup(~, cfg)
         end
     catch
         try Screen('CloseAll'); catch, end
-    end
-end
-
-function cfg = viewpixxInitPixelMode(cfg)
-% Initialise Datapixx Pixel Mode when cfg.viewpixx.pixelModeEnable is true.
-    cfg.viewpixx.datapixxOpen = false;
-    cfg.viewpixx.pixelModeEnabled = false;
-    if ~isfield(cfg, 'viewpixx') || ~cfg.viewpixx.pixelModeEnable
-        return;
-    end
-    try
-        Datapixx('Open');
-        if ~logical(Datapixx('IsReady'))
-            warning(['ViewPixx: Datapixx IsReady==0 after Open. ' ...
-                'Connect VPixx USB control; continuing without Pixel Mode.']);
-            try Datapixx('Close'); catch, end
-            return;
-        end
-        cfg.viewpixx.datapixxOpen = true;
-        try
-            Datapixx('EnablePixelMode');
-        catch
-            Datapixx('EnablePixelMode', 0);
-        end
-        Datapixx('RegWrRd');
-        cfg.viewpixx.pixelModeEnabled = true;
-        fprintf('ViewPixx Pixel Mode ENABLED (R = marker/255 on top-left pixel).\n');
-    catch ME
-        warning('ViewPixx Pixel Mode init failed: %s. Continuing without pixel markers.', mExceptionText(ME));
-        try
-            Datapixx('Close');
-        catch
-        end
-        cfg.viewpixx.datapixxOpen = false;
-        cfg.viewpixx.pixelModeEnabled = false;
-    end
-end
-
-function drawViewPixxPixelIfNeeded(window, cfg, code)
-% Draw Pixel Mode marker dot before Screen(''Flip'') when Pixel Mode is active.
-    if ~isfield(cfg, 'viewpixx') || ~isfield(cfg.viewpixx, 'pixelModeEnabled') || ...
-            ~cfg.viewpixx.pixelModeEnabled
-        return;
-    end
-    if nargin < 3 || isnan(code) || code < 0 || code > 255
-        return;
-    end
-    rVal = double(code) / 255;
-    if isfield(cfg.viewpixx, 'minRNorm') && ~isempty(cfg.viewpixx.minRNorm)
-        rVal = max(rVal, cfg.viewpixx.minRNorm);
-    end
-    rgb = [rVal, 0, 0];
-    Screen('DrawDots', window, cfg.viewpixx.pixelPos, cfg.viewpixx.pixelSize, rgb, [], 1);
-end
-
-function viewpixxPixelModeShutdown(cfg)
-    if ~isfield(cfg, 'viewpixx') || ~cfg.viewpixx.datapixxOpen
-        return;
-    end
-    try
-        if isfield(cfg.viewpixx, 'pixelModeEnabled') && cfg.viewpixx.pixelModeEnabled
-            Datapixx('DisablePixelMode');
-            Datapixx('RegWrRd');
-        end
-    catch
-    end
-    try
-        Datapixx('Close');
-    catch
     end
 end
 
@@ -2477,9 +2369,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % Fixation jitter
             jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            if cfg.eeg.markerPolicy.markPracticeTrials
-                drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.practice.trialStart);
-            end
             tFixOn = Screen('Flip', window);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.trialStart);
@@ -2490,9 +2379,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % S1
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            if cfg.eeg.markerPolicy.markPracticeTrials
-                drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.practice.s1On);
-            end
             tS1 = Screen('Flip', window);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.s1On);
@@ -2501,9 +2387,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     
             % ISI (same as main)
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            if cfg.eeg.markerPolicy.markPracticeTrials
-                drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.practice.isiOn);
-            end
             tISI = Screen('Flip', window);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.isiOn);
@@ -2513,9 +2396,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % S2
             drawGratings(window, gratingTex, allRects, oriS2, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            if cfg.eeg.markerPolicy.markPracticeTrials
-                drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.practice.s2On);
-            end
             tS2 = Screen('Flip', window);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.s2On);
@@ -2531,9 +2411,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
 
             % Q1 (PAS)
             drawPAS(window, windowRect, black, bg, cfg);
-            if cfg.eeg.markerPolicy.markPracticeTrials
-                drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.practice.q1On);
-            end
             tQ1 = Screen('Flip', window);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.q1On);
@@ -2542,7 +2419,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             pas = keyToDigit(pasKey);
             if cfg.eeg.markerPolicy.markPracticeTrials && ~isnan(pas) && pas >= 1 && pas <= 4
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.pasBase + pas);
-                if cfg.eeg.markerPolicy.echoPasLocPixel
+                if cfg.eeg.markerPolicy.echoPasLocSerial
                     parallelEchoFlip(window, cfg, cfg.eeg.codes.practice.pasBase + pas, ...
                         xCentre, yCentre, fixationCoords, cfg.fix.lineWidthPx, black, bg, cfg.eeg.markerPolicy.echoPulseSec);
                 end
@@ -2558,9 +2435,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             
             % Q2 (ALWAYS)
             drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
-            if cfg.eeg.markerPolicy.markPracticeTrials
-                drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.practice.q2On);
-            end
             Screen('Flip', window);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.q2On);
@@ -2569,7 +2443,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             resp2 = keyToDigit(resp2Key);
             if cfg.eeg.markerPolicy.markPracticeTrials && ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.locBase + resp2);
-                if cfg.eeg.markerPolicy.echoPasLocPixel
+                if cfg.eeg.markerPolicy.echoPasLocSerial
                     parallelEchoFlip(window, cfg, cfg.eeg.codes.practice.locBase + resp2, ...
                         xCentre, yCentre, fixationCoords, cfg.fix.lineWidthPx, black, bg, cfg.eeg.markerPolicy.echoPulseSec);
                 end
@@ -2710,9 +2584,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % ITI
             % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             Screen('FillRect', window, bg);
-            if cfg.eeg.markerPolicy.markPracticeTrials && cfg.eeg.markerPolicy.alignTrialEndToItiOnset
-                drawViewPixxPixelIfNeeded(window, cfg, cfg.eeg.codes.practice.trialEnd);
-            end
             tITI = Screen('Flip', window);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.trialEnd);
