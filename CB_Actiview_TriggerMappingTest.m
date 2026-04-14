@@ -28,10 +28,8 @@ function CB_Actiview_TriggerMappingTest
 %
 % Serial timing
 % -------------
-% Default: no auto-reset pulse (sendResetAfterCode=false); each code is held
-% on the bus for cfg.serialHoldSec so Actiview is easy to read. Between codes
-% an explicit 0 is sent. Match CB_4xGratings_EEG by setting
-% sendResetAfterCode=true and a short pulseWidthSec if your box needs pulses.
+% Default uses converter-friendly pulses: each event is code -> short hold -> 0.
+% This matches the common trigger-box expectation and the main EEG script style.
 
 close all;
 clc;
@@ -41,11 +39,11 @@ cfg = struct();
 cfg.useSerial = true;
 cfg.serialPort = 'COM3';
 cfg.baudRate = 115200;
-cfg.pulseWidthSec = 0.005;
-cfg.sendResetAfterCode = false;  % true = pulse like main EEG script
+cfg.pulseWidthSec = 0.020;
+cfg.sendResetAfterCode = true;  % converter-friendly pulse: code then reset-to-0
 cfg.warnOnSendError = true;
 cfg.resetAtEnd = true;
-cfg.serialHoldSec = 2.00;  % visible hold when sendResetAfterCode is false
+cfg.serialHoldSec = 0.00;  % unused when sendResetAfterCode=true
 
 % --- Pixel (optional; off for serial-only) ---
 cfg.usePixel = false;
