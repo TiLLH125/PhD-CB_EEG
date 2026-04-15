@@ -6,7 +6,7 @@ function CB_Photodiode_Ergo1_Test
 % - Opens a PTB window.
 % - Draws a small diode patch (default top-left).
 % - Alternates OFF (black) and ON (white) in a regular pulse train.
-% - Optionally sends a serial trigger on each ON pulse.
+% - Sends serial triggers for run start/stop and diode ON/OFF transitions.
 %
 % Use this to confirm:
 % 1) Ergo1 sees clean photodiode pulses in Actiview.
@@ -47,14 +47,17 @@ cfg.pd.offColor = 0.0;      % black
 cfg.pulse.onSec = 0.10;     % diode ON duration
 cfg.pulse.offSec = 0.90;    % diode OFF duration
 
-% Optional serial marker on each ON transition (set true if desired)
-cfg.eeg.enable = false;
+% Serial markers (enabled by default)
+cfg.eeg.enable = true;
 cfg.eeg.serialPort = 'COM4';
 cfg.eeg.baudRate = 115200;
 cfg.eeg.pulseWidthSec = 0.005;
 cfg.eeg.sendResetAfterCode = true;
 cfg.eeg.warnOnSendError = true;
+cfg.eeg.codeRunStart = 200;
 cfg.eeg.codeOn = 201;
+cfg.eeg.codeOff = 202;
+cfg.eeg.codeRunStop = 203;
 
 KbName('UnifyKeyNames');
 keys.escape = KbName('ESCAPE');
@@ -108,6 +111,11 @@ try
                 pulsing = ~pulsing;
                 stateOn = false;
                 nextSwitch = nowT + 0.05;
+                if pulsing
+                    sendTrigger(trigger, cfg.eeg.codeRunStart);
+                else
+                    sendTrigger(trigger, cfg.eeg.codeRunStop);
+                end
             end
             KbQueueFlush(-1);
         end
@@ -119,6 +127,7 @@ try
                 sendTrigger(trigger, cfg.eeg.codeOn);
                 nextSwitch = nowT + cfg.pulse.onSec;
             else
+                sendTrigger(trigger, cfg.eeg.codeOff);
                 nextSwitch = nowT + cfg.pulse.offSec;
             end
         elseif ~pulsing
@@ -165,8 +174,10 @@ txt = sprintf([ ...
     'Patch state: %s\\n' ...
     'ON pulses sent: %d\\n\\n' ...
     'ON duration: %.3f s   OFF duration: %.3f s\\n' ...
-    'Serial trigger enabled: %d (code %d)\\n'], ...
-    runTxt, pdTxt, nOn, cfg.pulse.onSec, cfg.pulse.offSec, serialEnabled, cfg.eeg.codeOn);
+    'Serial trigger enabled: %d\\n' ...
+    'Codes: runStart=%d  on=%d  off=%d  runStop=%d\\n'], ...
+    runTxt, pdTxt, nOn, cfg.pulse.onSec, cfg.pulse.offSec, serialEnabled, ...
+    cfg.eeg.codeRunStart, cfg.eeg.codeOn, cfg.eeg.codeOff, cfg.eeg.codeRunStop);
 
 DrawFormattedText(window, txt, 'center', windowRect(4) * 0.18, 0, 90);
 end
