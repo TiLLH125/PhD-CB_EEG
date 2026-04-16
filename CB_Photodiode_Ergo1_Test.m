@@ -19,6 +19,8 @@ function CB_Photodiode_Ergo1_Test
 % Notes:
 % - This script does not read BioSemi data in MATLAB; pulses appear in Actiview/BDF.
 % - Keep diode physically taped over the patch region.
+% - After recording, measure trigger-to-photodiode latency on the continuous BDF with
+%   CB_Photodiode_Ergo1_LatencyFromEEG (see that file for usage; set pdChan to your Ergo1 channel).
 
 close all;
 try ListenChar(0); catch, end
@@ -43,9 +45,9 @@ cfg.pd.corner = 'top-left'; % 'top-left' | 'top-right' | 'bottom-left' | 'bottom
 cfg.pd.onColor = 1.0;       % white
 cfg.pd.offColor = 0.0;      % black
 
-% Pulse timing
+% Pulse timing (longer inter-pulse spacing to reduce overlap between trials)
 cfg.pulse.onSec = 0.10;     % diode ON duration
-cfg.pulse.offSec = 0.90;    % diode OFF duration
+cfg.pulse.offSec = 1.40;    % diode OFF duration
 
 % Serial markers (enabled by default)
 cfg.eeg.enable = true;
