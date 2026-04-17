@@ -157,18 +157,26 @@ leadOutFrames = round(cfg.cal.leadOutSec / ifi);
 
 T = table();
 vn = {'event', 'code', 'pulseIndex', 'vbl', 'stimOnset', 'flipTimestamp', 'missed', 'sendTimeGetSecs', 'whenRequested'};
+R = table();
+rvn = {'event', 'code', 'pulseIndex', 'dueTimeGetSecs', 'execTimeGetSecs', 'serviceMode', 'waitedSec', 'forcedEarly', 'lateSec'};
+resetState = initResetState(cfg.eeg);
 
-sendTriggerFull(trigger, cfg.eeg.codeRunStart, cfg.eeg);
+sendTriggerFast(trigger, cfg.eeg.codeRunStart);
 tSend = GetSecs;
+resetState = armReset(resetState, tSend, 'runStart', cfg.eeg.codeRunStart, NaN);
 T = appendTimingRow(T, vn, {'runStart'}, cfg.eeg.codeRunStart, NaN, NaN, NaN, NaN, NaN, tSend, NaN);
 
 fillBackAndPatch(window, cfg, pdRect, false);
 vbl = Screen('Flip', window);
+[resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
+R = appendResetRow(R, rvn, rLog);
 
 if leadInFrames > 0
     whenNext = vbl + leadInFrames * ifi;
     fillBackAndPatch(window, cfg, pdRect, false);
     [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenNext);
+    [resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
+    R = appendResetRow(R, rvn, rLog);
     T = appendTimingRow(T, vn, {'leadInFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, NaN, whenNext);
 else
     stimOnset = NaN;
@@ -176,7 +184,8 @@ else
     missed = 0;
 end
 
-nextWhenOn = vbl + max(0.5 * ifi, 0);
+% First onset is aligned to a full-frame step for consistency with all other transitions.
+nextWhenOn = vbl + ifi;
 aborted = false;
 
 for p = 1:cfg.cal.nOnPulses
@@ -186,19 +195,28 @@ for p = 1:cfg.cal.nOnPulses
         break;
     end
 
+    % Ensure previous code reset reaches due time before next marker.
+    [resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
+    R = appendResetRow(R, rvn, rLog);
     fillBackAndPatch(window, cfg, pdRect, true);
     sendTriggerFast(trigger, cfg.eeg.codeOn);
     tSend = GetSecs;
+    resetState = armReset(resetState, tSend, 'onset', cfg.eeg.codeOn, p);
     [vbl, stimOnset, ft, missed] = screenFlipLog(window, nextWhenOn);
-    triggerResetAfterFlip(trigger, cfg.eeg);
+    [resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
+    R = appendResetRow(R, rvn, rLog);
     T = appendTimingRow(T, vn, {'onset'}, cfg.eeg.codeOn, p, vbl, stimOnset, ft, missed, tSend, nextWhenOn);
 
     whenOff = vbl + nOnFrames * ifi;
+    [resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
+    R = appendResetRow(R, rvn, rLog);
     fillBackAndPatch(window, cfg, pdRect, false);
     sendTriggerFast(trigger, cfg.eeg.codeOff);
     tSend = GetSecs;
+    resetState = armReset(resetState, tSend, 'offset', cfg.eeg.codeOff, p);
     [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenOff);
-    triggerResetAfterFlip(trigger, cfg.eeg);
+    [resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
+    R = appendResetRow(R, rvn, rLog);
     T = appendTimingRow(T, vn, {'offset'}, cfg.eeg.codeOff, p, vbl, stimOnset, ft, missed, tSend, whenOff);
 
     nextWhenOn = vbl + nOffFrames * ifi;
@@ -208,11 +226,18 @@ if ~aborted && leadOutFrames > 0
     whenLeadOut = vbl + leadOutFrames * ifi;
     fillBackAndPatch(window, cfg, pdRect, false);
     [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenLeadOut);
+    [resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
+    R = appendResetRow(R, rvn, rLog);
     T = appendTimingRow(T, vn, {'leadOutFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, NaN, whenLeadOut);
 end
 
-sendTriggerFull(trigger, cfg.eeg.codeRunStop, cfg.eeg);
+[resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
+R = appendResetRow(R, rvn, rLog);
+sendTriggerFast(trigger, cfg.eeg.codeRunStop);
 tStop = GetSecs;
+resetState = armReset(resetState, tStop, 'runStop', cfg.eeg.codeRunStop, NaN);
+[resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
+R = appendResetRow(R, rvn, rLog);
 T = appendTimingRow(T, vn, {'runStop'}, cfg.eeg.codeRunStop, NaN, NaN, NaN, NaN, NaN, tStop, NaN);
 
 meta = struct();
@@ -229,8 +254,10 @@ meta.leadOutFrames = leadOutFrames;
 meta.skipSyncTests = cfg.skipSyncTests;
 meta.screenNumber = cfg.screenNumber;
 meta.mode = cfg.mode;
+meta.resetPolicy = 'due-time reset; opportunistic after flip, enforced before next code';
 
-saveTimingLog(T, meta, cfg);
+saveTimingLog(T, R, meta, cfg);
+printResetQcSummary(R);
 end
 
 function [vbl, stimOnset, ft, missed] = screenFlipLog(window, when)
@@ -251,7 +278,7 @@ else
 end
 end
 
-function saveTimingLog(T, meta, cfg)
+function saveTimingLog(T, R, meta, cfg)
 if isempty(T)
     warning('CB_Photodiode_Ergo1_Test: no timing rows to save.');
     return;
@@ -261,10 +288,13 @@ if ~exist(cfg.logDir, 'dir')
 end
 ts = datestr(now, 'yyyymmdd_HHMMSS');
 base = fullfile(cfg.logDir, sprintf('CB_Photodiode_Ergo1_Test_log_%s', ts));
-save([base '.mat'], 'T', 'meta', 'cfg', '-v7.3');
+save([base '.mat'], 'T', 'R', 'meta', 'cfg', '-v7.3');
 fprintf('Timing log saved: %s.mat\n', base);
 if cfg.saveCsv
     writetable(T, [base '_events.csv']);
+    if ~isempty(R)
+        writetable(R, [base '_resets.csv']);
+    end
     fprintf('Events CSV: %s_events.csv\n', base);
 end
 end
@@ -424,18 +454,98 @@ catch ME
 end
 end
 
-function triggerResetAfterFlip(trigger, eegCfg)
-if ~trigger.enabled || isempty(trigger.handle) || ~eegCfg.sendResetAfterCode
+function state = initResetState(eegCfg)
+state = struct();
+state.enabled = logical(eegCfg.sendResetAfterCode);
+state.pulseWidthSec = double(eegCfg.pulseWidthSec);
+state.pending = false;
+state.dueTime = NaN;
+state.event = '';
+state.code = NaN;
+state.pulseIndex = NaN;
+end
+
+function state = armReset(state, sendTime, eventName, code, pulseIndex)
+if ~state.enabled
     return;
 end
+state.pending = true;
+state.dueTime = sendTime + state.pulseWidthSec;
+state.event = char(eventName);
+state.code = code;
+state.pulseIndex = pulseIndex;
+end
+
+function [state, rLog] = serviceReset(trigger, state, mode)
+rLog = table();
+if nargin < 3 || isempty(mode)
+    mode = 'opportunistic';
+end
+if ~state.enabled || ~state.pending || ~trigger.enabled || isempty(trigger.handle)
+    return;
+end
+nowT = GetSecs;
+waitedSec = 0;
+forcedEarly = false;
+if strcmp(mode, 'opportunistic')
+    if nowT < state.dueTime
+        return;
+    end
+elseif strcmp(mode, 'beforeNextCode')
+    if nowT < state.dueTime
+        WaitSecs('UntilTime', state.dueTime);
+        waitedSec = state.dueTime - nowT;
+        nowT = GetSecs;
+    end
+else
+    error('Unknown reset service mode: %s', mode);
+end
 try
-    WaitSecs(eegCfg.pulseWidthSec);
     IOPort('Write', trigger.handle, uint8(0), 0);
+    execT = GetSecs;
+    lateSec = max(0, execT - state.dueTime);
+    rLog = table({state.event}, state.code, state.pulseIndex, state.dueTime, execT, {mode}, ...
+        waitedSec, forcedEarly, lateSec, ...
+        'VariableNames', {'event', 'code', 'pulseIndex', 'dueTimeGetSecs', 'execTimeGetSecs', 'serviceMode', 'waitedSec', 'forcedEarly', 'lateSec'});
+    state.pending = false;
+    state.dueTime = NaN;
+    state.event = '';
+    state.code = NaN;
+    state.pulseIndex = NaN;
 catch ME
-    if eegCfg.warnOnSendError
+    if trigger.warnOnSendError
         warning('Trigger reset failed: %s', mExceptionText(ME));
     end
 end
+end
+
+function R = appendResetRow(R, rvn, rLog)
+if isempty(rLog)
+    return;
+end
+if isempty(R)
+    R = rLog;
+else
+    R = [R; rLog(:, rvn)]; %#ok<AGROW>
+end
+end
+
+function printResetQcSummary(R)
+if isempty(R)
+    fprintf('Reset QC: no reset events logged.\n');
+    return;
+end
+nReset = height(R);
+nBefore = sum(strcmp(R.serviceMode, 'beforeNextCode'));
+nOpp = sum(strcmp(R.serviceMode, 'opportunistic'));
+nWaited = sum(R.waitedSec > 0);
+maxWaitMs = max(R.waitedSec) * 1000;
+maxLateMs = max(R.lateSec) * 1000;
+nLateOver1ms = sum(R.lateSec > 0.001);
+nForcedEarly = sum(R.forcedEarly ~= 0);
+fprintf(['Reset QC: n=%d (beforeNextCode=%d, opportunistic=%d), ' ...
+    'waited=%d (max=%.3f ms), late>1ms=%d (maxLate=%.3f ms), forcedEarly=%d\n'], ...
+    nReset, nBefore, nOpp, nWaited, maxWaitMs, nLateOver1ms, maxLateMs, nForcedEarly);
 end
 
 function sendTriggerFull(trigger, code, eegCfg)
