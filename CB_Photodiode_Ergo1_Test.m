@@ -1,26 +1,35 @@
-function CB_Photodiode_Ergo1_Test
-% CB_Photodiode_Ergo1_Test
-% Standalone photodiode timing test for BioSemi Ergo1 input.
+function CB_Photodiode_Ergo1_Test(varargin)
+% CB_Photodiode_Ergo1_Test  Photodiode timing test / calibration for BioSemi Ergo1.
 %
-% What it does:
-% - Opens a PTB window.
-% - Draws a small diode patch (default top-left).
-% - Alternates OFF (black) and ON (white) in a regular pulse train.
-% - Sends serial triggers for run start/stop and diode ON/OFF transitions.
+% Two modes (name-value 'mode'):
+%   'demo' (default) — Keyboard-driven sanity check: SPACE start/stop, ESC quit.
+%     Status text, optional sync-test skipping, legacy loop timing (GetSecs gate).
+%   'calibration' — Automated, flip-centred pulse train for real latency measurement.
+%     No status text; strict PTB sync by default; serial code sent immediately before
+%     each ON/OFF flip; optional line reset after flip (not before) to avoid blocking
+%     the display. Primary offline metric: code 201 (onset) vs photodiode rise.
 %
-% Use this to confirm:
-% 1) Ergo1 sees clean photodiode pulses in Actiview.
-% 2) Pulse timing is aligned with screen flips.
+% Common name-value pairs:
+%   'mode'           'demo' | 'calibration'
+%   'screenNumber'   display index (default 2)
+%   'debugWindow'    logical, small window (demo only; calibration always fullscreen)
+%   'skipSyncTests'  0 = run sync tests (default in calibration); 1 = skip (demo default)
+%   'visualDebugLevel'  PTB visual debug (default 1 demo, 3 calibration)
+%   'logDir'         directory for timing logs (default pwd)
+%   'saveCsv'        also write events table as CSV (default false)
+%   'nOnPulses'      calibration: number of white onsets (default 150)
+%   'leadInSec'      calibration: hold OFF after runStart before first ON (default 0.5)
+%   'leadOutSec'     calibration: hold OFF after last OFF before runStop (default 0.5)
 %
-% Controls:
-% - SPACE: start/stop pulsing
-% - ESC: quit
+% Pulse timing uses cfg.pulse.onSec / cfg.pulse.offSec (defaults 0.10 / 1.40 s).
+% Serial codes: runStart=200, on=201, off=202, runStop=203 (cfg.eeg.*).
 %
-% Notes:
-% - This script does not read BioSemi data in MATLAB; pulses appear in Actiview/BDF.
-% - Keep diode physically taped over the patch region.
-% - After recording, measure trigger-to-photodiode latency on the continuous BDF with
-%   CB_Photodiode_Ergo1_LatencyFromEEG (see that file for usage; set pdChan to your Ergo1 channel).
+% After recording, use CB_Photodiode_Ergo1_LatencyFromEEG on the BDF; prefer a
+% causal search window for reported latency (see that file).
+%
+% Examples:
+%   CB_Photodiode_Ergo1_Test();
+%   CB_Photodiode_Ergo1_Test('mode', 'calibration', 'nOnPulses', 200, 'logDir', 'C:\data');
 
 close all;
 try ListenChar(0); catch, end
@@ -31,39 +40,54 @@ elseif exist('Screen', 'file') == 2
     Screen('CloseAll');
 end
 
-cfg = struct();
-cfg.screenNumber = 2;
-cfg.skipSyncTests = 1;
-cfg.visualDebugLevel = 1;
-cfg.debugWindow = false;
-cfg.bg = 0.5;
+cfg = defaultCfg();
+p = inputParser;
+p.FunctionName = mfilename;
+p.addParameter('mode', cfg.mode, @(s) ischar(s) || isstring(s));
+p.addParameter('screenNumber', cfg.screenNumber, @(x) isnumeric(x) && isscalar(x));
+p.addParameter('debugWindow', cfg.debugWindow, @(x) islogical(x) || isnumeric(x));
+p.addParameter('skipSyncTests', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x)));
+p.addParameter('visualDebugLevel', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x)));
+p.addParameter('logDir', cfg.logDir, @(s) ischar(s) || isstring(s));
+p.addParameter('saveCsv', cfg.saveCsv, @(x) islogical(x) || isnumeric(x));
+p.addParameter('nOnPulses', cfg.cal.nOnPulses, @(x) isnumeric(x) && isscalar(x) && x >= 1);
+p.addParameter('leadInSec', cfg.cal.leadInSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+p.addParameter('leadOutSec', cfg.cal.leadOutSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+p.parse(varargin{:});
 
-% Photodiode patch settings (PsychDefaultSetup(2): 0..1 colors)
-cfg.pd.enable = true;
-cfg.pd.sizePx = 100;
-cfg.pd.corner = 'top-left'; % 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-cfg.pd.onColor = 1.0;       % white
-cfg.pd.offColor = 0.0;      % black
+cfg.mode = char(lower(strtrim(string(p.Results.mode))));
+if ~ismember(cfg.mode, {'demo', 'calibration'})
+    error('%s: mode must be ''demo'' or ''calibration''.', mfilename);
+end
+cfg.screenNumber = p.Results.screenNumber;
+cfg.debugWindow = logical(p.Results.debugWindow);
+cfg.logDir = char(p.Results.logDir);
+cfg.saveCsv = logical(p.Results.saveCsv);
+cfg.cal.nOnPulses = round(p.Results.nOnPulses);
+cfg.cal.leadInSec = double(p.Results.leadInSec);
+cfg.cal.leadOutSec = double(p.Results.leadOutSec);
 
-% Pulse timing (longer inter-pulse spacing to reduce overlap between trials)
-cfg.pulse.onSec = 0.10;     % diode ON duration
-cfg.pulse.offSec = 1.40;    % diode OFF duration
-
-% Serial markers (enabled by default)
-cfg.eeg.enable = true;
-cfg.eeg.serialPort = 'COM4';
-cfg.eeg.baudRate = 115200;
-cfg.eeg.pulseWidthSec = 0.005;
-cfg.eeg.sendResetAfterCode = true;
-cfg.eeg.warnOnSendError = true;
-cfg.eeg.codeRunStart = 200;
-cfg.eeg.codeOn = 201;
-cfg.eeg.codeOff = 202;
-cfg.eeg.codeRunStop = 203;
+if isempty(p.Results.skipSyncTests)
+    if strcmp(cfg.mode, 'calibration')
+        cfg.skipSyncTests = 0;
+    else
+        cfg.skipSyncTests = 1;
+    end
+else
+    cfg.skipSyncTests = double(p.Results.skipSyncTests);
+end
+if isempty(p.Results.visualDebugLevel)
+    if strcmp(cfg.mode, 'calibration')
+        cfg.visualDebugLevel = 3;
+    else
+        cfg.visualDebugLevel = 1;
+    end
+else
+    cfg.visualDebugLevel = double(p.Results.visualDebugLevel);
+end
 
 KbName('UnifyKeyNames');
-keys.escape = KbName('ESCAPE');
-keys.space = KbName('space');
+keys = struct('escape', KbName('ESCAPE'), 'space', KbName('space'));
 
 try
     PsychDefaultSetup(2);
@@ -77,82 +101,246 @@ Screen('Preference', 'SkipSyncTests', cfg.skipSyncTests);
 trigger = initSerialTrigger(cfg.eeg);
 window = [];
 try
-    if cfg.debugWindow
+    if strcmp(cfg.mode, 'demo') && cfg.debugWindow
         [window, windowRect] = PsychImaging('OpenWindow', cfg.screenNumber, cfg.bg, [100 100 1000 800]);
     else
         [window, windowRect] = PsychImaging('OpenWindow', cfg.screenNumber, cfg.bg);
     end
     cleanupObj = onCleanup(@() localCleanup(window, trigger)); %#ok<NASGU>
 
-    Screen('TextFont', window, 'Arial');
-    Screen('TextSize', window, 28);
-    Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
-
-    ifi = Screen('GetFlipInterval', window);
-    pdRect = makePdRect(windowRect, cfg.pd.sizePx, cfg.pd.corner);
-
-    try KbQueueRelease(-1); catch, end
-    KbQueueCreate(-1);
-    KbQueueStart(-1);
-    KbQueueFlush(-1);
-
-    running = true;
-    pulsing = false;
-    stateOn = false;
-    nextSwitch = GetSecs + 0.25;
-    nOn = 0;
-
-    while running
-        nowT = GetSecs;
-
-        [pressed, firstPress] = KbQueueCheck(-1);
-        if pressed
-            if firstPress(keys.escape) > 0
-                running = false;
-            elseif firstPress(keys.space) > 0
-                pulsing = ~pulsing;
-                stateOn = false;
-                nextSwitch = nowT + 0.05;
-                if pulsing
-                    sendTrigger(trigger, cfg.eeg.codeRunStart);
-                else
-                    sendTrigger(trigger, cfg.eeg.codeRunStop);
-                end
-            end
-            KbQueueFlush(-1);
-        end
-
-        if pulsing && nowT >= nextSwitch
-            stateOn = ~stateOn;
-            if stateOn
-                nOn = nOn + 1;
-                sendTrigger(trigger, cfg.eeg.codeOn);
-                nextSwitch = nowT + cfg.pulse.onSec;
-            else
-                sendTrigger(trigger, cfg.eeg.codeOff);
-                nextSwitch = nowT + cfg.pulse.offSec;
-            end
-        elseif ~pulsing
-            stateOn = false;
-        end
-
-        Screen('FillRect', window, cfg.bg);
-        drawStatus(window, windowRect, pulsing, stateOn, nOn, trigger.enabled, cfg);
-        if cfg.pd.enable
-            if stateOn
-                Screen('FillRect', window, cfg.pd.onColor, pdRect);
-            else
-                Screen('FillRect', window, cfg.pd.offColor, pdRect);
-            end
-        end
-        Screen('Flip', window);
-
-        WaitSecs(max(0, ifi * 0.25));
+    if strcmp(cfg.mode, 'demo')
+        Screen('TextFont', window, 'Arial');
+        Screen('TextSize', window, 28);
+        Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
+        runDemo(window, windowRect, cfg, trigger, keys);
+    else
+        runCalibration(window, windowRect, cfg, trigger, keys);
     end
 
 catch ME
     try localCleanup(window, trigger); catch, end
     rethrow(ME);
+end
+end
+
+function cfg = defaultCfg()
+cfg = struct();
+cfg.mode = 'demo';
+cfg.screenNumber = 2;
+cfg.debugWindow = false;
+cfg.skipSyncTests = 1;
+cfg.visualDebugLevel = 1;
+cfg.bg = 0.5;
+cfg.logDir = pwd;
+cfg.saveCsv = false;
+
+cfg.pd = struct('enable', true, 'sizePx', 100, 'corner', 'top-left', ...
+    'onColor', 1.0, 'offColor', 0.0);
+
+cfg.pulse = struct('onSec', 0.10, 'offSec', 1.40);
+
+cfg.cal = struct('nOnPulses', 150, 'leadInSec', 0.5, 'leadOutSec', 0.5);
+
+cfg.eeg = struct('enable', true, 'serialPort', 'COM4', 'baudRate', 115200, ...
+    'pulseWidthSec', 0.005, 'sendResetAfterCode', true, 'warnOnSendError', true, ...
+    'codeRunStart', 200, 'codeOn', 201, 'codeOff', 202, 'codeRunStop', 203);
+end
+
+function runCalibration(window, windowRect, cfg, trigger, keys)
+ifi = Screen('GetFlipInterval', window);
+pdRect = makePdRect(windowRect, cfg.pd.sizePx, cfg.pd.corner);
+
+nOnFrames = max(1, round(cfg.pulse.onSec / ifi));
+nOffFrames = max(1, round(cfg.pulse.offSec / ifi));
+leadInFrames = round(cfg.cal.leadInSec / ifi);
+leadOutFrames = round(cfg.cal.leadOutSec / ifi);
+
+T = table();
+vn = {'event', 'code', 'pulseIndex', 'vbl', 'stimOnset', 'flipTimestamp', 'missed', 'sendTimeGetSecs', 'whenRequested'};
+
+sendTriggerFull(trigger, cfg.eeg.codeRunStart, cfg.eeg);
+tSend = GetSecs;
+T = appendTimingRow(T, vn, {'runStart'}, cfg.eeg.codeRunStart, NaN, NaN, NaN, NaN, NaN, tSend, NaN);
+
+fillBackAndPatch(window, cfg, pdRect, false);
+vbl = Screen('Flip', window);
+
+if leadInFrames > 0
+    whenNext = vbl + leadInFrames * ifi;
+    fillBackAndPatch(window, cfg, pdRect, false);
+    [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenNext);
+    T = appendTimingRow(T, vn, {'leadInFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, NaN, whenNext);
+else
+    stimOnset = NaN;
+    ft = NaN;
+    missed = 0;
+end
+
+nextWhenOn = vbl + max(0.5 * ifi, 0);
+aborted = false;
+
+for p = 1:cfg.cal.nOnPulses
+    if checkAbort(keys)
+        aborted = true;
+        T = appendTimingRow(T, vn, {'abort'}, NaN, NaN, NaN, NaN, NaN, NaN, GetSecs, NaN);
+        break;
+    end
+
+    fillBackAndPatch(window, cfg, pdRect, true);
+    sendTriggerFast(trigger, cfg.eeg.codeOn);
+    tSend = GetSecs;
+    [vbl, stimOnset, ft, missed] = screenFlipLog(window, nextWhenOn);
+    triggerResetAfterFlip(trigger, cfg.eeg);
+    T = appendTimingRow(T, vn, {'onset'}, cfg.eeg.codeOn, p, vbl, stimOnset, ft, missed, tSend, nextWhenOn);
+
+    whenOff = vbl + nOnFrames * ifi;
+    fillBackAndPatch(window, cfg, pdRect, false);
+    sendTriggerFast(trigger, cfg.eeg.codeOff);
+    tSend = GetSecs;
+    [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenOff);
+    triggerResetAfterFlip(trigger, cfg.eeg);
+    T = appendTimingRow(T, vn, {'offset'}, cfg.eeg.codeOff, p, vbl, stimOnset, ft, missed, tSend, whenOff);
+
+    nextWhenOn = vbl + nOffFrames * ifi;
+end
+
+if ~aborted && leadOutFrames > 0
+    whenLeadOut = vbl + leadOutFrames * ifi;
+    fillBackAndPatch(window, cfg, pdRect, false);
+    [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenLeadOut);
+    T = appendTimingRow(T, vn, {'leadOutFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, NaN, whenLeadOut);
+end
+
+sendTriggerFull(trigger, cfg.eeg.codeRunStop, cfg.eeg);
+tStop = GetSecs;
+T = appendTimingRow(T, vn, {'runStop'}, cfg.eeg.codeRunStop, NaN, NaN, NaN, NaN, NaN, tStop, NaN);
+
+meta = struct();
+try
+    meta.ptbVersion = Screen('Version');
+catch
+    meta.ptbVersion = 'unknown';
+end
+meta.ifi = ifi;
+meta.nOnFrames = nOnFrames;
+meta.nOffFrames = nOffFrames;
+meta.leadInFrames = leadInFrames;
+meta.leadOutFrames = leadOutFrames;
+meta.skipSyncTests = cfg.skipSyncTests;
+meta.screenNumber = cfg.screenNumber;
+meta.mode = cfg.mode;
+
+saveTimingLog(T, meta, cfg);
+end
+
+function [vbl, stimOnset, ft, missed] = screenFlipLog(window, when)
+[vbl, stimOnset, ft, missed] = Screen('Flip', window, when, 0);
+end
+
+function abort = checkAbort(keys)
+[~, ~, keyCode] = KbCheck(-1);
+abort = logical(keyCode(keys.escape));
+end
+
+function T = appendTimingRow(T, vn, event, code, pulseIndex, vbl, stimOnset, flipTimestamp, missed, sendTimeGetSecs, whenRequested)
+row = table(event, code, pulseIndex, vbl, stimOnset, flipTimestamp, missed, sendTimeGetSecs, whenRequested, 'VariableNames', vn);
+if isempty(T)
+    T = row;
+else
+    T = [T; row]; %#ok<AGROW>
+end
+end
+
+function saveTimingLog(T, meta, cfg)
+if isempty(T)
+    warning('CB_Photodiode_Ergo1_Test: no timing rows to save.');
+    return;
+end
+if ~exist(cfg.logDir, 'dir')
+    mkdir(cfg.logDir);
+end
+ts = datestr(now, 'yyyymmdd_HHMMSS');
+base = fullfile(cfg.logDir, sprintf('CB_Photodiode_Ergo1_Test_log_%s', ts));
+save([base '.mat'], 'T', 'meta', 'cfg', '-v7.3');
+fprintf('Timing log saved: %s.mat\n', base);
+if cfg.saveCsv
+    writetable(T, [base '_events.csv']);
+    fprintf('Events CSV: %s_events.csv\n', base);
+end
+end
+
+function fillBackAndPatch(window, cfg, pdRect, stateOn)
+Screen('FillRect', window, cfg.bg);
+if cfg.pd.enable
+    if stateOn
+        Screen('FillRect', window, cfg.pd.onColor, pdRect);
+    else
+        Screen('FillRect', window, cfg.pd.offColor, pdRect);
+    end
+end
+end
+
+function runDemo(window, windowRect, cfg, trigger, keys)
+ifi = Screen('GetFlipInterval', window);
+pdRect = makePdRect(windowRect, cfg.pd.sizePx, cfg.pd.corner);
+
+try KbQueueRelease(-1); catch, end
+KbQueueCreate(-1);
+KbQueueStart(-1);
+KbQueueFlush(-1);
+
+running = true;
+pulsing = false;
+stateOn = false;
+nextSwitch = GetSecs + 0.25;
+nOn = 0;
+
+while running
+    nowT = GetSecs;
+
+    [pressed, firstPress] = KbQueueCheck(-1);
+    if pressed
+        if firstPress(keys.escape) > 0
+            running = false;
+        elseif firstPress(keys.space) > 0
+            pulsing = ~pulsing;
+            stateOn = false;
+            nextSwitch = nowT + 0.05;
+            if pulsing
+                sendTriggerFull(trigger, cfg.eeg.codeRunStart, cfg.eeg);
+            else
+                sendTriggerFull(trigger, cfg.eeg.codeRunStop, cfg.eeg);
+            end
+        end
+        KbQueueFlush(-1);
+    end
+
+    if pulsing && nowT >= nextSwitch
+        stateOn = ~stateOn;
+        if stateOn
+            nOn = nOn + 1;
+            sendTriggerFull(trigger, cfg.eeg.codeOn, cfg.eeg);
+            nextSwitch = nowT + cfg.pulse.onSec;
+        else
+            sendTriggerFull(trigger, cfg.eeg.codeOff, cfg.eeg);
+            nextSwitch = nowT + cfg.pulse.offSec;
+        end
+    elseif ~pulsing
+        stateOn = false;
+    end
+
+    Screen('FillRect', window, cfg.bg);
+    drawStatus(window, windowRect, pulsing, stateOn, nOn, trigger.enabled, cfg);
+    if cfg.pd.enable
+        if stateOn
+            Screen('FillRect', window, cfg.pd.onColor, pdRect);
+        else
+            Screen('FillRect', window, cfg.pd.offColor, pdRect);
+        end
+    end
+    Screen('Flip', window);
+
+    WaitSecs(max(0, ifi * 0.25));
 end
 end
 
@@ -169,7 +357,7 @@ else
 end
 
 txt = sprintf([ ...
-    'Photodiode Ergo1 Test\\n\\n' ...
+    'Photodiode Ergo1 Test (demo)\\n\\n' ...
     'SPACE: start/stop pulses\\n' ...
     'ESC: quit\\n\\n' ...
     'Pulse state: %s\\n' ...
@@ -177,7 +365,8 @@ txt = sprintf([ ...
     'ON pulses sent: %d\\n\\n' ...
     'ON duration: %.3f s   OFF duration: %.3f s\\n' ...
     'Serial trigger enabled: %d\\n' ...
-    'Codes: runStart=%d  on=%d  off=%d  runStop=%d\\n'], ...
+    'Codes: runStart=%d  on=%d  off=%d  runStop=%d\\n' ...
+    'Use mode=''calibration'' for flip-centred timing run.\\n'], ...
     runTxt, pdTxt, nOn, cfg.pulse.onSec, cfg.pulse.offSec, serialEnabled, ...
     cfg.eeg.codeRunStart, cfg.eeg.codeOn, cfg.eeg.codeOff, cfg.eeg.codeRunStop);
 
@@ -213,13 +402,13 @@ try
     cfgString = sprintf('BaudRate=%d DTR=1 RTS=1', eegCfg.baudRate);
     trigger.handle = IOPort('OpenSerialPort', eegCfg.serialPort, cfgString);
     trigger.enabled = true;
-    fprintf('Serial trigger enabled on %s @ %d baud.\\n', eegCfg.serialPort, eegCfg.baudRate);
+    fprintf('Serial trigger enabled on %s @ %d baud.\n', eegCfg.serialPort, eegCfg.baudRate);
 catch ME
     warning('Serial trigger disabled: %s', mExceptionText(ME));
 end
 end
 
-function sendTrigger(trigger, code)
+function sendTriggerFast(trigger, code)
 if ~trigger.enabled || isempty(trigger.handle)
     return;
 end
@@ -228,12 +417,42 @@ if isnan(code) || code < 0 || code > 255
 end
 try
     IOPort('Write', trigger.handle, uint8(code), 0);
-    if trigger.sendResetAfterCode
-        WaitSecs(trigger.pulseWidthSec);
+catch ME
+    if trigger.warnOnSendError
+        warning('Trigger send failed (%d): %s', code, mExceptionText(ME));
+    end
+end
+end
+
+function triggerResetAfterFlip(trigger, eegCfg)
+if ~trigger.enabled || isempty(trigger.handle) || ~eegCfg.sendResetAfterCode
+    return;
+end
+try
+    WaitSecs(eegCfg.pulseWidthSec);
+    IOPort('Write', trigger.handle, uint8(0), 0);
+catch ME
+    if eegCfg.warnOnSendError
+        warning('Trigger reset failed: %s', mExceptionText(ME));
+    end
+end
+end
+
+function sendTriggerFull(trigger, code, eegCfg)
+if ~trigger.enabled || isempty(trigger.handle)
+    return;
+end
+if isnan(code) || code < 0 || code > 255
+    return;
+end
+try
+    IOPort('Write', trigger.handle, uint8(code), 0);
+    if eegCfg.sendResetAfterCode
+        WaitSecs(eegCfg.pulseWidthSec);
         IOPort('Write', trigger.handle, uint8(0), 0);
     end
 catch ME
-    if trigger.warnOnSendError
+    if eegCfg.warnOnSendError
         warning('Trigger send failed (%d): %s', code, mExceptionText(ME));
     end
 end
