@@ -7,7 +7,8 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %   'calibration' — Automated, flip-centred pulse train for real latency measurement.
 %     No status text; strict PTB sync by default; serial code sent immediately before
 %     each ON/OFF flip; optional line reset after flip (not before) to avoid blocking
-%     the display. Primary offline metric: code 201 (onset) vs photodiode rise.
+%     the display. Markers are sent only after WaitSecs yields to just before the
+%     scheduled flip (not a full onSec/offSec early). Primary offline metric: code 201.
 %
 % Common name-value pairs:
 %   'mode'           'demo' | 'calibration'
@@ -199,6 +200,7 @@ for p = 1:cfg.cal.nOnPulses
     [resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
     R = appendResetRow(R, rvn, rLog);
     fillBackAndPatch(window, cfg, pdRect, true);
+    preFlipYield(nextWhenOn, ifi);
     sendTriggerFast(trigger, cfg.eeg.codeOn);
     tSend = GetSecs;
     resetState = armReset(resetState, tSend, 'onset', cfg.eeg.codeOn, p);
@@ -211,6 +213,7 @@ for p = 1:cfg.cal.nOnPulses
     [resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
     R = appendResetRow(R, rvn, rLog);
     fillBackAndPatch(window, cfg, pdRect, false);
+    preFlipYield(whenOff, ifi);
     sendTriggerFast(trigger, cfg.eeg.codeOff);
     tSend = GetSecs;
     resetState = armReset(resetState, tSend, 'offset', cfg.eeg.codeOff, p);
@@ -262,6 +265,17 @@ end
 
 function [vbl, stimOnset, ft, missed] = screenFlipLog(window, when)
 [vbl, stimOnset, ft, missed] = Screen('Flip', window, when, 0);
+end
+
+function preFlipYield(targetWhen, ifi)
+% Sleep until shortly before targetWhen so serial + Flip run immediately pre-VBL
+% (avoids sending markers a full on/off interval before the scheduled flip).
+lead = max(0.0005, 0.25 * ifi);
+tWake = targetWhen - lead;
+nowT = GetSecs;
+if nowT < tWake
+    WaitSecs('UntilTime', tWake);
+end
 end
 
 function abort = checkAbort(keys)
