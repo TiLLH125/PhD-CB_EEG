@@ -17,6 +17,8 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %   'debugWindow'    logical, small window (demo only; calibration always fullscreen)
 %   'skipSyncTests'  0 = run sync tests (default in calibration); 1 = skip (demo default)
 %   'visualDebugLevel'  PTB visual debug (default 1 demo, 3 calibration)
+%   'sendTriggers'   [] = use cfg.eeg.enable default; true/false overrides at runtime
+%   'conditionLabel' optional text label saved in metadata and log filename suffix
 %   'logDir'         directory for timing logs (default pwd)
 %   'saveCsv'        also write events table as CSV (default false)
 %   'nOnPulses'      calibration: number of white onsets (default 150)
@@ -32,6 +34,7 @@ function CB_Photodiode_Ergo1_Test(varargin)
 % Examples:
 %   CB_Photodiode_Ergo1_Test();
 %   CB_Photodiode_Ergo1_Test('mode', 'calibration', 'nOnPulses', 200, 'logDir', 'C:\data');
+%   CB_Photodiode_Ergo1_Test('mode', 'calibration', 'sendTriggers', false, 'conditionLabel', 'display_only');
 
 close all;
 try ListenChar(0); catch, end
@@ -50,6 +53,8 @@ p.addParameter('screenNumber', cfg.screenNumber, @(x) isnumeric(x) && isscalar(x
 p.addParameter('debugWindow', cfg.debugWindow, @(x) islogical(x) || isnumeric(x));
 p.addParameter('skipSyncTests', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x)));
 p.addParameter('visualDebugLevel', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x)));
+p.addParameter('sendTriggers', [], @(x) isempty(x) || islogical(x) || (isnumeric(x) && isscalar(x)));
+p.addParameter('conditionLabel', '', @(s) ischar(s) || isstring(s));
 p.addParameter('logDir', cfg.logDir, @(s) ischar(s) || isstring(s));
 p.addParameter('saveCsv', cfg.saveCsv, @(x) islogical(x) || isnumeric(x));
 p.addParameter('nOnPulses', cfg.cal.nOnPulses, @(x) isnumeric(x) && isscalar(x) && x >= 1);
@@ -63,11 +68,15 @@ error('%s: mode must be ''demo'' or ''calibration''.', mfilename);
 end
 cfg.screenNumber = p.Results.screenNumber;
 cfg.debugWindow = logical(p.Results.debugWindow);
+cfg.conditionLabel = strtrim(char(string(p.Results.conditionLabel)));
 cfg.logDir = char(p.Results.logDir);
 cfg.saveCsv = logical(p.Results.saveCsv);
 cfg.cal.nOnPulses = round(p.Results.nOnPulses);
 cfg.cal.leadInSec = double(p.Results.leadInSec);
 cfg.cal.leadOutSec = double(p.Results.leadOutSec);
+if ~isempty(p.Results.sendTriggers)
+cfg.eeg.enable = logical(p.Results.sendTriggers);
+end
 
 if isempty(p.Results.skipSyncTests)
 if strcmp(cfg.mode, 'calibration')
@@ -133,6 +142,7 @@ cfg.debugWindow = false;
 cfg.skipSyncTests = 1;
 cfg.visualDebugLevel = 1;
 cfg.bg = 0.5;
+cfg.conditionLabel = '';
 cfg.logDir = pwd;
 cfg.saveCsv = false;
 
@@ -258,6 +268,9 @@ meta.leadOutFrames = leadOutFrames;
 meta.skipSyncTests = cfg.skipSyncTests;
 meta.screenNumber = cfg.screenNumber;
 meta.mode = cfg.mode;
+meta.eegEnable = logical(cfg.eeg.enable);
+meta.serialPort = cfg.eeg.serialPort;
+meta.conditionLabel = cfg.conditionLabel;
 meta.resetPolicy = 'due-time reset; opportunistic after flip, enforced before next code';
 
 saveTimingLog(T, R, meta, cfg);
@@ -302,7 +315,12 @@ if ~exist(cfg.logDir, 'dir')
 mkdir(cfg.logDir);
 end
 ts = datestr(now, 'yyyymmdd_HHMMSS');
-base = fullfile(cfg.logDir, sprintf('CB_Photodiode_Ergo1_Test_log_%s', ts));
+labelSuffix = sanitizeLabel(cfg.conditionLabel);
+if isempty(labelSuffix)
+    base = fullfile(cfg.logDir, sprintf('CB_Photodiode_Ergo1_Test_log_%s', ts));
+else
+    base = fullfile(cfg.logDir, sprintf('CB_Photodiode_Ergo1_Test_log_%s_%s', ts, labelSuffix));
+end
 save([base '.mat'], 'T', 'R', 'meta', 'cfg', '-v7.3');
 fprintf('Timing log saved: %s.mat\n', base);
 if cfg.saveCsv
@@ -607,4 +625,14 @@ txt = 'unknown error';
 if isa(ME, 'MException') && ~isempty(ME.message)
 txt = ME.message;
 end
+end
+
+function out = sanitizeLabel(in)
+out = strtrim(char(string(in)));
+if isempty(out)
+    return;
+end
+out = lower(out);
+out = regexprep(out, '[^a-z0-9]+', '_');
+out = regexprep(out, '^_+|_+$', '');
 end
