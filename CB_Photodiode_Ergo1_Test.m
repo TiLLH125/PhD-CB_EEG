@@ -3,19 +3,23 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %
 % Two modes (name-value 'mode'):
 %   'demo' (default) — Keyboard-driven sanity check: SPACE start/stop, ESC quit.
-%     Status text, optional sync-test skipping, legacy loop timing (GetSecs gate).
+%     Status text; legacy loop timing (GetSecs gate).
 %   'calibration' — Automated, flip-centred pulse train for real latency measurement.
-%     No status text; strict PTB sync by default; serial code sent immediately before
+%     No status text; serial code sent immediately before
 %     each ON/OFF flip; optional line reset after flip (not before) to avoid blocking
 %     the display. Markers are sent only after WaitSecs yields to just before the
 %     scheduled flip (not a full onSec/offSec early). Primary offline metric: code 201.
 %
+% Display: edit SCREEN_NUMBER / DEBUG_WINDOW near the top of the function body
+% (after "close all"). Run Screen('Screens') once to list indices on your machine.
+% Name-value 'screenNumber' / 'debugWindow' still override those edits.
+%
 % Common name-value pairs:
 %   'mode'           'demo' | 'calibration'
-%   'screenNumber'   display index (default 2)
+%   'screenNumber'   display index (overrides SCREEN_NUMBER if passed)
 %   'debugWindow'    logical, small window (demo only; calibration always fullscreen)
-%   'skipSyncTests'  0 = run sync tests (default in calibration); 1 = skip (demo default)
-%   'visualDebugLevel'  PTB visual debug (default 1 demo, 3 calibration)
+%   'skipSyncTests'  0 = run sync tests (default both modes); 1 = skip (override)
+%   'visualDebugLevel'  PTB visual debug level (default 3 both modes; lower to reduce text)
 %   'logDir'         directory for timing logs (default pwd)
 %   'saveCsv'        also write events table as CSV (default false)
 %   'nOnPulses'      calibration: number of white onsets (default 150)
@@ -41,7 +45,14 @@ elseif exist('Screen', 'file') == 2
     Screen('CloseAll');
 end
 
+% --- Display: change these two lines (0 = primary, 1,2,... = other screens) ---
+SCREEN_NUMBER = 2;
+DEBUG_WINDOW = false;
+% -------------------------------------------------------------------------------
+
 cfg = defaultCfg();
+cfg.screenNumber = SCREEN_NUMBER;
+cfg.debugWindow = logical(DEBUG_WINDOW);
 p = inputParser;
 p.FunctionName = mfilename;
 p.addParameter('mode', cfg.mode, @(s) ischar(s) || isstring(s));
@@ -69,20 +80,12 @@ cfg.cal.leadInSec = double(p.Results.leadInSec);
 cfg.cal.leadOutSec = double(p.Results.leadOutSec);
 
 if isempty(p.Results.skipSyncTests)
-    if strcmp(cfg.mode, 'calibration')
-        cfg.skipSyncTests = 0;
-    else
-        cfg.skipSyncTests = 1;
-    end
+    cfg.skipSyncTests = 0;
 else
     cfg.skipSyncTests = double(p.Results.skipSyncTests);
 end
 if isempty(p.Results.visualDebugLevel)
-    if strcmp(cfg.mode, 'calibration')
-        cfg.visualDebugLevel = 3;
-    else
-        cfg.visualDebugLevel = 1;
-    end
+    cfg.visualDebugLevel = 3;
 else
     cfg.visualDebugLevel = double(p.Results.visualDebugLevel);
 end
@@ -129,8 +132,8 @@ cfg = struct();
 cfg.mode = 'demo';
 cfg.screenNumber = 2;
 cfg.debugWindow = false;
-cfg.skipSyncTests = 1;
-cfg.visualDebugLevel = 1;
+cfg.skipSyncTests = 0;
+cfg.visualDebugLevel = 3;
 cfg.bg = 0.5;
 cfg.logDir = pwd;
 cfg.saveCsv = false;
