@@ -1,0 +1,55 @@
+WARNING: This session of your experiment was run by you with the setting Screen('Preference', 'SkipSyncTests', 1).
+WARNING: This means that some internal self-tests and calibrations were skipped. Your stimulus presentation timing
+WARNING: may have been wrong. This is fine for development and debugging of your experiment, but for running the real
+WARNING: study, please make sure to set Screen('Preference', 'SkipSyncTests', 0) for maximum accuracy and reliability.
+>> CB_Photodiode_Ergo1_Test('mode', 'calibration', 'nOnPulses', 200, 'logDir', 'C:\data');
+IOPort-Info: Configuration for device COM4:
+IOPort-Info: Current baud rate is 57600
+IOPort-Info: Baud rate changed to 115200
+Serial trigger enabled on COM4 @ 115200 baud.
+
+
+PTB-INFO: This is Psychtoolbox-3 for Microsoft Windows, under Matlab 64-Bit Intel (Version 3.0.22 - Build date: May 24 2025).
+PTB-INFO: OS support status: Windows 11 (Version 11.0) is not supported.
+PTB-INFO: For information about paid support and other commercial services, please type 'PsychPaidSupportAndServices'.
+PTB-INFO: Most parts of the Psychtoolbox distribution are licensed to you under terms of the MIT license, with some
+PTB-INFO: restrictions. See file 'License.txt' in the Psychtoolbox root folder for the exact licensing conditions.
+PTB-INFO: Psychtoolbox and its prebuilt mex files are distributed in the hope that they will be useful, but WITHOUT
+PTB-INFO: ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+PTB-WARNING: Your version of Matlab is not per monitor DPI aware, but you try to use a secondary (non-primary) display screen 2
+PTB-WARNING: of unknown pixel density. This will make visual timing trouble if that display does not have the same (96, 96) DPI
+as the primary screen. Read 'help RetinaDisplay' for more info.
+PTB-INFO: The detected endline of the vertical blank interval is equal or lower than the startline. This indicates
+PTB-INFO: that i couldn't detect the duration of the vertical blank interval and won't be able to correct timestamps
+PTB-INFO: for it. This will introduce a very small and constant offset (typically << 1 msec). Read 'help BeampositionQueries'
+PTB-INFO: for how to correct this, should you really require that last few microseconds of precision.
+PTB-INFO: Btw. this can also mean that your systems beamposition queries are slightly broken. It may help timing precision to
+PTB-INFO: enable the beamposition workaround, as explained in 'help ConserveVRAMSettings', section 'kPsychUseBeampositionQueryWorkaround'.
+
+
+PTB-INFO: OpenGL-Renderer is ATI Technologies Inc. :: AMD Radeon RX 6500M :: 4.6.0 Compatibility Profile Context 24.6.1.240619
+PTB-INFO: Screen 2 : Window 10 : VBL startline = 1080 : VBL Endline = 1079
+PTB-INFO: Measured monitor refresh interval from beamposition = 8.333310 ms [120.000333 Hz].
+PTB-INFO: Beamposition queries are supported, but disabled. Using basic timestamping as fallback:
+PTB-INFO: Timestamps returned by Screen('Flip') will be therefore less robust and accurate.
+PTB-INFO: Measured monitor refresh interval from VBLsync = 8.333306 ms [120.000394 Hz]. (50 valid samples taken, stddev=0.010268 ms.)
+PTB-INFO: Reported monitor refresh interval from operating system = 8.333333 ms [120.000000 Hz].
+PTB-INFO: ==============================================================================================================================
+PTB-INFO: WINDOWS DWM DESKTOP COMPOSITOR IS ACTIVE. On this Windows-10 or later system, Psychtoolbox can no longer reliably detect if
+PTB-INFO: this will cause trouble for timing and integrity of visual stimuli or not. You might be just fine, or you could be in trouble.
+PTB-INFO: Use external measurement equipment and independent procedures to verify reliability of timing if you care about proper timing.
+PTB-INFO: ==============================================================================================================================
+Timing log saved: C:\data\CB_Photodiode_Ergo1_Test_log_20260420_140747.mat
+Reset QC: n=402 (beforeNextCode=273, opportunistic=129), waited=203 (max=4.918 ms), late>1ms=49 (maxLate=503.994 ms), forcedEarly=0
+
+
+INFO: PTB's Screen('Flip', 10) command seems to have missed the requested stimulus presentation deadline
+INFO: a total of 201 times out of a total of 408 flips during this session.
+
+INFO: This number is fairly accurate (and indicative of real timing problems in your own code or your system)
+INFO: if you provided requested stimulus onset times with the 'when' argument of Screen('Flip', window [, when]);
+INFO: If you called Screen('Flip', window); without the 'when' argument, this count is more of a ''mild'' indicator
+INFO: of timing behaviour than a hard reliable measurement. Large numbers may indicate problems and should at least
+INFO: deserve your closer attention. Cfe. 'help SyncTrouble', the FAQ section at www.psychtoolbox.org and the
+INFO: examples in the PDF presentation in PsychDocumentation/Psychtoolbox3-Slides.pdf for more info and timing tips.
