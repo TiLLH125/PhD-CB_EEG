@@ -35,6 +35,7 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %   CB_Photodiode_Ergo1_Test();
 %   CB_Photodiode_Ergo1_Test('mode', 'calibration', 'nOnPulses', 200, 'logDir', 'C:\data');
 %   CB_Photodiode_Ergo1_Test('mode', 'calibration', 'sendTriggers', false, 'conditionLabel', 'display_only');
+%   CB_Photodiode_Ergo1_Test('mode', 'calibration', 'screenNumber', 2, 'sendTriggers', false, 'conditionLabel', 'display_only', 'nOnPulses', 150, 'leadInSec', 0.5, 'leadOutSec', 0.5, 'logDir', pwd );
 
 close all;
 try ListenChar(0); catch, end
@@ -60,6 +61,7 @@ p.addParameter('saveCsv', cfg.saveCsv, @(x) islogical(x) || isnumeric(x));
 p.addParameter('nOnPulses', cfg.cal.nOnPulses, @(x) isnumeric(x) && isscalar(x) && x >= 1);
 p.addParameter('leadInSec', cfg.cal.leadInSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 p.addParameter('leadOutSec', cfg.cal.leadOutSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+p.addParameter('preFlipWakeLeadSec', cfg.cal.preFlipWakeLeadSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 p.parse(varargin{:});
 
 cfg.mode = char(lower(strtrim(string(p.Results.mode))));
@@ -74,6 +76,7 @@ cfg.saveCsv = logical(p.Results.saveCsv);
 cfg.cal.nOnPulses = round(p.Results.nOnPulses);
 cfg.cal.leadInSec = double(p.Results.leadInSec);
 cfg.cal.leadOutSec = double(p.Results.leadOutSec);
+cfg.cal.preFlipWakeLeadSec = double(p.Results.preFlipWakeLeadSec);
 if ~isempty(p.Results.sendTriggers)
 cfg.eeg.enable = logical(p.Results.sendTriggers);
 end
@@ -151,7 +154,8 @@ cfg.pd = struct('enable', true, 'sizePx', 100, 'corner', 'top-left', ...
 
 cfg.pulse = struct('onSec', 0.10, 'offSec', 1.40);
 
-cfg.cal = struct('nOnPulses', 150, 'leadInSec', 0.5, 'leadOutSec', 0.5);
+cfg.cal = struct('nOnPulses', 150, 'leadInSec', 0.5, 'leadOutSec', 0.5, ...
+'preFlipWakeLeadSec', 0.002);
 
 cfg.eeg = struct('enable', true, 'serialPort', 'COM4', 'baudRate', 115200, ...
 'pulseWidthSec', 0.005, 'sendResetAfterCode', true, 'warnOnSendError', true, ...
@@ -161,6 +165,8 @@ end
 function runCalibration(window, windowRect, cfg, trigger, keys)
 ifi = Screen('GetFlipInterval', window);
 pdRect = makePdRect(windowRect, cfg.pd.sizePx, cfg.pd.corner);
+oldPriority = Priority(MaxPriority(window));
+priorityCleanup = onCleanup(@() Priority(oldPriority)); %#ok<NASGU>
 
 nOnFrames = max(1, round(cfg.pulse.onSec / ifi));
 nOffFrames = max(1, round(cfg.pulse.offSec / ifi));
@@ -168,28 +174,24 @@ leadInFrames = round(cfg.cal.leadInSec / ifi);
 leadOutFrames = round(cfg.cal.leadOutSec / ifi);
 
 T = table();
-vn = {'event', 'code', 'pulseIndex', 'vbl', 'stimOnset', 'flipTimestamp', 'missed', 'sendTimeGetSecs', 'whenRequested'};
+vn = {'event', 'code', 'pulseIndex', 'vbl', 'stimOnset', 'flipTimestamp', 'missed', ...
+'sendTimeGetSecs', 'resetTimeGetSecs', 'pulseWidthAchievedSec', 'whenRequested'};
 R = table();
-rvn = {'event', 'code', 'pulseIndex', 'dueTimeGetSecs', 'execTimeGetSecs', 'serviceMode', 'waitedSec', 'forcedEarly', 'lateSec'};
-resetState = initResetState(cfg.eeg);
 
-sendTriggerFast(trigger, cfg.eeg.codeRunStart);
-tSend = GetSecs;
-resetState = armReset(resetState, tSend, 'runStart', cfg.eeg.codeRunStart, NaN);
-T = appendTimingRow(T, vn, {'runStart'}, cfg.eeg.codeRunStart, NaN, NaN, NaN, NaN, NaN, tSend, NaN);
+tSend = calibrationWriteByteBlocking(trigger, cfg.eeg.codeRunStart);
+[tReset, pulseAchieved] = calibrationResetLineAfterSend(trigger, tSend, cfg.eeg.pulseWidthSec, cfg.eeg.sendResetAfterCode);
+T = appendTimingRow(T, vn, {'runStart'}, cfg.eeg.codeRunStart, NaN, NaN, NaN, NaN, NaN, ...
+tSend, tReset, pulseAchieved, NaN);
 
 fillBackAndPatch(window, cfg, pdRect, false);
 vbl = Screen('Flip', window);
-[resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
-R = appendResetRow(R, rvn, rLog);
 
 if leadInFrames > 0
 whenNext = vbl + leadInFrames * ifi;
 fillBackAndPatch(window, cfg, pdRect, false);
 [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenNext);
-[resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
-R = appendResetRow(R, rvn, rLog);
-T = appendTimingRow(T, vn, {'leadInFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, NaN, whenNext);
+T = appendTimingRow(T, vn, {'leadInFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, ...
+NaN, NaN, NaN, whenNext);
 else
 stimOnset = NaN;
 ft = NaN;
@@ -203,35 +205,27 @@ aborted = false;
 for p = 1:cfg.cal.nOnPulses
 if checkAbort(keys)
 aborted = true;
-T = appendTimingRow(T, vn, {'abort'}, NaN, NaN, NaN, NaN, NaN, NaN, GetSecs, NaN);
+T = appendTimingRow(T, vn, {'abort'}, NaN, NaN, NaN, NaN, NaN, NaN, ...
+NaN, NaN, NaN, NaN);
 break;
 end
 
-% Ensure previous code reset reaches due time before next marker.
-[resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
-R = appendResetRow(R, rvn, rLog);
 fillBackAndPatch(window, cfg, pdRect, true);
-    preFlipYield(nextWhenOn, ifi);
-sendTriggerFast(trigger, cfg.eeg.codeOn);
-tSend = GetSecs;
-resetState = armReset(resetState, tSend, 'onset', cfg.eeg.codeOn, p);
+preFlipYield(nextWhenOn, ifi, cfg.cal.preFlipWakeLeadSec);
+tSend = calibrationWriteByteBlocking(trigger, cfg.eeg.codeOn);
 [vbl, stimOnset, ft, missed] = screenFlipLog(window, nextWhenOn);
-[resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
-R = appendResetRow(R, rvn, rLog);
-T = appendTimingRow(T, vn, {'onset'}, cfg.eeg.codeOn, p, vbl, stimOnset, ft, missed, tSend, nextWhenOn);
+[tReset, pulseAchieved] = calibrationResetLineAfterSend(trigger, tSend, cfg.eeg.pulseWidthSec, cfg.eeg.sendResetAfterCode);
+T = appendTimingRow(T, vn, {'onset'}, cfg.eeg.codeOn, p, vbl, stimOnset, ft, missed, ...
+tSend, tReset, pulseAchieved, nextWhenOn);
 
 whenOff = vbl + nOnFrames * ifi;
-[resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
-R = appendResetRow(R, rvn, rLog);
 fillBackAndPatch(window, cfg, pdRect, false);
-    preFlipYield(whenOff, ifi);
-sendTriggerFast(trigger, cfg.eeg.codeOff);
-tSend = GetSecs;
-resetState = armReset(resetState, tSend, 'offset', cfg.eeg.codeOff, p);
+preFlipYield(whenOff, ifi, cfg.cal.preFlipWakeLeadSec);
+tSend = calibrationWriteByteBlocking(trigger, cfg.eeg.codeOff);
 [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenOff);
-[resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
-R = appendResetRow(R, rvn, rLog);
-T = appendTimingRow(T, vn, {'offset'}, cfg.eeg.codeOff, p, vbl, stimOnset, ft, missed, tSend, whenOff);
+[tReset, pulseAchieved] = calibrationResetLineAfterSend(trigger, tSend, cfg.eeg.pulseWidthSec, cfg.eeg.sendResetAfterCode);
+T = appendTimingRow(T, vn, {'offset'}, cfg.eeg.codeOff, p, vbl, stimOnset, ft, missed, ...
+tSend, tReset, pulseAchieved, whenOff);
 
 nextWhenOn = vbl + nOffFrames * ifi;
 end
@@ -240,19 +234,14 @@ if ~aborted && leadOutFrames > 0
 whenLeadOut = vbl + leadOutFrames * ifi;
 fillBackAndPatch(window, cfg, pdRect, false);
 [vbl, stimOnset, ft, missed] = screenFlipLog(window, whenLeadOut);
-[resetState, rLog] = serviceReset(trigger, resetState, 'opportunistic');
-R = appendResetRow(R, rvn, rLog);
-T = appendTimingRow(T, vn, {'leadOutFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, NaN, whenLeadOut);
+T = appendTimingRow(T, vn, {'leadOutFlip'}, NaN, NaN, vbl, stimOnset, ft, missed, ...
+NaN, NaN, NaN, whenLeadOut);
 end
 
-[resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
-R = appendResetRow(R, rvn, rLog);
-sendTriggerFast(trigger, cfg.eeg.codeRunStop);
-tStop = GetSecs;
-resetState = armReset(resetState, tStop, 'runStop', cfg.eeg.codeRunStop, NaN);
-[resetState, rLog] = serviceReset(trigger, resetState, 'beforeNextCode');
-R = appendResetRow(R, rvn, rLog);
-T = appendTimingRow(T, vn, {'runStop'}, cfg.eeg.codeRunStop, NaN, NaN, NaN, NaN, NaN, tStop, NaN);
+tStop = calibrationWriteByteBlocking(trigger, cfg.eeg.codeRunStop);
+[tReset, pulseAchieved] = calibrationResetLineAfterSend(trigger, tStop, cfg.eeg.pulseWidthSec, cfg.eeg.sendResetAfterCode);
+T = appendTimingRow(T, vn, {'runStop'}, cfg.eeg.codeRunStop, NaN, NaN, NaN, NaN, NaN, ...
+tStop, tReset, pulseAchieved, NaN);
 
 meta = struct();
 try
@@ -271,24 +260,29 @@ meta.mode = cfg.mode;
 meta.eegEnable = logical(cfg.eeg.enable);
 meta.serialPort = cfg.eeg.serialPort;
 meta.conditionLabel = cfg.conditionLabel;
-meta.resetPolicy = 'due-time reset; opportunistic after flip, enforced before next code';
+meta.preFlipWakeLeadSec = cfg.cal.preFlipWakeLeadSec;
+meta.resetPolicy = 'deterministic absolute-deadline reset: send-before-flip and reset-to-zero at tSend+pulseWidthSec after flip';
 
 saveTimingLog(T, R, meta, cfg);
-printResetQcSummary(R);
+printPulseQcSummary(T, cfg);
 end
 
 function [vbl, stimOnset, ft, missed] = screenFlipLog(window, when)
 [vbl, stimOnset, ft, missed] = Screen('Flip', window, when, 0);
 end
 
-function preFlipYield(targetWhen, ifi)
+function preFlipYield(targetWhen, ifi, wakeLeadSec)
 % Sleep until shortly before targetWhen so serial + Flip run immediately pre-VBL
 % (avoids sending markers a full on/off interval before the scheduled flip).
+if nargin < 3 || isempty(wakeLeadSec)
 lead = max(0.0005, 0.25 * ifi);
+else
+lead = max(0, double(wakeLeadSec));
+end
 tWake = targetWhen - lead;
 nowT = GetSecs;
 if nowT < tWake
-    WaitSecs('UntilTime', tWake);
+WaitSecs('UntilTime', tWake);
 end
 end
 
@@ -297,8 +291,8 @@ function abort = checkAbort(keys)
 abort = logical(keyCode(keys.escape));
 end
 
-function T = appendTimingRow(T, vn, event, code, pulseIndex, vbl, stimOnset, flipTimestamp, missed, sendTimeGetSecs, whenRequested)
-row = table(event, code, pulseIndex, vbl, stimOnset, flipTimestamp, missed, sendTimeGetSecs, whenRequested, 'VariableNames', vn);
+function T = appendTimingRow(T, vn, event, code, pulseIndex, vbl, stimOnset, flipTimestamp, missed, sendTimeGetSecs, resetTimeGetSecs, pulseWidthAchievedSec, whenRequested)
+row = table(event, code, pulseIndex, vbl, stimOnset, flipTimestamp, missed, sendTimeGetSecs, resetTimeGetSecs, pulseWidthAchievedSec, whenRequested, 'VariableNames', vn);
 if isempty(T)
 T = row;
 else
@@ -487,64 +481,45 @@ end
 end
 end
 
-function state = initResetState(eegCfg)
-state = struct();
-state.enabled = logical(eegCfg.sendResetAfterCode);
-state.pulseWidthSec = double(eegCfg.pulseWidthSec);
-state.pending = false;
-state.dueTime = NaN;
-state.event = '';
-state.code = NaN;
-state.pulseIndex = NaN;
-end
-
-function state = armReset(state, sendTime, eventName, code, pulseIndex)
-if ~state.enabled
+function tWhen = calibrationWriteByteBlocking(trigger, code)
+tWhen = NaN;
+if ~trigger.enabled || isempty(trigger.handle)
 return;
 end
-state.pending = true;
-state.dueTime = sendTime + state.pulseWidthSec;
-state.event = char(eventName);
-state.code = code;
-state.pulseIndex = pulseIndex;
-end
-
-function [state, rLog] = serviceReset(trigger, state, mode)
-rLog = table();
-if nargin < 3 || isempty(mode)
-mode = 'opportunistic';
-end
-if ~state.enabled || ~state.pending || ~trigger.enabled || isempty(trigger.handle)
+if isnan(code) || code < 0 || code > 255
 return;
-end
-nowT = GetSecs;
-waitedSec = 0;
-forcedEarly = false;
-if strcmp(mode, 'opportunistic')
-if nowT < state.dueTime
-return;
-end
-elseif strcmp(mode, 'beforeNextCode')
-if nowT < state.dueTime
-WaitSecs('UntilTime', state.dueTime);
-waitedSec = state.dueTime - nowT;
-nowT = GetSecs;
-end
-else
-error('Unknown reset service mode: %s', mode);
 end
 try
-IOPort('Write', trigger.handle, uint8(0), 0);
-execT = GetSecs;
-lateSec = max(0, execT - state.dueTime);
-rLog = table({state.event}, state.code, state.pulseIndex, state.dueTime, execT, {mode}, ...
-waitedSec, forcedEarly, lateSec, ...
-'VariableNames', {'event', 'code', 'pulseIndex', 'dueTimeGetSecs', 'execTimeGetSecs', 'serviceMode', 'waitedSec', 'forcedEarly', 'lateSec'});
-state.pending = false;
-state.dueTime = NaN;
-state.event = '';
-state.code = NaN;
-state.pulseIndex = NaN;
+[~, tWhen] = IOPort('Write', trigger.handle, uint8(code), 1);
+if isempty(tWhen) || ~isfinite(tWhen)
+tWhen = GetSecs;
+end
+catch ME
+if trigger.warnOnSendError
+warning('Trigger send failed (%d): %s', code, mExceptionText(ME));
+end
+end
+end
+
+function [tResetWhen, achievedSec] = calibrationResetLineAfterSend(trigger, tSendWhen, pulseWidthSec, doReset)
+tResetWhen = NaN;
+achievedSec = NaN;
+if nargin < 4 || ~logical(doReset)
+return;
+end
+if ~trigger.enabled || isempty(trigger.handle) || ~isfinite(tSendWhen)
+return;
+end
+deadline = tSendWhen + pulseWidthSec;
+if GetSecs < deadline
+WaitSecs('UntilTime', deadline);
+end
+try
+[~, tResetWhen] = IOPort('Write', trigger.handle, uint8(0), 1);
+if isempty(tResetWhen) || ~isfinite(tResetWhen)
+tResetWhen = GetSecs;
+end
+achievedSec = tResetWhen - tSendWhen;
 catch ME
 if trigger.warnOnSendError
 warning('Trigger reset failed: %s', mExceptionText(ME));
@@ -552,33 +527,22 @@ end
 end
 end
 
-function R = appendResetRow(R, rvn, rLog)
-if isempty(rLog)
+function printPulseQcSummary(T, cfg)
+if isempty(T) || ~ismember('pulseWidthAchievedSec', T.Properties.VariableNames)
+fprintf('Pulse QC: no pulse-width rows logged.\n');
 return;
 end
-if isempty(R)
-R = rLog;
-else
-R = [R; rLog(:, rvn)]; %#ok<AGROW>
-end
-end
-
-function printResetQcSummary(R)
-if isempty(R)
-fprintf('Reset QC: no reset events logged.\n');
+vals = T.pulseWidthAchievedSec;
+vals = vals(isfinite(vals));
+if isempty(vals)
+fprintf('Pulse QC: no finite pulse-width measurements logged.\n');
 return;
 end
-nReset = height(R);
-nBefore = sum(strcmp(R.serviceMode, 'beforeNextCode'));
-nOpp = sum(strcmp(R.serviceMode, 'opportunistic'));
-nWaited = sum(R.waitedSec > 0);
-maxWaitMs = max(R.waitedSec) * 1000;
-maxLateMs = max(R.lateSec) * 1000;
-nLateOver1ms = sum(R.lateSec > 0.001);
-nForcedEarly = sum(R.forcedEarly ~= 0);
-fprintf(['Reset QC: n=%d (beforeNextCode=%d, opportunistic=%d), ' ...
-'waited=%d (max=%.3f ms), late>1ms=%d (maxLate=%.3f ms), forcedEarly=%d\n'], ...
-nReset, nBefore, nOpp, nWaited, maxWaitMs, nLateOver1ms, maxLateMs, nForcedEarly);
+target = cfg.eeg.pulseWidthSec;
+errMs = (vals - target) * 1000;
+fprintf(['Pulse QC: n=%d, target=%.3f ms, mean=%.3f ms, min=%.3f ms, max=%.3f ms, ' ...
+'maxAbsErr=%.3f ms\n'], ...
+numel(vals), target * 1000, mean(vals) * 1000, min(vals) * 1000, max(vals) * 1000, max(abs(errMs)));
 end
 
 function sendTriggerFull(trigger, code, eegCfg)
