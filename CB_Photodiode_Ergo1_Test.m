@@ -21,6 +21,7 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %   'conditionLabel' optional text label saved in metadata and log filename suffix
 %   'logDir'         directory for timing logs (default pwd)
 %   'saveCsv'        also write events table as CSV (default false)
+%   'pdCorner'       photodiode patch corner: 'top-left'|'top-right'|'bottom-left'|'bottom-right'
 %   'nOnPulses'      calibration: number of white onsets (default 150)
 %   'leadInSec'      calibration: hold OFF after runStart before first ON (default 0.5)
 %   'leadOutSec'     calibration: hold OFF after last OFF before runStop (default 0.5)
@@ -47,6 +48,7 @@ Screen('CloseAll');
 end
 
 cfg = defaultCfg();
+validCorners = {'top-left', 'top-right', 'bottom-left', 'bottom-right'};
 p = inputParser;
 p.FunctionName = mfilename;
 p.addParameter('mode', cfg.mode, @(s) ischar(s) || isstring(s));
@@ -58,6 +60,8 @@ p.addParameter('sendTriggers', [], @(x) isempty(x) || islogical(x) || (isnumeric
 p.addParameter('conditionLabel', '', @(s) ischar(s) || isstring(s));
 p.addParameter('logDir', cfg.logDir, @(s) ischar(s) || isstring(s));
 p.addParameter('saveCsv', cfg.saveCsv, @(x) islogical(x) || isnumeric(x));
+p.addParameter('pdCorner', cfg.pd.corner, ...
+    @(s) (ischar(s) || isstring(s)) && ismember(char(lower(strtrim(string(s)))), validCorners));
 p.addParameter('nOnPulses', cfg.cal.nOnPulses, @(x) isnumeric(x) && isscalar(x) && x >= 1);
 p.addParameter('leadInSec', cfg.cal.leadInSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 p.addParameter('leadOutSec', cfg.cal.leadOutSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
@@ -73,6 +77,7 @@ cfg.debugWindow = logical(p.Results.debugWindow);
 cfg.conditionLabel = strtrim(char(string(p.Results.conditionLabel)));
 cfg.logDir = char(p.Results.logDir);
 cfg.saveCsv = logical(p.Results.saveCsv);
+cfg.pd.corner = char(lower(strtrim(string(p.Results.pdCorner))));
 cfg.cal.nOnPulses = round(p.Results.nOnPulses);
 cfg.cal.leadInSec = double(p.Results.leadInSec);
 cfg.cal.leadOutSec = double(p.Results.leadOutSec);
@@ -149,7 +154,7 @@ cfg.conditionLabel = '';
 cfg.logDir = pwd;
 cfg.saveCsv = false;
 
-cfg.pd = struct('enable', true, 'sizePx', 100, 'corner', 'top-left', ...
+cfg.pd = struct('enable', true, 'sizePx', 100, 'corner', 'bottom-left', ...
 'onColor', 1.0, 'offColor', 0.0);
 
 cfg.pulse = struct('onSec', 0.10, 'offSec', 1.40);
