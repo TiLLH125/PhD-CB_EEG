@@ -1,13 +1,15 @@
-%% One-Shot Change Blindness (4 gratings) + Dual Interleaved Palamedes (AMRF/QUEST-like) Calibration + PAS First in Q1
+%% One-Shot Change Blindness (4 gratings) + Multinomial QUEST+ Calibration + PAS First in Q1
 % - 2x2 grid of gratings
 % - One-shot: Fix -> S1 -> ISI -> S2 -> Gap -> Q1(PAS) -> Q2(Localise) -> ITI
-% - NEW QUESTION FLOW
-% - Q1: PAS clarity (1-4) asked every trial
-% - Detection defined as PAS > 1
-% - Q2: 4AFC Localise (1-4) asked every trial (even if PAS = 1)
-% - Two interleaved Palamedes running-fit staircases controlling stimulus duration (frames):
-%       A targets ~50% "detection" rate on change trials (PAS > 1)
-%       B targets ~70% "seeing" rate on change trials: (PAS > 1 | Q2 correct)
+% - Q1: PAS clarity (1-4) asked every trial. Detection defined as PAS > 1.
+% - Q2: 4AFC Localise (1-4) asked every trial (even if PAS = 1).
+% - Three interleaved QUEST+ tracks (mQUESTPlus) sharing one 5-parameter posterior
+%   over [alpha_det, beta_det, alpha_loc, beta_loc, lambda]; each track picks the
+%   stimulus duration whose predicted target probability under the posterior MAP is
+%   closest to its target:
+%       1 Blind       -> P(Blind)         ~= 0.725
+%       2 Sensing     -> P(detect)        ~= 0.50
+%       3 Seeing      -> P(loc | aware)   ~= 0.775
 
 
 
@@ -49,6 +51,9 @@ cfg.kbDev = -1;
 cfg.displayProfile = 'viewpixx';
 cfg.display = makeDisplayProfile(cfg.displayProfile);
 
+% Trial overview PNG: same folder as this script (do not use pwd — depends on MATLAB current folder).
+cfg.trialOverviewFilename = 'Gratings_TrialOverview.png';
+
 % ---- Practice flow ----
 cfg.practice.enable = true;
 
@@ -63,9 +68,9 @@ cfg.practice1.name      = 'Practice Block 1';
 cfg.practice1.feedback  = true;
 
 % Trial composition (20 total; tweak as needed)
-cfg.practice1.nSTD      = 10;   % standard change trials
-cfg.practice1.nNCH      = 5;    % no-change trials (liberal catch)
-cfg.practice1.nEASY     = 5;    % obvious change trials (conservative catch)
+cfg.practice1.nSTD      = 1;   % standard change trials
+cfg.practice1.nNCH      = 1;    % no-change trials (liberal catch)
+cfg.practice1.nEASY     = 1;    % obvious change trials (conservative catch)
 cfg.practice1.nTrials   = cfg.practice1.nSTD + cfg.practice1.nNCH + cfg.practice1.nEASY;
 
 % Durations (frames) by trial type
@@ -82,9 +87,9 @@ cfg.practice2.name      = 'Practice Block 2';
 cfg.practice2.feedback  = false;
 
 % Trial composition (placeholder for now)
-cfg.practice2.nSTD      = 12;
-cfg.practice2.nNCH      = 6;
-cfg.practice2.nEASY     = 6;
+cfg.practice2.nSTD      = 1;
+cfg.practice2.nNCH      = 1;
+cfg.practice2.nEASY     = 1;
 cfg.practice2.nTrials   = cfg.practice2.nSTD + cfg.practice2.nNCH + cfg.practice2.nEASY;
 
 % Base durations (used when tiered assignment is disabled)
@@ -93,7 +98,7 @@ cfg.practice2.durEASYFrames = 30;
 cfg.practice2.durNCHFrames  = 20;
 
 % Tiered duration spread for Block 2 (balanced: 8 short / 8 medium / 8 long)
-cfg.practice2.useTieredDurations = true;
+cfg.practice2.useTieredDurations = false;
 cfg.practice2.durShortFrames     = 10;
 cfg.practice2.durMediumFrames    = 20;
 cfg.practice2.durLongFrames      = 30;
@@ -108,12 +113,31 @@ cfg.practice1Criteria.maxFARateNCH   = 0.60;
 cfg.practice1Criteria.minEasyDetect  = 0.60;
 cfg.practice1Criteria.minEasySee     = 0.40;
 
-% ---- Staircase convergence / freeze rules ----
-cfg.calib.minUpdatesPerStair = 40;     % minimum change-trial updates per staircase
-cfg.calib.stabilityWindow    = 12;     % how many recent xCurrent values to check
-cfg.calib.stabilityTolFrames = 1.0;    % max range in that window (frames)
-cfg.calib.maxTrials          = 600;    % full run total trials
-cfg.calib.saveNRecentMedian  = 10;     % final estimate = median of last N xCurrents
+% ---- Multinomial QUEST+ calibration ----
+cfg.calib.maxTrials = 9;             % full run total trials
+
+cfg.calib.convergenceMinTrials = 40;   % minimum updates per track before freeze allowed
+cfg.calib.convergenceWindow    = 12;   % recent xCurrent values inspected for stability
+cfg.calib.convergenceTolFrames = 1;    % max range in that window for freeze
+
+cfg.calib.questPlus.alphaDetRange = linspace(2, 60, 20);   % detection threshold (frames)
+cfg.calib.questPlus.betaDetRange  = [1 2 3 4 5];           % detection slope
+cfg.calib.questPlus.alphaLocRange = linspace(2, 60, 20);   % localization threshold (frames)
+cfg.calib.questPlus.betaLocRange  = [1 2 3 4 5];           % localization slope
+cfg.calib.questPlus.lambdaRange   = [0 0.02 0.04 0.06];    % constrained lapse
+cfg.calib.questPlus.gammaLoc      = 0.25;                  % 4-AFC guess rate
+
+cfg.calib.tracks(1).name          = 'Blind';
+cfg.calib.tracks(1).targetOutcome = 'Blind';
+cfg.calib.tracks(1).targetProb    = 0.725;     % aim for ~72.5% Blind (~27.5% detection)
+
+cfg.calib.tracks(2).name          = 'Sensing';
+cfg.calib.tracks(2).targetOutcome = 'PdetThreshold';   % target the 50% detection threshold
+cfg.calib.tracks(2).targetProb    = 0.50;
+
+cfg.calib.tracks(3).name          = 'Seeing';
+cfg.calib.tracks(3).targetOutcome = 'PlocGivenAware';  % aim for 77.5% loc-given-aware
+cfg.calib.tracks(3).targetProb    = 0.775;
 
 % Trial counts
 cfg.debug.trialLog = true;
@@ -124,22 +148,16 @@ cfg.debug.logHeaderEachBlock = true;
 
 % Apply the dial
 cfg = applyTrialDial(cfg);
-cfg.trialsPerBlock = 50;
+cfg.trialsPerBlock = 3;
 cfg.nBlocks = ceil(cfg.nTotal / cfg.trialsPerBlock);
 cfg.trialDial.applyPerBlock = true;
 cfg.trialDial.nChangePerBlock = round(cfg.trialsPerBlock * cfg.trialDial.pChange);
 assert(mod(cfg.nTotal, cfg.trialsPerBlock) == 0, 'nTotal must be divisible by trialsPerBlock');
+assert(mod(cfg.nChange,3) == 0, 'nChange must be divisible by 3 for Blind/Sensing/Seeing split');
+assert(mod(cfg.nCatch,3) == 0, 'nCatch must be divisible by 3 for Blind/Sensing/Seeing split');
 
-% Staircase split (tether catch trials to either A or B)
-cfg.nChangeA = cfg.nChange/2;  % 150
-cfg.nChangeB = cfg.nChange/2;  % 150
-cfg.nCatchA  = cfg.nCatch/2;   % 175
-cfg.nCatchB  = cfg.nCatch/2;   % 175
-assert(mod(cfg.nChangeA,1)==0 && mod(cfg.nCatchA,1)==0, 'Need even split for A/B');
-
-% Targets
-cfg.targetDetectHit = 0.50;   % staircase A: hit rate on change trials
-cfg.targetSeeing    = 0.70;   % staircase B: (detect YES & localise correct) on change trials
+cfg.nChangePerTrack = cfg.nChange/3;   % 150 each at default 600 total, pChange=0.75
+cfg.nCatchPerTrack  = cfg.nCatch/3;    % 50 each
 
 % Timing (seconds)
 cfg.fixJitterRangeSec = [1.00 1.50];  % fixation before S1
@@ -154,8 +172,8 @@ cfg.maxDurFrames   = 100;
 cfg.startDurFrames = 30;
 
 % Grating/mask appearance (visual-angle locked; converted to px at runtime)
-cfg.stim.squareSizeDeg  = 6.9;
-cfg.stim.spacingDeg     = 3.4;
+cfg.stim.squareSizeDeg  = 4.0;
+cfg.stim.spacingDeg     = 2.2;   % per-axis offset; gives 2.2 deg radial eccentricity
 cfg.stim.cyclesPerStim  = 10;
 cfg.stim.contrast       = 0.8;
 cfg.stim.backgroundGrey = 0.5;
@@ -167,7 +185,7 @@ cfg.fix.sizeDeg      = 0.37;
 cfg.fix.lineWidthDeg = 0.08;
 
 % ---- EEG serial trigger settings ----
-cfg.eeg.enable            = true;
+cfg.eeg.enable            = false;
 cfg.eeg.serialPort        = 'COM4';
 cfg.eeg.baudRate          = 115200;
 cfg.eeg.pulseWidthSec     = 0.005;
@@ -184,6 +202,7 @@ cfg.eeg.codes.pasBase    = 40; % sent as pasBase + PAS digit (1..4)
 cfg.eeg.codes.q2On       = 32;
 cfg.eeg.codes.locBase    = 50; % sent as locBase + localisation digit (1..4)
 cfg.eeg.codes.trialEnd   = 12;
+% Aux markers 95–97: Practice Block 1 ready screen (include in decoding sheet if used).
 cfg.eeg.codes.aux = struct( ...
     'instrGrey', 80, ...
     'instrActive', 81, ...
@@ -199,7 +218,17 @@ cfg.eeg.codes.aux = struct( ...
     'practice2Space', 91, ...
     'calibIntroGrey', 92, ...
     'calibIntroActive', 93, ...
-    'calibIntroSpace', 94);
+    'calibIntroSpace', 94, ...
+    'practice1BeginGrey', 95, ...
+    'practice1BeginActive', 96, ...
+    'practice1BeginSpace', 97, ...
+    'mainBeginActive', 98, ...
+    'mainBeginSpace', 99, ...
+    'blockBreakGrey', 100, ...
+    'blockBreakActive', 101, ...
+    'blockBreakSpace', 102, ...
+    'blockResumeActive', 103, ...
+    'blockResumeSpace', 104);
 cfg.eeg.codes.practice = struct( ...
     'trialStart', cfg.eeg.codes.trialStart, ...
     's1On', cfg.eeg.codes.s1On, ...
@@ -222,8 +251,10 @@ cfg.eeg.markerPolicy = struct( ...
 %% ------------------------- DEPENDENCY CHECKS -------------------------
 KbName('UnifyKeyNames');
 
-if exist('PAL_AMRF_setupRF','file') ~= 2 || exist('PAL_AMRF_updateRF','file') ~= 2
-    error('Palamedes not found on path. Add Palamedes core folder to MATLAB path first.');
+if exist('qpInitialize','file') ~= 2 || exist('qpUpdate','file') ~= 2
+    error(['mQUESTPlus not found on path. Install from ' ...
+           'https://github.com/BrainardLab/mQUESTPlus and run ' ...
+           'addpath(genpath(''/path/to/mQUESTPlus'')) before launching this script.']);
 end
 
 try
@@ -307,43 +338,39 @@ try
     KbQueueStart(cfg.kbDev);
     KbQueueFlush(cfg.kbDev);
 
-    %% ------------------------- BUILD STAIRCASES ----------------------------
-    alphaRange = cfg.minDurFrames:1:cfg.maxDurFrames;
-    
-    % Fixed PF parameters (AMRF passes alpha only to PF)
-    betaA   = 2;
-    gammaA  = 0.0;
-    lambdaA = 0.02;
-    
-    betaB   = 2;
-    gammaB  = 0.0;   
-    lambdaB = 0.02;
-    
-    RF_A = PAL_AMRF_setupRF();
-    RF_A = PAL_AMRF_setupRF(RF_A, ...
-        'priorAlphaRange', alphaRange, ...
-        'beta', betaA, ...
-        'gamma', gammaA, ...
-        'lambda', lambdaA, ...
-        'PF', @(params,x) PF_TargetLogisticAlpha(params, x, cfg.targetDetectHit, betaA, gammaA, lambdaA), ...
-        'meanmode', 'mean', ...
-        'xMin', cfg.minDurFrames, ...
-        'xMax', cfg.maxDurFrames);
-    
-    RF_B = PAL_AMRF_setupRF();
-    RF_B = PAL_AMRF_setupRF(RF_B, ...
-        'priorAlphaRange', alphaRange, ...
-        'beta', betaB, ...
-        'gamma', gammaB, ...
-        'lambda', lambdaB, ...
-        'PF', @(params,x) PF_TargetLogisticAlpha(params, x, cfg.targetSeeing, betaB, gammaB, lambdaB), ...
-        'meanmode', 'mean', ...
-        'xMin', cfg.minDurFrames, ...
-        'xMax', cfg.maxDurFrames);
-    
-    % Your Palamedes build ignores 'startValue', so set xCurrent manually:
-    RF_A.xCurrent = cfg.startDurFrames;
-    RF_B.xCurrent = cfg.startDurFrames;
+    %% ------------------------- BUILD QUEST+ CALIBRATION --------------------
+    if exist('qpInitialize','file') ~= 2
+        error(['mQUESTPlus is not on the MATLAB path. Install from ' ...
+               'https://github.com/BrainardLab/mQUESTPlus and run ' ...
+               'addpath(genpath(''/path/to/mQUESTPlus'')) before launching this script.']);
+    end
+
+    cfg.calib.questPlus.stimDomain = cfg.minDurFrames:1:cfg.maxDurFrames;
+    qp = cfg.calib.questPlus;
+
+    questData = qpInitialize( ...
+        'qpPF', @qpPF_blindSensingSeeing, ...
+        'stimParamsDomainList', {qp.stimDomain}, ...
+        'psiParamsDomainList',  {qp.alphaDetRange, qp.betaDetRange, qp.alphaLocRange, qp.betaLocRange, qp.lambdaRange}, ...
+        'nOutcomes', 3);
+
+    tracks = repmat(struct( ...
+        'name', '', 'targetOutcome', '', 'targetProb', 0, ...
+        'xCurrent', cfg.startDurFrames, 'xHistory', [], ...
+        'nUpdates', 0, 'converged', false, ...
+        'frozen', false, 'frozenFrames', NaN), 1, 3);
+    for k = 1:3
+        tracks(k).name          = cfg.calib.tracks(k).name;
+        tracks(k).targetOutcome = cfg.calib.tracks(k).targetOutcome;
+        tracks(k).targetProb    = cfg.calib.tracks(k).targetProb;
+    end
+
+    fprintf('QUEST+ initialized: posterior over %d parameter combinations, %d candidate stimuli, 3 outcomes.\n', ...
+        size(questData.psiParamsDomain, 1), numel(qp.stimDomain));
+    fprintf('Tracks: %s (target=%.3f), %s (target=%.3f), %s (target=%.3f)\n', ...
+        tracks(1).name, tracks(1).targetProb, ...
+        tracks(2).name, tracks(2).targetProb, ...
+        tracks(3).name, tracks(3).targetProb);
     
 
     %% ------------------------- STIMULUS GEOMETRY ---------------------------
@@ -377,7 +404,8 @@ try
 
     %% ------------------------- TRIAL OVERVIEW SCREEN -----------------------
 
-    cfg.trialOverviewPNG = fullfile(pwd,'Gratings_TrialOverview.png');
+    exptDir = fileparts(mfilename('fullpath'));
+    cfg.trialOverviewPNG = fullfile(exptDir, cfg.trialOverviewFilename);
 
     showTrialOverviewScreen(window, windowRect, bg, black, cfg);
 
@@ -392,6 +420,7 @@ try
 
     if isfield(cfg,'practice') && cfg.practice.enable
         if isfield(cfg,'practice1') && cfg.practice1.enable
+            showPractice1BeginScreen(window, windowRect, bg, black, cfg);
             practice1Summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, ...
                 xCentre, yCentre, ifi, cfg, bg, black, cfg.practice1);
             printPracticeSummary(practice1Summary, 'Practice Block 1');
@@ -401,6 +430,7 @@ try
 
         if isfield(cfg,'practice2') && cfg.practice2.enable
             showPractice2Intro(window, windowRect, bg, black, cfg);
+            showPractice2BeginScreen(window, windowRect, bg, black, cfg);
             practice2Summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, ...
                 xCentre, yCentre, ifi, cfg, bg, black, cfg.practice2);
             printPracticeSummary(practice2Summary, 'Practice Block 2');
@@ -444,51 +474,28 @@ try
     %% ------------------------- CALIBRATION ENTRY SCREEN --------------------
 
     showCalibrationIntroScreen(window, windowRect, bg, black, cfg);
+    showMainTrialBeginScreen(window, windowRect, bg, black, cfg);
 
     %% ------------------------- RUN CALIBRATION -----------------------------
     results = repmat(emptyResultRow(), cfg.nTotal, 1);
 
-    % --- calibration trackers ---
-    nUpdA = 0; nUpdB = 0;
-    histXA = []; histXB = [];
-    convA = false; convB = false;
-    freezeA = false; freezeB = false;
-    freezeAFrames = NaN; freezeBFrames = NaN;
+    % --- QUEST+ tracker fields are stored inside the tracks struct (set up above)
 
 
     for t = 1:cfg.nTotal
         checkAbort(cfg);
-
-        % Block breaks
-        if mod(t-1, cfg.trialsPerBlock) == 0
-            blockNum = (t-1)/cfg.trialsPerBlock + 1;
-
-            blockMsg = sprintf('Block %d of %d\n\nPress SPACEBAR to start.\n', blockNum, cfg.nBlocks);
-            Screen('FillRect', window, bg);
-            DrawFormattedText(window, blockMsg, 'center', 'center', black);
-            Screen('Flip', window);
-
-            waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
-        end
 
         trial = trials(t);
         if ~cfg.eeg.markerPolicy.alignTrialStartToFixationFlip
             sendTrigger(cfg.trigger, cfg.eeg.codes.trialStart);
         end
 
-        % Pick current duration from assigned staircase (tether catch trials too)
-        if trial.staircase == 'A'
-            if freezeA
-                durFrames = freezeAFrames;
-            else
-                durFrames = clamp(round(RF_A.xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
-            end
+        % Pick current duration from assigned QUEST+ track (catch trials are tethered too).
+        k = trackIndexFromStaircase(trial.staircase);
+        if tracks(k).frozen
+            durFrames = tracks(k).frozenFrames;
         else
-            if freezeB
-                durFrames = freezeBFrames;
-            else
-                durFrames = clamp(round(RF_B.xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
-            end
+            durFrames = clamp(round(tracks(k).xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
         end
 
         % Build S1
@@ -608,48 +615,41 @@ try
         end
         holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
 
-        % ---------------- STAIRCASE UPDATES (CHANGE trials only) ----------------
+        % ---------------- QUEST+ POSTERIOR UPDATE (CHANGE trials only) ----------------
         if trial.isChange
-            if trial.staircase == 'A'
-                if ~freezeA
-                    RF_A = PAL_AMRF_updateRF(RF_A, durFrames, double(hit));
-                    nUpdA = nUpdA + 1;
-                    histXA(end+1) = RF_A.xCurrent;
-            
-                    % convergence check for A
-                    if nUpdA >= cfg.calib.minUpdatesPerStair && numel(histXA) >= cfg.calib.stabilityWindow
-                        w = histXA(end-cfg.calib.stabilityWindow+1:end);
-                        convA = (max(w) - min(w)) <= cfg.calib.stabilityTolFrames;
-                        if convA
-                            freezeA = true;
-                            freezeAFrames = clamp(round(RF_A.xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
-                            fprintf('Staircase A froze at trial %d: %d frames (%.3f s)\n', t, freezeAFrames, freezeAFrames * ifi);
-                        end
-                    end
-                end
-        
+            if hit == 0
+                outcomeBin = 1;   % Blind
+            elseif locCorrect == 1
+                outcomeBin = 3;   % Seeing
             else
-                % B staircase: localisation accuracy conditional on hit (PAS > 1)
-                if hit == 1 && ~freezeB
-                    respB = double(locCorrect == 1);   % 1 = correct localisation, 0 = incorrect
-                    RF_B  = PAL_AMRF_updateRF(RF_B, durFrames, respB);
-            
-                    nUpdB = nUpdB + 1;
-                    histXB(end+1) = RF_B.xCurrent;
-            
-                    % convergence check for B
-                    if nUpdB >= cfg.calib.minUpdatesPerStair && numel(histXB) >= cfg.calib.stabilityWindow
-                        w = histXB(end-cfg.calib.stabilityWindow+1:end);
-                        convB = (max(w) - min(w)) <= cfg.calib.stabilityTolFrames;
-                        if convB
-                            freezeB = true;
-                            freezeBFrames = clamp(round(RF_B.xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
-                            fprintf('Staircase B froze at trial %d: %d frames (%.3f s)\n', t, freezeBFrames, freezeBFrames * ifi);
-                        end
-                    end
+                outcomeBin = 2;   % Sensing
+            end
+
+            questData = qpUpdate(questData, durFrames, outcomeBin);
+
+            tracks(k).nUpdates = tracks(k).nUpdates + 1;
+            tracks(k).xHistory(end+1) = durFrames;
+
+            for kk = 1:3
+                if ~tracks(kk).frozen
+                    tracks(kk).xCurrent = selectXForTrack(tracks(kk), questData, cfg);
                 end
             end
 
+            if tracks(k).nUpdates >= cfg.calib.convergenceMinTrials && ...
+               numel(tracks(k).xHistory) >= cfg.calib.convergenceWindow
+                w = tracks(k).xHistory(end-cfg.calib.convergenceWindow+1:end);
+                if (max(w) - min(w)) <= cfg.calib.convergenceTolFrames
+                    tracks(k).converged = true;
+                    tracks(k).frozen = true;
+                    tracks(k).frozenFrames = clamp(round(tracks(k).xCurrent), ...
+                        cfg.minDurFrames, cfg.maxDurFrames);
+                    fprintf('Track %s froze at trial %d: %d frames (%.3f s)\n', ...
+                        tracks(k).name, t, tracks(k).frozenFrames, tracks(k).frozenFrames * ifi);
+                end
+            end
+        else
+            outcomeBin = NaN;   % no-change (catch) trial; outcome ill-defined
         end
 
         % ---------------- LOG DATA ----------------
@@ -686,12 +686,26 @@ try
         results(t).hit = double(hit);
         results(t).locCorrect = locCorrect;
 
-        results(t).RF_A_xCurrent = RF_A.xCurrent;
-        results(t).RF_B_xCurrent = RF_B.xCurrent;
-        results(t).freezeA = freezeA;
-        results(t).freezeB = freezeB;
-        results(t).freezeAFrames = freezeAFrames;
-        results(t).freezeBFrames = freezeBFrames;
+        if ~trial.isChange
+            results(t).outcomeBin = 'NoChange';
+        else
+            switch outcomeBin
+                case 1, results(t).outcomeBin = 'Blind';
+                case 2, results(t).outcomeBin = 'Sensing';
+                case 3, results(t).outcomeBin = 'Seeing';
+                otherwise, results(t).outcomeBin = '';
+            end
+        end
+
+        results(t).track1_xCurrent = tracks(1).xCurrent;
+        results(t).track2_xCurrent = tracks(2).xCurrent;
+        results(t).track3_xCurrent = tracks(3).xCurrent;
+        results(t).track1_frozen   = double(tracks(1).frozen);
+        results(t).track2_frozen   = double(tracks(2).frozen);
+        results(t).track3_frozen   = double(tracks(3).frozen);
+        results(t).track1_frozenFrames = tracks(1).frozenFrames;
+        results(t).track2_frozenFrames = tracks(2).frozenFrames;
+        results(t).track3_frozenFrames = tracks(3).frozenFrames;
         results(t).triggerEnabled = double(cfg.trigger.enabled);
         results(t).trigTrialStartCode = cfg.eeg.codes.trialStart;
         results(t).trigS1Code = cfg.eeg.codes.s1On;
@@ -703,7 +717,7 @@ try
         results(t).trigLocCode = ternary(isnan(resp2), NaN, cfg.eeg.codes.locBase + resp2);
         results(t).trigTrialEndCode = cfg.eeg.codes.trialEnd;
 
-        trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, RF_A, RF_B, nUpdA, nUpdB, convA, convB);
+        trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, tracks);
         if ~cfg.eeg.markerPolicy.alignTrialEndToItiOnset
             sendTrigger(cfg.trigger, cfg.eeg.codes.trialEnd);
         end
@@ -714,35 +728,34 @@ try
             checkpointSave(results, t, outFile);
 
             if t < cfg.nTotal
-                Screen('FillRect', window, bg);
-                DrawFormattedText(window, 'Take a break.\n\nPress SPACEBAR to continue.', 'center', 'center', black);
-                Screen('Flip', window);
-                waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+                blockJustFinished = t / cfg.trialsPerBlock;
+                showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinished, cfg.nBlocks);
+                showBlockResumeScreen(window, windowRect, bg, black, cfg);
             end
         end
     end
 
-    %% ------------ FINAL THRESHOLD ESTIMATES -----------------
-    if isempty(histXA)
-        A_startFrames = cfg.startDurFrames;
-    else
-        NA = min(cfg.calib.saveNRecentMedian, numel(histXA));
-        A_startFrames = round(median(histXA(end-NA+1:end)));
+    %% ------------ FINAL PER-TRACK THRESHOLD ESTIMATES -----------------
+    NRecent = min(10, max(1, cfg.calib.convergenceWindow));
+    trackFrames = nan(1,3);
+    for kk = 1:3
+        if isempty(tracks(kk).xHistory)
+            trackFrames(kk) = cfg.startDurFrames;
+        else
+            n = min(NRecent, numel(tracks(kk).xHistory));
+            trackFrames(kk) = round(median(tracks(kk).xHistory(end-n+1:end)));
+        end
     end
-    
-    if isempty(histXB)
-        B_startFrames = cfg.startDurFrames;
-    else
-        NB = min(cfg.calib.saveNRecentMedian, numel(histXB));
-        B_startFrames = round(median(histXB(end-NB+1:end)));
-    end
-    
-    A_startSec = A_startFrames * ifi;
-    B_startSec = B_startFrames * ifi;
+    trackSec = trackFrames * ifi;
 
-    
-    fprintf('Run estimates: A=%d frames (%.3f s), B=%d frames (%.3f s)\n', ...
-        A_startFrames, A_startSec, B_startFrames, B_startSec);
+    fprintf('Run estimates: %s=%d frames (%.3f s), %s=%d frames (%.3f s), %s=%d frames (%.3f s)\n', ...
+        tracks(1).name, trackFrames(1), trackSec(1), ...
+        tracks(2).name, trackFrames(2), trackSec(2), ...
+        tracks(3).name, trackFrames(3), trackSec(3));
+
+    % --- Posterior MAP estimate of the 5 PF parameters ---
+    [~, idxMAP]   = max(questData.posterior);
+    psiParamsMAP  = questData.psiParamsDomain(idxMAP, :);
 
 
     %% ------------------------- SAVE -------------------------
@@ -752,18 +765,29 @@ try
 
     % --- Add final calibration summary values as columns (same value every row) ---
     T.calibTimestamp = repmat(string(timestamp), height(T), 1);
-    
-    T.A_startFrames  = repmat(A_startFrames, height(T), 1);
-    T.B_startFrames  = repmat(B_startFrames, height(T), 1);
-    T.A_startSec     = repmat(A_startSec,    height(T), 1);
-    T.B_startSec     = repmat(B_startSec,    height(T), 1);
-    
-    T.nUpdA          = repmat(nUpdA, height(T), 1);
-    T.nUpdB          = repmat(nUpdB, height(T), 1);
-    T.convA          = repmat(convA, height(T), 1);
-    T.convB          = repmat(convB, height(T), 1);
-    T.freezeAFramesFinal = repmat(freezeAFrames, height(T), 1);
-    T.freezeBFramesFinal = repmat(freezeBFrames, height(T), 1);
+
+    T.track1_finalFrames = repmat(trackFrames(1), height(T), 1);
+    T.track2_finalFrames = repmat(trackFrames(2), height(T), 1);
+    T.track3_finalFrames = repmat(trackFrames(3), height(T), 1);
+    T.track1_finalSec    = repmat(trackSec(1),    height(T), 1);
+    T.track2_finalSec    = repmat(trackSec(2),    height(T), 1);
+    T.track3_finalSec    = repmat(trackSec(3),    height(T), 1);
+
+    T.track1_nUpdates = repmat(tracks(1).nUpdates, height(T), 1);
+    T.track2_nUpdates = repmat(tracks(2).nUpdates, height(T), 1);
+    T.track3_nUpdates = repmat(tracks(3).nUpdates, height(T), 1);
+    T.track1_converged = repmat(double(tracks(1).converged), height(T), 1);
+    T.track2_converged = repmat(double(tracks(2).converged), height(T), 1);
+    T.track3_converged = repmat(double(tracks(3).converged), height(T), 1);
+    T.track1_frozenFramesFinal = repmat(tracks(1).frozenFrames, height(T), 1);
+    T.track2_frozenFramesFinal = repmat(tracks(2).frozenFrames, height(T), 1);
+    T.track3_frozenFramesFinal = repmat(tracks(3).frozenFrames, height(T), 1);
+
+    T.qpAlphaDet = repmat(psiParamsMAP(1), height(T), 1);
+    T.qpBetaDet  = repmat(psiParamsMAP(2), height(T), 1);
+    T.qpAlphaLoc = repmat(psiParamsMAP(3), height(T), 1);
+    T.qpBetaLoc  = repmat(psiParamsMAP(4), height(T), 1);
+    T.qpLambda   = repmat(psiParamsMAP(5), height(T), 1);
 
     writetable(T, outFile);
 
@@ -798,24 +822,20 @@ try
 
         
     cal = struct();
-    cal.participantID = cfg.participantID;
-    cal.timestamp     = timestamp;
-    cal.A_startFrames = A_startFrames;
-    cal.B_startFrames = B_startFrames;
-    cal.A_startSec    = A_startSec;
-    cal.B_startSec    = B_startSec;
-    cal.nUpdA         = nUpdA;
-    cal.nUpdB         = nUpdB;
-    cal.convA         = convA;
-    cal.convB         = convB;
-    cal.freezeAFrames = freezeAFrames;
-    cal.freezeBFrames = freezeBFrames;
-    
+    cal.participantID  = cfg.participantID;
+    cal.timestamp      = timestamp;
+    cal.tracks         = tracks;
+    cal.trackFrames    = trackFrames;
+    cal.trackSec       = trackSec;
+    cal.psiParamsMAP   = psiParamsMAP;
+    cal.psiParamsNames = {'alpha_det','beta_det','alpha_loc','beta_loc','lambda'};
+    cal.questPlusCfg   = cfg.calib.questPlus;
+
     calFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FullRun_%s.mat', cfg.participantID, timestamp));
-    save(calFile, 'cal');
+    save(calFile, 'cal', 'questData');
     fprintf('Saved full-run MAT: %s\n', calFile);
 
-    endText = sprintf('Done.\n\nSaved:\n%s\n\nPress any key to exit.', outFile);
+    endText = 'You have finished the experiment, well done!\n\nPress any key to exit.';
     DrawFormattedText(window, endText, 'center', 'center', black, 90);
     Screen('Flip', window);
     KbStrokeWait;
@@ -847,24 +867,28 @@ end
 
 function showInstructionScreen(window, windowRect, bg, black, cfg)
 
-    % ---- Instruction text ----
+    % ---- Instruction text (aligned with web task copy) ----
     titleFirstInstructions = 'Change Blindness Task Instruction';
-    FirstInstructions = [ ...
-        'Welcome to this full experiment session.\n' ...
-        'You will first complete practice, then continue into the main run.\n\n' ...
-        'In the task you will see four circular gratings arranged in a 2 x 2 grid.\n' ...
-        'Sometimes ONE grating will rotate from its original orientation.\n' ...
-        'After each trial you will answer two questions about what you saw:\n\n' ...
-        'Question 1 (PAS):\n' ...
-        'How clearly did you experience a change?\n' ...
-        '[1] = I didn''t experience a change,  [2] = I felt like there was a change,\n' ...
-        '[3] = I saw something change,  [4] = I clearly saw the change\n\n' ...
-        'Question 2:\n' ...
-        'Where was the change?\n' ...
-        '[1] = Top Left,  [2] = Top Right,\n' ...
-        '[3] = Bottom Left,  [4] = Bottom Right\n\n' ...
-        'Even if you choose ''[1] = I didn''t experience a change'' for Question 1, still pick a location for Question 2 to the best of your ability.\n\n' ...
+    % Split body so Question 1 / Question 2 headings can be drawn bold (TextStyle 1).
+    instrBodyA = [ ...
+        'In this task you will see four striped circles arranged in a 2 x 2 grid.\n' ...
+        'Sometimes ONE of the circles will rotate and change orientation.\n' ...
+        'Sometimes NO circles will rotate and change orientation.\n\n' ...
+        'After each trial you will answer two questions:\n\n' ...
     ];
+    instrQ1Bold = 'Question 1: How clear was the change?\n';
+    instrBodyB = [ ...
+        'Press a number key:\n\n' ...
+        '[1] No change at all      [2] I had a feeling something changed      [3] I saw something change      [4] I clearly saw the change\n\n' ...
+    ];
+    instrQ2Bold = 'Question 2: Where was the change?\n';
+    instrBodyC = [ ...
+        'Press a number key:\n\n' ...
+        '[1] Top Left    [2] Top Right    [3] Bottom Left    [4] Bottom Right\n\n' ...
+        'You will always be asked both questions — even if you said there was no change in Question 1.\n\n' ...
+    ];
+    instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC };
+    instrSegBold = [ false, true, false, true, false ];
 
     % ---- Lockout settings ----
     tcfg = cfg.display.text;
@@ -881,7 +905,8 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, titleFirstInstructions, 'center', titleY, black);
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, FirstInstructions, 'center', bodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    % Body stays black; only the spacebar prompt is grey during the lockout interval.
+    drawFirstInstrBody(window, bodyY, black, tcfg, instrSegs, instrSegBold);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
@@ -898,7 +923,7 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, titleFirstInstructions, 'center', titleY, black);
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, FirstInstructions, 'center', bodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    drawFirstInstrBody(window, bodyY, black, tcfg, instrSegs, instrSegBold);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
 
@@ -911,12 +936,29 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     end
 end
 
+function drawFirstInstrBody(window, bodyY, fg, tcfg, segs, boldOn)
+    % DrawFormattedText uses sy as the baseline of the first line (yPosIsBaseline=1).
+    % Chain segments with the returned cursor ny — not textbounds(4), or baselines misalign and text overlaps.
+    yCur = bodyY;
+    for ii = 1:numel(segs)
+        Screen('TextSize', window, tcfg.bodySize);
+        if boldOn(ii)
+            Screen('TextStyle', window, 1);
+        else
+            Screen('TextStyle', window, 0);
+        end
+        [~, ny] = DrawFormattedText(window, segs{ii}, 'center', yCur, fg, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+        Screen('TextStyle', window, 0);
+        yCur = ny;
+    end
+end
+
 function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
 
     tcfg = cfg.display.text;
     lockSec  = tcfg.lockSec;
     greyText = tcfg.greyText;
-    titleTrialOverview = 'Trial Overview';
+    titleTrialOverview = 'Change Blindness Trial Overview';
 
     % --- Load PNG as texture ---
     pngPath = cfg.trialOverviewPNG;
@@ -924,29 +966,55 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
         error('Trial overview PNG not found: %s', pngPath);
     end
 
-    [img, ~, alpha] = imread(pngPath);
-    if ~isempty(alpha)
-        img(:,:,4) = alpha;
+    [img, map, alpha] = imread(pngPath);
+    if ~isempty(map)
+        img = uint8(ind2rgb(img, map) * 255);
     end
-    tex = Screen('MakeTexture', window, img);
+    if size(img, 3) == 4
+        rgba = img;
+    else
+        if ndims(img) == 2
+            rgb = repmat(img, [1 1 3]);
+        else
+            rgb = img(:, :, 1:3);
+        end
+        if ~isempty(alpha)
+            a = alpha;
+            if ndims(a) == 3
+                a = a(:, :, 1);
+            end
+            if ~isa(a, 'uint8')
+                if islogical(a)
+                    a = uint8(a) * 255;
+                else
+                    ad = double(a);
+                    if max(ad(:)) <= 1 && min(ad(:)) >= 0
+                        a = uint8(ad * 255);
+                    else
+                        a = uint8(max(0, min(255, ad)));
+                    end
+                end
+            end
+            rgba = cat(3, rgb, a);
+        else
+            rgba = cat(3, rgb, 255 * ones(size(rgb, 1), size(rgb, 2), 'uint8'));
+        end
+    end
+    % RGBA + default blend (set after OpenWindow) lets transparent PNG areas show cfg background.
+    tex = Screen('MakeTexture', window, rgba);
+    imgH = size(rgba, 1);
+    imgW = size(rgba, 2);
 
     KbQueueFlush(cfg.kbDev);
 
-    % --- Text blocks (REMOVE the press-space line from bottomText) ---
+    % --- Text blocks (aligned with web task copy; spacebar = Continue) ---
     topText = [ ...
-        'On each trial, the sequence will look like the example below.\n\n' ...
-        'First, a fixation cross will appear in the centre.\n' ...
-        'Next, you will see the four gratings, then a brief blank screen, then the four gratings again.\n' ...
-        'Sometimes one grating will change orientation. Some trials will NOT contain a change.\n\n' ...
-        'After the sequence, you will answer the same two questions described on the previous screen:\n' ...
-        '1) PAS: clarity of change (1–4)\n' ...
-        '2) Where was the change? (1–4) \n' ...
+        '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
+        'First, a fixation cross will appear in the centre. Next, you will see the four circles, a brief blank screen, then the four circles again.\n' ...
+        'After the sequence, you will answer the same two questions described on the previous screen:\n\n' ...
     ];
 
-    bottomText = [ ...
-        'We will begin with a short set of practice trials so you can get comfortable with the task.\n' ...
-        'You will get feedback after each practice trial.\n\n' ...
-    ];
+    bottomText ='\nWe will begin with some practice trials so you can get comfortable with the task.\n';
 
     % ---- Draw with greyed prompt ----
     Screen('FillRect', window, bg);
@@ -961,8 +1029,6 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
 
     % --- Fit + place image ---
     [xc, ~] = RectCenter(windowRect);
-    imgW = size(img,2);
-    imgH = size(img,1);
 
     reserveBottomPx = tcfg.trialOverviewReserveBottomPx; % room for bottomText + prompt
     maxW = windowRect(3) * 0.90;
@@ -1037,18 +1103,26 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     lockSec  = tcfg.lockSec;
     greyText = tcfg.greyText;
     promptY  = windowRect(4) * tcfg.promptYFrac;
-    titlePractice1 = 'Practice Block #1\n\n';
+    titlePractice1 = 'Practice Information\n\n\n\n';
 
-    % --- Notice text (tight + readable) ---
-    PracticeText1 = [ ...
-        'Before we begin the practice trials, please keep this in mind:\n' ...
-        'Some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
-        'Please use the full PAS scale when appropriate:\n' ...
-        'Please use PAS 1 whenever you are guessing or unsure.\n' ...
-        'Only choose PAS 2–4 when you genuinely experienced a change.\n\n' ...
-        'This first practice block includes feedback after each trial.\n' ...
-        'When you press SPACEBAR, the practice trials will begin.\n\n' ...
+    % --- Notice text (tight + readable); two headings in bold ---
+    practice1BodyA = [ ...
+        'Before we begin the practice trials, please remember:\n\n'
     ];
+    practice1BoldQ1 = 'For the 1 – 4 clarity rating in Question 1:\n\n';
+    practice1BodyB = [ ...
+        'Use 1 if you did not experience a change, or if you are just guessing.\n' ...
+        'Use 2 – 4 only if you genuinely noticed something change (even faintly).\n' ...
+        'Try to use the whole 1 – 4 range when it fits.\n\n\n' ...
+    ];
+    practice1BoldBlocks = 'You will be completing two practice blocks:\n\n';
+    practice1BodyC = [ ...
+        'In the first practice block the trials will run a bit slower and include feedback.\n' ...
+        'You can ask the researcher questions at any time during the practice trials.\n' ...
+    ];
+    practice1Segs = { practice1BodyA, practice1BoldQ1, practice1BodyB, practice1BoldBlocks, practice1BodyC };
+    practice1SegBold = [ false, true, false, true, false ];
+    practiceBodyY = windowRect(4) * tcfg.practiceBodyY;
 
     % ---- PASS 1: greyed prompt (optional lockout) ----
     Screen('FillRect', window, bg);
@@ -1057,9 +1131,9 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, titlePractice1, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, PracticeText1, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    drawFirstInstrBody(window, practiceBodyY, black, tcfg, practice1Segs, practice1SegBold);
     Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to begin practice.', 'center', promptY, greyText);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
     tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1Grey);
 
@@ -1077,15 +1151,34 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, titlePractice1, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, PracticeText1, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    drawFirstInstrBody(window, practiceBodyY, black, tcfg, practice1Segs, practice1SegBold);
     Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to begin practice.', 'center', promptY, black);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
     emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1Active);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
     if cfg.eeg.markerPolicy.echoAuxSpaceSerial
         emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.practice1Space, bg);
+    end
+end
+
+function showPractice1BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+
+    tcfg = cfg.display.text;
+    titleTxt = 'When you are ready press SPACEBAR to begin';
+
+    Screen('FillRect', window, bg);
+    Screen('TextSize', window, tcfg.titleSize);
+    Screen('TextStyle', window, 1);
+    DrawFormattedText(window, titleTxt, 'center', 'center', black);
+    Screen('TextStyle', window, 0);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1BeginActive);
+
+    KbQueueFlush(cfg.kbDev);
+    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
+        emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.practice1BeginSpace, bg);
     end
 end
 
@@ -1103,18 +1196,17 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     lockSec  = tcfg.lockSec;
     greyText = tcfg.greyText;
     promptY  = windowRect(4) * tcfg.promptYFrac;
-    titlePractice2 = 'Practice Block #2';
+    titlePractice2 = 'Practice Information\n\n\n\n\n\n\n\n';
 
-    PracticeText2 = [ ...
-        'Nice work!\n\n' ...
-        'You will now complete a second lot of practice trials designed to feel more like the real task.\n\n' ...   
-        'Remember that some trials will contain a change, and some trials will NOT contain a change.\n' ...
-        'Use the full PAS scale when appropriate:\n' ...
-        'Use PAS 1 whenever you are guessing or unsure.\n' ...
-        'Only choose PAS 2 – 4 when you genuinely experienced a change.\n' ...
-        'Feedback will be removed for this second block and there will be range of trial difficulties.\n' ...
-        'When you press SPACEBAR, the practice trials will begin.' ...
+    PracticeText2a = [ ...
+        '\nNice work!\n\n' ...
+        'You will now complete a second block of practice trials designed to feel more like the real task.\n' ...   
+        'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
+        'Use the full 1 - 4 scale when appropriate in Question 1:\n' ...
+        'Select 1 whenever you are guessing or unsure.\n' ...
+        'Only choose 2 – 4 when you genuinely experienced a change.\n\n' ...
     ];
+    PracticeText2b = 'Feedback will be removed for this second block and some trials will be presented faster.\n';
 
     % ---- PASS 1: greyed prompt (optional lockout) ----
     Screen('FillRect', window, bg);
@@ -1123,9 +1215,12 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, titlePractice2, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, PracticeText2, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    [~, ny] = DrawFormattedText(window, PracticeText2a, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextStyle', window, 1);
+    DrawFormattedText(window, PracticeText2b, 'center', ny, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue practice.', 'center', promptY, greyText);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
     tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Grey);
 
@@ -1143,9 +1238,31 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, titlePractice2, 'center', windowRect(4) * tcfg.practiceTitleY, black);
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, PracticeText2, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    [~, ny] = DrawFormattedText(window, PracticeText2a, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextStyle', window, 1);
+    DrawFormattedText(window, PracticeText2b, 'center', ny, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue practice.', 'center', promptY, black);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Active);
+
+    KbQueueFlush(cfg.kbDev);
+    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
+        emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.practice2Space, bg);
+    end
+end
+
+function showPractice2BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+
+    tcfg = cfg.display.text;
+    titleTxt = 'When you are ready press SPACEBAR to begin';
+
+    Screen('FillRect', window, bg);
+    Screen('TextSize', window, tcfg.titleSize);
+    Screen('TextStyle', window, 1);
+    DrawFormattedText(window, titleTxt, 'center', 'center', black);
+    Screen('TextStyle', window, 0);
     emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Active);
 
     KbQueueFlush(cfg.kbDev);
@@ -1162,18 +1279,17 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     lockSec  = tcfg.lockSec;
     greyText = tcfg.greyText;
     promptY  = windowRect(4) * tcfg.promptYFrac;
-    titleMainExperiment = 'Main Experimental Trials';
+    titleMainExperiment = 'Experiment Information';
 
     txt = [ ...
-        'Well done! You''ve finished the practice trials.\n' ...
+        '\nWell done! You''ve finished the practice trials.\n' ...
         'You will now begin the main experimental trial blocks.\n\n' ...
         'The task will continue throughout the full run with regular breaks for you to rest and refresh.\n' ...
         'You will NOT receive feedback during the main run.\n\n' ...
-        'Remember that some trials will contain a change, and some trials will NOT contain a change.\n' ...
-        'Use the full PAS scale when appropriate:\n' ...
-        'Use PAS 1 whenever you are guessing or unsure.\n' ...
-        'Only choose PAS 2 – 4 when you genuinely experienced a change.\n' ...
-        'When you press SPACEBAR, the main run will begin.' ...
+        'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
+        'Use the full 1 - 4 scale when appropriate in Quesiton 1.\n' ...
+        'Use 1 whenever you are guessing or unsure.\n' ...
+        'Only choose 2 – 4 when you genuinely experienced a change.\n' ...
     ];
 
     % ---- PASS 1: greyed prompt ----
@@ -1185,7 +1301,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.bodySize);
     DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to begin the main run.', 'center', promptY, greyText);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
     tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.calibIntroGrey);
 
@@ -1205,13 +1321,93 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.bodySize);
     DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to begin the main run.', 'center', promptY, black);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
     emitAuxFlip(window, cfg, cfg.eeg.codes.aux.calibIntroActive);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
     if cfg.eeg.markerPolicy.echoAuxSpaceSerial
         emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.calibIntroSpace, bg);
+    end
+end
+
+function showMainTrialBeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+
+    tcfg = cfg.display.text;
+    titleTxt = 'When you are ready press SPACEBAR to begin';
+
+    Screen('FillRect', window, bg);
+    Screen('TextSize', window, tcfg.titleSize);
+    Screen('TextStyle', window, 1);
+    DrawFormattedText(window, titleTxt, 'center', 'center', black);
+    Screen('TextStyle', window, 0);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.mainBeginActive);
+
+    KbQueueFlush(cfg.kbDev);
+    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
+        emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.mainBeginSpace, bg);
+    end
+end
+
+function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinished, totalBlocks)
+
+    tcfg = cfg.display.text;
+    lockSec  = tcfg.lockSec;
+    greyText = tcfg.greyText;
+    promptY  = windowRect(4) * tcfg.promptYFrac;
+
+    titleTxt = sprintf('Block %d of %d complete', blockJustFinished, totalBlocks);
+    bodyTxt  = 'Take a break.';
+    mergedTxt = sprintf('%s\n\n%s', titleTxt, bodyTxt);
+
+    % ---- PASS 1: greyed prompt ----
+    Screen('FillRect', window, bg);
+    Screen('TextSize', window, tcfg.bodySize);
+    Screen('TextStyle', window, 0);
+    DrawFormattedText(window, mergedTxt, 'center', 'center', black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
+
+    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockBreakGrey);
+    KbQueueFlush(cfg.kbDev);
+    if lockSec > 0
+        holdForSecondsWithAbort(tOn + lockSec, cfg);
+        KbQueueFlush(cfg.kbDev);
+    end
+
+    % ---- PASS 2: active prompt ----
+    Screen('FillRect', window, bg);
+    Screen('TextSize', window, tcfg.bodySize);
+    Screen('TextStyle', window, 0);
+    DrawFormattedText(window, mergedTxt, 'center', 'center', black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextSize', window, tcfg.promptSize);
+    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockBreakActive);
+
+    KbQueueFlush(cfg.kbDev);
+    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
+        emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.blockBreakSpace, bg);
+    end
+end
+
+function showBlockResumeScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+
+    tcfg = cfg.display.text;
+    titleTxt = 'When you are ready press SPACEBAR to begin';
+
+    Screen('FillRect', window, bg);
+    Screen('TextSize', window, tcfg.titleSize);
+    Screen('TextStyle', window, 1);
+    DrawFormattedText(window, titleTxt, 'center', 'center', black);
+    Screen('TextStyle', window, 0);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockResumeActive);
+
+    KbQueueFlush(cfg.kbDev);
+    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    if cfg.eeg.markerPolicy.echoAuxSpaceSerial
+        emitAuxSpaceEcho(window, cfg, cfg.eeg.codes.aux.blockResumeSpace, bg);
     end
 end
 
@@ -1356,42 +1552,94 @@ function [key, secs] = waitForKeyQueue(validKeys, escapeKey, maxSecs, cfg)
     end
 end
 
-function y = PF_TargetLogisticAlpha(params, x, pTarget, beta, gamma, lambda)
+function probs = qpPF_blindSensingSeeing(stim, params)
+    % Multinomial psychometric function for the QUEST+ calibration.
+    % Inputs:
+    %   stim   - [nStim x 1] stimulus duration in frames
+    %   params - [nParams x 5] each row is [alpha_det beta_det alpha_loc beta_loc lambda]
+    % Output:
+    %   probs  - [nStim x nParams x 3] probabilities of [Blind, Sensing, Seeing]
+    % Following Eklund and Wiens style multinomial PF:
+    %   Pdet = lambda + (1 - 2*lambda) * logistic(x; alpha_det, beta_det)
+    %   Ploc = gammaLoc + (1 - gammaLoc - lambda) * logistic(x; alpha_loc, beta_loc)
+    %   P(Blind)   = 1 - Pdet
+    %   P(Sensing) = Pdet * (1 - Ploc)
+    %   P(Seeing)  = Pdet * Ploc
 
-    % Palamedes AMRF may pass params as a struct (often with field 'alpha')
-    if isstruct(params)
-        if isfield(params,'alpha')
-            alpha = [params.alpha];          % works for scalar or struct-array
-        elseif isfield(params,'threshold')
-            alpha = [params.threshold];
-        else
-            error('PF_TargetLogisticAlpha: params struct has no alpha field.');
-        end
-
-        % If Palamedes also provides these in the struct, prefer them:
-        if isfield(params,'beta'),   beta   = params(1).beta;   end
-        if isfield(params,'gamma'),  gamma  = params(1).gamma;  end
-        if isfield(params,'lambda'), lambda = params(1).lambda; end
-    else
-        % Fallback if params comes in numeric form
-        alpha = params(1);
+    stim = stim(:);
+    if size(params, 2) ~= 5
+        error('qpPF_blindSensingSeeing: params must have 5 columns [aD bD aL bL lambda].');
     end
 
-    % Ensure numeric
-    alpha  = double(alpha);
-    x      = double(x);
-    beta   = double(beta);
-    gamma  = double(gamma);
-    lambda = double(lambda);
+    aD  = params(:,1)';
+    bD  = params(:,2)';
+    aL  = params(:,3)';
+    bL  = params(:,4)';
+    lam = params(:,5)';
+    gammaLoc = 0.25;
 
-    % Shift logistic so that y(alpha) == pTarget
-    yScaled = (pTarget - gamma) / (1 - gamma - lambda);
-    yScaled = min(max(yScaled, 1e-6), 1-1e-6);
+    Pdet = lam + (1 - 2*lam) .* (1 ./ (1 + exp(-bD .* (stim - aD))));
+    Ploc = gammaLoc + (1 - gammaLoc - lam) .* (1 ./ (1 + exp(-bL .* (stim - aL))));
 
-    delta = -(1/beta) * log((1/yScaled) - 1);
-    x0    = alpha - delta;
+    pBlind   = 1 - Pdet;
+    pSensing = Pdet .* (1 - Ploc);
+    pSeeing  = Pdet .* Ploc;
 
-    y = gamma + (1 - gamma - lambda) ./ (1 + exp(-beta .* (x - x0)));
+    nStim   = numel(stim);
+    nParams = size(params, 1);
+    probs = zeros(nStim, nParams, 3);
+    probs(:,:,1) = pBlind;
+    probs(:,:,2) = pSensing;
+    probs(:,:,3) = pSeeing;
+end
+
+function xNext = selectXForTrack(track, questData, cfg)
+    % Choose next x for this track: the duration in cfg.calib.questPlus.stimDomain
+    % whose predicted track-target probability (under MAP parameters of the shared
+    % posterior) is closest to track.targetProb.
+
+    [~, idxMAP] = max(questData.posterior);
+    paramsMAP = questData.psiParamsDomain(idxMAP, :);
+
+    stimDomain = cfg.calib.questPlus.stimDomain(:);
+    probs = qpPF_blindSensingSeeing(stimDomain, paramsMAP);
+    pBlind   = probs(:,1,1);
+    pSensing = probs(:,1,2);
+    pSeeing  = probs(:,1,3);
+    pAware   = pSensing + pSeeing;
+
+    switch track.targetOutcome
+        case 'Blind'
+            pPred = pBlind;
+        case 'PdetThreshold'
+            pPred = 1 - pBlind;
+        case 'PlocGivenAware'
+            pPred = pSeeing ./ max(pAware, 1e-6);
+            pPred(pAware < 1e-3) = NaN;
+        otherwise
+            error('selectXForTrack: unknown targetOutcome ''%s''.', track.targetOutcome);
+    end
+
+    score = abs(pPred - track.targetProb);
+    score(isnan(score)) = Inf;
+    [~, iBest] = min(score);
+    xNext = stimDomain(iBest);
+end
+
+function k = trackIndexFromStaircase(s)
+    % Map a trial's staircase tag ('1'/'2'/'3' or 'Blind'/'Sensing'/'Seeing') to 1/2/3.
+    if isnumeric(s)
+        k = s;
+        return;
+    end
+    s = char(s);
+    switch s
+        case {'1','Blind'},   k = 1;
+        case {'2','Sensing'}, k = 2;
+        case {'3','Seeing'},  k = 3;
+        otherwise
+            error('trackIndexFromStaircase: unknown staircase ''%s''.', s);
+    end
 end
 
 function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
@@ -1512,14 +1760,15 @@ end
 
 function trials = buildTrialList(cfg)
 
-    trialTemplate = struct('isChange',0,'staircase','A','changeQuad',0,'changeStartOri',NaN);
+    trialTemplate = struct('isChange',0,'staircase','1','changeQuad',0,'changeStartOri',NaN);
     trials = repmat(trialTemplate, cfg.nTotal, 1);
 
+    trackTags = {'1','2','3'};   % 1=Blind, 2=Sensing, 3=Seeing
     idx0 = 1;
 
     for b = 1:cfg.nBlocks
 
-        % --- Per-block counts (enforce 25/25 when pChange=0.5) ---
+        % --- Per-block counts ---
         if isfield(cfg,'trialDial') && isfield(cfg.trialDial,'applyPerBlock') && cfg.trialDial.applyPerBlock
             nChg  = cfg.trialDial.nChangePerBlock;
         else
@@ -1527,55 +1776,48 @@ function trials = buildTrialList(cfg)
         end
         nCat = cfg.trialsPerBlock - nChg;
 
-        % --- Split A/B inside the block (one staircase may get +1 when odd) ---
-        if mod(b,2)==1
-            nChgA = ceil(nChg/2);  nChgB = floor(nChg/2);
-            nCatA = ceil(nCat/2);  nCatB = floor(nCat/2);
-        else
-            nChgA = floor(nChg/2); nChgB = ceil(nChg/2);
-            nCatA = floor(nCat/2); nCatB = ceil(nCat/2);
+        % --- Split nChg / nCat 3 ways with rotation so totals balance over the run ---
+        nChgPer = floor(nChg/3) * ones(1,3);
+        nCatPer = floor(nCat/3) * ones(1,3);
+        remChg = nChg - sum(nChgPer);
+        remCat = nCat - sum(nCatPer);
+        for r = 1:remChg
+            kk = mod(b + r - 2, 3) + 1;
+            nChgPer(kk) = nChgPer(kk) + 1;
+        end
+        for r = 1:remCat
+            kk = mod(b + r - 2, 3) + 1;
+            nCatPer(kk) = nCatPer(kk) + 1;
         end
 
-        % --- Build the block ---
         block = repmat(trialTemplate, cfg.trialsPerBlock, 1);
         k = 1;
 
-        quadsA = makeBalancedQuads(nChgA);
-        quadsB = makeBalancedQuads(nChgB);
-
-        for i = 1:nChgA
-            block(k).isChange = 1;
-            block(k).staircase = 'A';
-            block(k).changeQuad = quadsA(i);
-            k = k + 1;
+        for kk = 1:3
+            quadsKK = makeBalancedQuads(nChgPer(kk));
+            for i = 1:nChgPer(kk)
+                block(k).isChange = 1;
+                block(k).staircase = trackTags{kk};
+                block(k).changeQuad = quadsKK(i);
+                k = k + 1;
+            end
         end
-        for i = 1:nChgB
-            block(k).isChange = 1;
-            block(k).staircase = 'B';
-            block(k).changeQuad = quadsB(i);
-            k = k + 1;
-        end
-        for i = 1:nCatA
-            block(k).isChange = 0;
-            block(k).staircase = 'A';
-            k = k + 1;
-        end
-        for i = 1:nCatB
-            block(k).isChange = 0;
-            block(k).staircase = 'B';
-            k = k + 1;
+        for kk = 1:3
+            for i = 1:nCatPer(kk)
+                block(k).isChange = 0;
+                block(k).staircase = trackTags{kk};
+                k = k + 1;
+            end
         end
 
-        % --- Shuffle WITHIN the block (optional run constraint) ---
+        % --- Shuffle WITHIN the block ---
         order = randperm(numel(block));
         block = block(order);
 
-        % write block into overall trials
         trials(idx0:idx0+cfg.trialsPerBlock-1) = block;
         idx0 = idx0 + cfg.trialsPerBlock;
     end
 
-    % keep your orientation balancing after list is final
     trials = assignBalancedChangeStartOri(trials, cfg.stim.allowedOri);
 end
 
@@ -1834,8 +2076,8 @@ function displayCfg = makeDisplayProfile(profileName)
             textCfg.mainBodyY = 0.18;
 
             qCfg = struct();
-            qCfg.quadGapFrac = 0.08;
-            qCfg.quadBoxFrac = 0.42;
+            qCfg.quadGapFrac = 0.05;
+            qCfg.quadBoxFrac = 0.55;
             qCfg.quadFrameWidthPx = 3;
             qCfg.quadNumberSize = 34;
             qCfg.quadPromptSize = 28;
@@ -1977,12 +2219,16 @@ function r = emptyResultRow()
         'pasRT', NaN, ...
         'hit', NaN, ...
         'locCorrect', NaN, ...
-        'RF_A_xCurrent', NaN, ...
-        'RF_B_xCurrent', NaN, ...
-        'freezeA', NaN, ...
-        'freezeB', NaN, ...
-        'freezeAFrames', NaN, ...
-        'freezeBFrames', NaN, ...
+        'outcomeBin', '', ...
+        'track1_xCurrent', NaN, ...
+        'track2_xCurrent', NaN, ...
+        'track3_xCurrent', NaN, ...
+        'track1_frozen', NaN, ...
+        'track2_frozen', NaN, ...
+        'track3_frozen', NaN, ...
+        'track1_frozenFrames', NaN, ...
+        'track2_frozenFrames', NaN, ...
+        'track3_frozenFrames', NaN, ...
         'triggerEnabled', NaN, ...
         'trigTrialStartCode', NaN, ...
         'trigS1Code', NaN, ...
@@ -2161,7 +2407,7 @@ function checkpointSave(results, t, outFile)
     end
 end
 
-function trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, RF_A, RF_B, nUpdA, nUpdB, convA, convB)
+function trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, tracks)
 
     if ~isfield(cfg,'debug') || ~isfield(cfg.debug,'trialLog') || ~cfg.debug.trialLog
         return;
@@ -2272,15 +2518,16 @@ function trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, RF_
 
     % --- Per-trial line ---
     fprintf(['blk=%02d trl=%03d %s st=%s q=%s dur=%02d | Q1=%s Q2=%s | hit=%d loc=%s | score=%.1f | ' ...
-             'xA=%.1f xB=%.1f | PASblk[%d %d %d %d] CHG[%d %d %d %d] | updA=%d updB=%d convA=%d convB=%d\n'], ...
+             'x1=%.1f x2=%.1f x3=%.1f | PASblk[%d %d %d %d] CHG[%d %d %d %d] | upd1=%d upd2=%d upd3=%d conv1=%d conv2=%d conv3=%d\n'], ...
         blockNum, t, tc, trial.staircase, ...
         ternary(trial.isChange, sprintf('%d', trial.changeQuad), '-'), ...
         durFrames, q1, q2, ...
         hit, locStr, score, ...
-        RF_A.xCurrent, RF_B.xCurrent, ...
+        tracks(1).xCurrent, tracks(2).xCurrent, tracks(3).xCurrent, ...
         pasCountBlock(1), pasCountBlock(2), pasCountBlock(3), pasCountBlock(4), ...
         pasCountChangeBlock(1), pasCountChangeBlock(2), pasCountChangeBlock(3), pasCountChangeBlock(4), ...
-        nUpdA, nUpdB, convA, convB);
+        tracks(1).nUpdates, tracks(2).nUpdates, tracks(3).nUpdates, ...
+        double(tracks(1).converged), double(tracks(2).converged), double(tracks(3).converged));
 
     % --- End-of-block summaries ---
     if mod(t, cfg.trialsPerBlock) == 0
@@ -2624,44 +2871,33 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     end
 
 function cfg = applyTrialDial(cfg)
-    % Uses cfg.trialDial.pChange to set cfg.nChange/cfg.nCatch and A/B splits
+    % Uses cfg.trialDial.pChange to set cfg.nChange/cfg.nCatch.
+    % nChange/nCatch are forced to multiples of 3 so the Blind/Sensing/Seeing
+    % tracks each receive an integer number of change AND catch trials.
 
     if ~isfield(cfg,'trialDial') || ~isfield(cfg.trialDial,'pChange')
         error('applyTrialDial: Missing cfg.trialDial.pChange');
     end
 
     p = cfg.trialDial.pChange;
-    p = max(0, min(1, p)); % clamp
+    p = max(0, min(1, p));
 
-    % Compute counts from total
     nChange = round(cfg.nTotal * p);
-
-    % Ensure even so we can split across A/B cleanly
-    nChange = 2 * round(nChange/2);
-
-    % Safety clamp
+    nChange = 3 * round(nChange/3);
     nChange = max(0, min(cfg.nTotal, nChange));
 
     cfg.nChange = nChange;
     cfg.nCatch  = cfg.nTotal - cfg.nChange;
 
-    % A/B splits (must be even)
-    cfg.nChangeA = cfg.nChange/2;
-    cfg.nChangeB = cfg.nChange/2;
-
-    cfg.nCatchA  = cfg.nCatch/2;
-    cfg.nCatchB  = cfg.nCatch/2;
-
-    % Quick sanity checks
-    if mod(cfg.nCatch,2) ~= 0
-        error('applyTrialDial: nCatch ended up odd. Make cfg.nTotal even (it is) and pChange reasonable.');
+    if mod(cfg.nCatch,3) ~= 0
+        error('applyTrialDial: nCatch is not divisible by 3. Make cfg.nTotal divisible by 3 and pChange reasonable.');
     end
 end
 
 function trials = assignBalancedChangeStartOri(trials, allowedOri)
     isChg = [trials.isChange] == 1;
 
-    for s = ['A','B']
+    for s = ['1','2','3']
         idxS = find(isChg & strcmp({trials.staircase}, s));
 
         for q = 1:4
