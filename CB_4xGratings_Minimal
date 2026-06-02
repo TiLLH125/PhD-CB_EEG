@@ -59,6 +59,8 @@ try
     isiFrames = max(1, round(cfg.isiSec / ifi));
     itiFrames = max(1, round(cfg.itiSec / ifi));
     fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
+    missedFlipFramesTotal = 0;
+    missedFlipEventsTotal = 0;
 
     baseRect = [0 0 cfg.stim.squareSizePx cfg.stim.squareSizePx];
     xPos = [xCentre - cfg.stim.spacingPx, xCentre + cfg.stim.spacingPx, ...
@@ -97,19 +99,27 @@ try
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         tS1 = Screen('Flip', window);
+        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
+            missedFlipFramesTotal, missedFlipEventsTotal, tFix + jitterFrames * ifi, tS1, ifi);
         holdForSecondsWithAbort(tS1 + stimFrames * ifi, cfg);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         tISI = Screen('Flip', window);
+        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
+            missedFlipFramesTotal, missedFlipEventsTotal, tS1 + stimFrames * ifi, tISI, ifi);
         holdForSecondsWithAbort(tISI + isiFrames * ifi, cfg);
 
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         tS2 = Screen('Flip', window);
+        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
+            missedFlipFramesTotal, missedFlipEventsTotal, tISI + isiFrames * ifi, tS2, ifi);
         holdForSecondsWithAbort(tS2 + stimFrames * ifi, cfg);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         tITI = Screen('Flip', window);
+        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
+            missedFlipFramesTotal, missedFlipEventsTotal, tS2 + stimFrames * ifi, tITI, ifi);
         holdForSecondsWithAbort(tITI + itiFrames * ifi, cfg);
     end
 
@@ -117,6 +127,10 @@ try
     DrawFormattedText(window, 'Finished', 'center', 'center', black);
     tDone = Screen('Flip', window);
     holdForSecondsWithAbort(tDone + 0.75, cfg);
+    fprintf('\n--- Missed Flips Summary ---\n');
+    fprintf('Total missed-flip events: %d\n', missedFlipEventsTotal);
+    fprintf('Total missed frames: %d\n', missedFlipFramesTotal);
+    fprintf('----------------------------\n\n');
 
     %#ok<NASGU>
     clear cleanupObj
@@ -170,6 +184,15 @@ while true
         return;
     end
     WaitSecs(0.001);
+end
+end
+
+function [missedFramesTotal, missedEventsTotal] = addMissedFlips(missedFramesTotal, missedEventsTotal, targetTime, actualTime, ifi)
+lateSec = actualTime - targetTime;
+lateFrames = floor((lateSec / ifi) + 0.5);
+if lateFrames > 0
+    missedFramesTotal = missedFramesTotal + lateFrames;
+    missedEventsTotal = missedEventsTotal + 1;
 end
 end
 
