@@ -456,18 +456,16 @@ try
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         tS1 = Screen('Flip', window);
-        holdForSecondsWithAbort(tS1 + durFrames*ifi, cfg);
 
-        % ISI
+        % ISI (draw to back buffer before scheduled flip)
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tISI = Screen('Flip', window);
-        holdForSecondsWithAbort(tISI + cfg.ISI_frames*ifi, cfg);
+        tISI = Screen('Flip', window, tS1 + (durFrames - 0.5) * ifi);
 
         % S2
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tS2 = Screen('Flip', window);
+        tS2 = Screen('Flip', window, tISI + (cfg.ISI_frames - 0.5) * ifi);
         holdForSecondsWithAbort(tS2 + durFrames*ifi, cfg);
 
         % Gap
@@ -2380,17 +2378,15 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             tS1 = Screen('Flip', window);
-            holdForSecondsWithAbort(tS1 + durFrames*ifi, cfg);
-    
-            % ISI (same as main)
+
+            % ISI (draw to back buffer before scheduled flip)
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tISI = Screen('Flip', window);
-            holdForSecondsWithAbort(tISI + cfg.ISI_frames*ifi, cfg);
-    
+            tISI = Screen('Flip', window, tS1 + (durFrames - 0.5) * ifi);
+
             % S2
             drawGratings(window, gratingTex, allRects, oriS2, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tS2 = Screen('Flip', window);
+            tS2 = Screen('Flip', window, tISI + (cfg.ISI_frames - 0.5) * ifi);
             holdForSecondsWithAbort(tS2 + durFrames*ifi, cfg);
     
             % Gap
