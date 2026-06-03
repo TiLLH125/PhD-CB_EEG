@@ -237,6 +237,24 @@ try
     Screen('TextSize', window, 45);
 
     ifi = Screen('GetFlipInterval', window);
+
+    flipLog = struct( ...
+        'idx', {}, ...
+        'label', {}, ...
+        'context', {}, ...
+        'trialNum', {}, ...
+        'blockNum', {}, ...
+        'scheduled', {}, ...
+        'when', {}, ...
+        'vbl', {}, ...
+        'stimOnsetTime', {}, ...
+        'flipTimestamp', {}, ...
+        'missed', {}, ...
+        'missedFlag', {} ...
+    );
+    flipN = 0;
+    cfg.loggedFlip = @loggedFlip;
+
     [xCentre, yCentre] = RectCenter(windowRect);
 
     % ---- Display geometry conversion for visual-angle locked stimuli ----
@@ -451,32 +469,32 @@ try
         % Fixation jitter
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tFixOn = Screen('Flip', window);
+        [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', 'main_trial', t, ceil(t / cfg.trialsPerBlock), NaN);
         tTrialStart = tFixOn;
 
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
-        [tS1,  ~, ~, missedS1]  = Screen('Flip', window, vblTargetS1);
+        [tS1,  ~, ~, missedS1]  = cfg.loggedFlip('S1', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetS1);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
-        [tISI, ~, ~, missedISI] = Screen('Flip', window, vblTargetISI);
+        [tISI, ~, ~, missedISI] = cfg.loggedFlip('ISI', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetISI);
 
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
-        [tS2,  ~, ~, missedS2]  = Screen('Flip', window, vblTargetS2);
+        [tS2,  ~, ~, missedS2]  = cfg.loggedFlip('S2', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetS2);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
-        [tGap, ~, ~, missedGap] = Screen('Flip', window, vblTargetGap);
+        [tGap, ~, ~, missedGap] = cfg.loggedFlip('Gap', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetGap);
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
         Screen('DrawTexture', window, cfg.qTex.PAS);
-        tQ1 = Screen('Flip', window);
+        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, ceil(t / cfg.trialsPerBlock), NaN);
         
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
         pasRT = pasTime - tQ1;
@@ -498,7 +516,7 @@ try
         else
             Screen('DrawTexture', window, cfg.qTex.Loc_default);
         end
-        tQ2 = Screen('Flip', window);
+        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, ceil(t / cfg.trialsPerBlock), NaN);
         
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
         resp2RT = resp2Time - tQ2;
@@ -521,7 +539,7 @@ try
         % ITI
         % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         Screen('FillRect', window, bg);
-        tITI = Screen('Flip', window);
+        [tITI, ~, ~, missedITI] = cfg.loggedFlip('ITI', 'main_trial', t, ceil(t / cfg.trialsPerBlock), NaN);
         holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
 
         % ---------------- QUEST+ POSTERIOR UPDATE (CHANGE trials only) ----------------
@@ -580,10 +598,14 @@ try
         results(t).tS1 = tS1;
         results(t).tISI = tISI;
         results(t).tS2 = tS2;
+        results(t).missedFixOn = missedFixOn;
         results(t).missedS1  = missedS1;
         results(t).missedISI = missedISI;
         results(t).missedS2  = missedS2;
         results(t).missedGap = missedGap;
+        results(t).missedQ1  = missedQ1;
+        results(t).missedQ2  = missedQ2;
+        results(t).missedITI = missedITI;
         results(t).tQ1 = tQ1;
         results(t).tQ2 = tQ2;
 
@@ -698,6 +720,25 @@ try
 
     writetable(T, outFile);
 
+    flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_%s.csv', cfg.participantID, timestamp));
+    flipLogT = struct2table(flipLog);
+    writetable(flipLogT, flipLogFile);
+    fprintf('Saved flip log CSV: %s\n', flipLogFile);
+
+    if ~isempty(flipLog)
+        fprintf('\nFull missed flip summary by context/label:\n');
+        labels = unique(flipLogT.label);
+        for ii = 1:numel(labels)
+            thisLabel = labels(ii);
+            idx = flipLogT.label == thisLabel;
+            fprintf('%-30s total=%3d missed=%3d maxMissed=%.6f\n', ...
+                char(thisLabel), sum(idx), sum(flipLogT.missedFlag(idx)), max(flipLogT.missed(idx)));
+        end
+
+        fprintf('\nMissed flips only:\n');
+        disp(flipLogT(flipLogT.missedFlag, {'idx','context','label','trialNum','blockNum','scheduled','when','vbl','missed'}));
+    end
+
     T2 = readtable(outFile);   % uses the file you just saved
 
     % --- PAS distribution across all trials (guarded) ---
@@ -744,7 +785,7 @@ try
 
     endText = 'You have finished the experiment, well done!\n\nPress any key to exit.';
     DrawFormattedText(window, endText, 'center', 'center', black, 90);
-    Screen('Flip', window);
+    cfg.loggedFlip('experiment_end', 'experiment_end', NaN, NaN, NaN);
     KbStrokeWait;
 
 catch ME
@@ -768,6 +809,34 @@ catch ME
 
     rethrow(ME);
 end
+
+    function [vbl, stimOnsetTime, flipTimestamp, missed] = loggedFlip(label, context, trialNum, blockNum, when)
+
+        if nargin < 5 || isempty(when) || isnan(when)
+            [vbl, stimOnsetTime, flipTimestamp, missed] = Screen('Flip', window);
+            scheduled = false;
+            whenVal = NaN;
+        else
+            [vbl, stimOnsetTime, flipTimestamp, missed] = Screen('Flip', window, when);
+            scheduled = true;
+            whenVal = when;
+        end
+
+        flipN = flipN + 1;
+        flipLog(flipN).idx = flipN;
+        flipLog(flipN).label = string(label);
+        flipLog(flipN).context = string(context);
+        flipLog(flipN).trialNum = trialNum;
+        flipLog(flipN).blockNum = blockNum;
+        flipLog(flipN).scheduled = scheduled;
+        flipLog(flipN).when = whenVal;
+        flipLog(flipN).vbl = vbl;
+        flipLog(flipN).stimOnsetTime = stimOnsetTime;
+        flipLog(flipN).flipTimestamp = flipTimestamp;
+        flipLog(flipN).missed = missed;
+        flipLog(flipN).missedFlag = missed > 0;
+    end
+
 end
 
 %% ========================= LOCAL FUNCTIONS =========================
@@ -817,7 +886,7 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = Screen('Flip', window);
+    [tOn, ~, ~, ~] = cfg.loggedFlip('instruction_grey_prompt', 'instruction', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     holdForSecondsWithAbort(tOn + lockSec, cfg);
@@ -834,7 +903,7 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
 
-    Screen('Flip', window);
+    cfg.loggedFlip('instruction_active', 'instruction', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -959,7 +1028,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = Screen('Flip', window);
+    [tOn, ~, ~, ~] = cfg.loggedFlip('trial_overview_grey', 'trial_overview', NaN, NaN, NaN);
 
     % Lockout (ESC still works)
     KbQueueFlush(cfg.kbDev);
@@ -988,7 +1057,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
 
-    Screen('Flip', window);
+    cfg.loggedFlip('trial_overview_active', 'trial_overview', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1036,7 +1105,7 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = Screen('Flip', window);
+    [tOn, ~, ~, ~] = cfg.loggedFlip('practice1_intro_grey', 'practice1_intro', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
 
@@ -1055,7 +1124,7 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     drawFirstInstrBody(window, practiceBodyY, black, tcfg, practice1Segs, practice1SegBold);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    Screen('Flip', window);
+    cfg.loggedFlip('practice1_intro_active', 'practice1_intro', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1071,7 +1140,7 @@ function showPractice1BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    Screen('Flip', window);
+    cfg.loggedFlip('practice1_begin', 'practice1_begin', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1117,7 +1186,7 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = Screen('Flip', window);
+    [tOn, ~, ~, ~] = cfg.loggedFlip('practice2_intro_grey', 'practice2_intro', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
 
@@ -1139,7 +1208,7 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    Screen('Flip', window);
+    cfg.loggedFlip('practice2_intro_active', 'practice2_intro', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1155,7 +1224,7 @@ function showPractice2BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    Screen('Flip', window);
+    cfg.loggedFlip('practice2_begin', 'practice2_begin', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1192,7 +1261,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = Screen('Flip', window);
+    [tOn, ~, ~, ~] = cfg.loggedFlip('calibration_intro_grey', 'calibration_intro', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
 
@@ -1211,7 +1280,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    Screen('Flip', window);
+    cfg.loggedFlip('calibration_intro_active', 'calibration_intro', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1227,7 +1296,7 @@ function showMainTrialBeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    Screen('Flip', window);
+    cfg.loggedFlip('main_begin', 'main_begin', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1252,7 +1321,7 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = Screen('Flip', window);
+    [tOn, ~, ~, ~] = cfg.loggedFlip('block_break_grey', 'block_break', NaN, blockJustFinished, NaN);
     KbQueueFlush(cfg.kbDev);
     if lockSec > 0
         holdForSecondsWithAbort(tOn + lockSec, cfg);
@@ -1266,7 +1335,7 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
     DrawFormattedText(window, mergedTxt, 'center', 'center', black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    Screen('Flip', window);
+    cfg.loggedFlip('block_break_active', 'block_break', NaN, blockJustFinished, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1282,7 +1351,7 @@ function showBlockResumeScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    Screen('Flip', window);
+    cfg.loggedFlip('block_resume', 'block_resume', NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -2088,10 +2157,14 @@ function r = emptyResultRow()
         'tS1', NaN, ...
         'tISI', NaN, ...
         'tS2', NaN, ...
+        'missedFixOn', NaN, ...
         'missedS1', NaN, ...
         'missedISI', NaN, ...
         'missedS2', NaN, ...
         'missedGap', NaN, ...
+        'missedQ1', NaN, ...
+        'missedQ2', NaN, ...
+        'missedITI', NaN, ...
         'tQ1', NaN, ...
         'tQ2', NaN, ...
         'resp2', NaN, ...
@@ -2429,32 +2502,32 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % Fixation jitter
             jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tFixOn = Screen('Flip', window);
+            [tFixOn, ~, ~, ~] = cfg.loggedFlip('FixOn', pracCfg.name, p, NaN, NaN);
             tTrialStart = tFixOn;
 
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
-            [tS1,  ~, ~, ~]  = Screen('Flip', window, vblTargetS1);
+            [tS1,  ~, ~, ~]  = cfg.loggedFlip('S1', pracCfg.name, p, NaN, vblTargetS1);
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
-            [tISI, ~, ~, ~] = Screen('Flip', window, vblTargetISI);
+            [tISI, ~, ~, ~] = cfg.loggedFlip('ISI', pracCfg.name, p, NaN, vblTargetISI);
 
             drawGratings(window, gratingTex, allRects, oriS2, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
-            [tS2,  ~, ~, ~]  = Screen('Flip', window, vblTargetS2);
+            [tS2,  ~, ~, ~]  = cfg.loggedFlip('S2', pracCfg.name, p, NaN, vblTargetS2);
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
-            [tGap, ~, ~, ~] = Screen('Flip', window, vblTargetGap);
+            [tGap, ~, ~, ~] = cfg.loggedFlip('Gap', pracCfg.name, p, NaN, vblTargetGap);
     
             % ---- Questions ----
 
             % Q1 (PAS)
             Screen('DrawTexture', window, cfg.qTex.PAS);
-            tQ1 = Screen('Flip', window);
+            [tQ1, ~, ~, ~] = cfg.loggedFlip('Q1_PAS', pracCfg.name, p, NaN, NaN);
             [pasKey, ~] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
             pas = keyToDigit(pasKey);
             
@@ -2472,7 +2545,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             else
                 Screen('DrawTexture', window, cfg.qTex.Loc_default);
             end
-            Screen('Flip', window);
+            cfg.loggedFlip('Q2_Loc', pracCfg.name, p, NaN, NaN);
             [resp2Key, ~] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
             resp2 = keyToDigit(resp2Key);
             
@@ -2598,7 +2671,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
                 end
                 
-                Screen('Flip', window);
+                cfg.loggedFlip('practice_feedback', pracCfg.name, p, NaN, NaN);
         
         
                 if cfg.practice.feedbackWaitForSpace
@@ -2611,7 +2684,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % ITI
             % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             Screen('FillRect', window, bg);
-            tITI = Screen('Flip', window);
+            [tITI, ~, ~, ~] = cfg.loggedFlip('ITI', pracCfg.name, p, NaN, NaN);
             holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
         end
 
