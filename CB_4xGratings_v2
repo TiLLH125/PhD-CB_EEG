@@ -2109,14 +2109,17 @@ end
 function qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg)
 
     drawPAS(window, windowRect, black, bg, cfg);
+    Screen('Flip', window);
     qTex.PAS = Screen('MakeTexture', window, Screen('GetImage', window));
     Screen('FillRect', window, bg);
 
     drawQuadrantPrompt(window, windowRect, black, bg, 'Where was the change?', cfg);
+    Screen('Flip', window);
     qTex.Loc_default = Screen('MakeTexture', window, Screen('GetImage', window));
     Screen('FillRect', window, bg);
 
     drawQuadrantPrompt(window, windowRect, black, bg, 'Select a quadrant, even if you experienced no change.', cfg);
+    Screen('Flip', window);
     qTex.Loc_pas1 = Screen('MakeTexture', window, Screen('GetImage', window));
     Screen('FillRect', window, bg);
 end
