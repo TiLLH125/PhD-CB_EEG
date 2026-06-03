@@ -447,7 +447,7 @@ try
             oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + 90, 180);
         end
 
-        % ---------------- TIMELINE (ESC checked during each hold) ----------------
+        % ---------------- TIMELINE (scheduled VBL; ESC in ITI/questions/instructions) ----------------
         % Fixation jitter
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
@@ -457,25 +457,21 @@ try
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
-        holdForSecondsWithAbort(vblTargetS1 - 0.002, cfg);
-        tS1 = Screen('Flip', window, vblTargetS1);
+        [tS1,  ~, ~, missedS1]  = Screen('Flip', window, vblTargetS1);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
-        holdForSecondsWithAbort(vblTargetISI - 0.002, cfg);
-        tISI = Screen('Flip', window, vblTargetISI);
+        [tISI, ~, ~, missedISI] = Screen('Flip', window, vblTargetISI);
 
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
-        holdForSecondsWithAbort(vblTargetS2 - 0.002, cfg);
-        tS2 = Screen('Flip', window, vblTargetS2);
+        [tS2,  ~, ~, missedS2]  = Screen('Flip', window, vblTargetS2);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
-        holdForSecondsWithAbort(vblTargetGap - 0.002, cfg);
-        tGap = Screen('Flip', window, vblTargetGap);
+        [tGap, ~, ~, missedGap] = Screen('Flip', window, vblTargetGap);
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
@@ -584,6 +580,10 @@ try
         results(t).tS1 = tS1;
         results(t).tISI = tISI;
         results(t).tS2 = tS2;
+        results(t).missedS1  = missedS1;
+        results(t).missedISI = missedISI;
+        results(t).missedS2  = missedS2;
+        results(t).missedGap = missedGap;
         results(t).tQ1 = tQ1;
         results(t).tQ2 = tQ2;
 
@@ -663,6 +663,12 @@ try
     results = results(~cellfun(@isempty,{results.participantID}));
 
     T = struct2table(results);
+
+    fprintf('\nMissed flip summary:\n');
+    fprintf('S1:  %d\n', sum(T.missedS1 > 0));
+    fprintf('ISI: %d\n', sum(T.missedISI > 0));
+    fprintf('S2:  %d\n', sum(T.missedS2 > 0));
+    fprintf('Gap: %d\n', sum(T.missedGap > 0));
 
     % --- Add final calibration summary values as columns (same value every row) ---
     T.calibTimestamp = repmat(string(timestamp), height(T), 1);
@@ -2082,6 +2088,10 @@ function r = emptyResultRow()
         'tS1', NaN, ...
         'tISI', NaN, ...
         'tS2', NaN, ...
+        'missedS1', NaN, ...
+        'missedISI', NaN, ...
+        'missedS2', NaN, ...
+        'missedGap', NaN, ...
         'tQ1', NaN, ...
         'tQ2', NaN, ...
         'resp2', NaN, ...
@@ -2108,19 +2118,35 @@ end
 
 function qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg)
 
-    drawPAS(window, windowRect, black, bg, cfg);
-    Screen('Flip', window);
-    qTex.PAS = Screen('MakeTexture', window, Screen('GetImage', window));
-    Screen('FillRect', window, bg);
+    w = RectWidth(windowRect);
+    h = RectHeight(windowRect);
+    offRect = [0 0 w h];
 
-    drawQuadrantPrompt(window, windowRect, black, bg, 'Where was the change?', cfg);
-    Screen('Flip', window);
-    qTex.Loc_default = Screen('MakeTexture', window, Screen('GetImage', window));
-    Screen('FillRect', window, bg);
+    off = Screen('OpenOffscreenWindow', window, bg, offRect);
+    try
+        Screen('TextFont', off, 'Arial');
+        Screen('TextSize', off, 45);
 
-    drawQuadrantPrompt(window, windowRect, black, bg, 'Select a quadrant, even if you experienced no change.', cfg);
-    Screen('Flip', window);
-    qTex.Loc_pas1 = Screen('MakeTexture', window, Screen('GetImage', window));
+        Screen('FillRect', off, bg);
+        drawPAS(off, offRect, black, bg, cfg);
+        img = Screen('GetImage', off);
+        qTex.PAS = Screen('MakeTexture', window, img);
+
+        Screen('FillRect', off, bg);
+        drawQuadrantPrompt(off, offRect, black, bg, 'Where was the change?', cfg);
+        img = Screen('GetImage', off);
+        qTex.Loc_default = Screen('MakeTexture', window, img);
+
+        Screen('FillRect', off, bg);
+        drawQuadrantPrompt(off, offRect, black, bg, 'Select a quadrant, even if you experienced no change.', cfg);
+        img = Screen('GetImage', off);
+        qTex.Loc_pas1 = Screen('MakeTexture', window, img);
+    catch me
+        Screen('Close', off);
+        rethrow(me);
+    end
+    Screen('Close', off);
+
     Screen('FillRect', window, bg);
 end
 
@@ -2409,24 +2435,20 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
-            holdForSecondsWithAbort(vblTargetS1 - 0.002, cfg);
-            tS1 = Screen('Flip', window, vblTargetS1);
+            [tS1,  ~, ~, ~]  = Screen('Flip', window, vblTargetS1);
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
-            holdForSecondsWithAbort(vblTargetISI - 0.002, cfg);
-            tISI = Screen('Flip', window, vblTargetISI);
+            [tISI, ~, ~, ~] = Screen('Flip', window, vblTargetISI);
 
             drawGratings(window, gratingTex, allRects, oriS2, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
-            holdForSecondsWithAbort(vblTargetS2 - 0.002, cfg);
-            tS2 = Screen('Flip', window, vblTargetS2);
+            [tS2,  ~, ~, ~]  = Screen('Flip', window, vblTargetS2);
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
-            holdForSecondsWithAbort(vblTargetGap - 0.002, cfg);
-            tGap = Screen('Flip', window, vblTargetGap);
+            [tGap, ~, ~, ~] = Screen('Flip', window, vblTargetGap);
     
             % ---- Questions ----
 
