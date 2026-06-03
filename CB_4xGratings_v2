@@ -323,6 +323,9 @@ try
     gratingTex = makeGratingTexture(window, cfg.stim.squareSizePx, cfg.stim.cyclesPerStim, cfg.stim.contrast, bg, cfg.stim.gaborSigmaFrac);
     fixationCoords = [-cfg.fix.sizePx cfg.fix.sizePx 0 0; 0 0 -cfg.fix.sizePx cfg.fix.sizePx];
 
+    qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg);
+    cfg.qTex = qTex;
+
     %% ------------------------- TRIAL LIST ----------------------------------
     trials = buildTrialList(cfg);
 
@@ -476,7 +479,7 @@ try
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
-        drawPAS(window, windowRect, black, bg, cfg);
+        Screen('DrawTexture', window, cfg.qTex.PAS);
         tQ1 = Screen('Flip', window);
         
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
@@ -494,7 +497,11 @@ try
         end
                 
         % Q2 (Localise) — ALWAYS ask (even if PAS == 1)
-        drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
+        if ~isnan(pas) && pas == 1
+            Screen('DrawTexture', window, cfg.qTex.Loc_pas1);
+        else
+            Screen('DrawTexture', window, cfg.qTex.Loc_default);
+        end
         tQ2 = Screen('Flip', window);
         
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
@@ -2099,12 +2106,34 @@ function r = emptyResultRow()
     );
 end
 
+function qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg)
+
+    drawPAS(window, windowRect, black, bg, cfg);
+    qTex.PAS = Screen('MakeTexture', window, Screen('GetImage', window));
+    Screen('FillRect', window, bg);
+
+    drawQuadrantPrompt(window, windowRect, black, bg, 'Where was the change?', cfg);
+    qTex.Loc_default = Screen('MakeTexture', window, Screen('GetImage', window));
+    Screen('FillRect', window, bg);
+
+    drawQuadrantPrompt(window, windowRect, black, bg, 'Select a quadrant, even if you experienced no change.', cfg);
+    qTex.Loc_pas1 = Screen('MakeTexture', window, Screen('GetImage', window));
+    Screen('FillRect', window, bg);
+end
+
 function cleanup(~, cfg)
     try
         try ListenChar(0); catch, end
         try Priority(0); catch, end
         try KbQueueRelease(cfg.kbDev); catch, end
         try ShowCursor; catch, end
+
+        if isfield(cfg, 'qTex')
+            try
+                Screen('Close', [cfg.qTex.PAS, cfg.qTex.Loc_default, cfg.qTex.Loc_pas1]);
+            catch
+            end
+        end
 
         if exist('sca','file') == 2
             sca;
@@ -2399,7 +2428,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % ---- Questions ----
 
             % Q1 (PAS)
-            drawPAS(window, windowRect, black, bg, cfg);
+            Screen('DrawTexture', window, cfg.qTex.PAS);
             tQ1 = Screen('Flip', window);
             [pasKey, ~] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
             pas = keyToDigit(pasKey);
@@ -2413,7 +2442,11 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             end
             
             % Q2 (ALWAYS)
-            drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
+            if ~isnan(pas) && pas == 1
+                Screen('DrawTexture', window, cfg.qTex.Loc_pas1);
+            else
+                Screen('DrawTexture', window, cfg.qTex.Loc_default);
+            end
             Screen('Flip', window);
             [resp2Key, ~] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
             resp2 = keyToDigit(resp2Key);
