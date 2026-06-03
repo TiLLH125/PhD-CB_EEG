@@ -494,7 +494,8 @@ try
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
         Screen('DrawTexture', window, cfg.qTex.PAS);
-        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, ceil(t / cfg.trialsPerBlock), NaN);
+        vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
+        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetQ1);
         
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
         pasRT = pasTime - tQ1;
@@ -598,6 +599,11 @@ try
         results(t).tS1 = tS1;
         results(t).tISI = tISI;
         results(t).tS2 = tS2;
+        results(t).tGap = tGap;
+        results(t).actualS1Frames = (tISI - tS1) / ifi;
+        results(t).actualISIFrames = (tS2 - tISI) / ifi;
+        results(t).actualS2Frames = (tGap - tS2) / ifi;
+        results(t).actualGapFrames = (tQ1 - tGap) / ifi;
         results(t).missedFixOn = missedFixOn;
         results(t).missedS1  = missedS1;
         results(t).missedISI = missedISI;
@@ -692,6 +698,18 @@ try
     fprintf('S2:  %d\n', sum(T.missedS2 > 0));
     fprintf('Gap: %d\n', sum(T.missedGap > 0));
 
+    fprintf('\nActual main trial frame duration summary:\n');
+    durFields = {'actualS1Frames', 'actualISIFrames', 'actualS2Frames', 'actualGapFrames'};
+    expLabels = {sprintf('durFrames (mean=%.3f)', mean(T.durFrames)), ...
+        sprintf('%d (ISI)', cfg.ISI_frames), ...
+        sprintf('durFrames (mean=%.3f)', mean(T.durFrames)), ...
+        sprintf('%d (gap)', cfg.gap_frames)};
+    for ff = 1:numel(durFields)
+        v = T.(durFields{ff});
+        fprintf('  %s: mean=%.3f min=%.3f max=%.3f | expected ~ %s\n', ...
+            durFields{ff}, mean(v), min(v), max(v), expLabels{ff});
+    end
+
     % --- Add final calibration summary values as columns (same value every row) ---
     T.calibTimestamp = repmat(string(timestamp), height(T), 1);
 
@@ -719,25 +737,6 @@ try
     T.qpLambda   = repmat(psiParamsMAP(5), height(T), 1);
 
     writetable(T, outFile);
-
-    flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_%s.csv', cfg.participantID, timestamp));
-    flipLogT = struct2table(flipLog);
-    writetable(flipLogT, flipLogFile);
-    fprintf('Saved flip log CSV: %s\n', flipLogFile);
-
-    if ~isempty(flipLog)
-        fprintf('\nFull missed flip summary by context/label:\n');
-        labels = unique(flipLogT.label);
-        for ii = 1:numel(labels)
-            thisLabel = labels(ii);
-            idx = flipLogT.label == thisLabel;
-            fprintf('%-30s total=%3d missed=%3d maxMissed=%.6f\n', ...
-                char(thisLabel), sum(idx), sum(flipLogT.missedFlag(idx)), max(flipLogT.missed(idx)));
-        end
-
-        fprintf('\nMissed flips only:\n');
-        disp(flipLogT(flipLogT.missedFlag, {'idx','context','label','trialNum','blockNum','scheduled','when','vbl','missed'}));
-    end
 
     T2 = readtable(outFile);   % uses the file you just saved
 
@@ -786,6 +785,37 @@ try
     endText = 'You have finished the experiment, well done!\n\nPress any key to exit.';
     DrawFormattedText(window, endText, 'center', 'center', black, 90);
     cfg.loggedFlip('experiment_end', 'experiment_end', NaN, NaN, NaN);
+
+    flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_%s.csv', cfg.participantID, timestamp));
+    flipLogT = struct2table(flipLog);
+    flipLogT.missedMs = 1000 * flipLogT.missed;
+    flipLogT.over1ms = flipLogT.missed > 0.001;
+    flipLogT.overHalfFrame = flipLogT.missed > 0.5 * ifi;
+    flipLogT.overOneFrame = flipLogT.missed > ifi;
+    writetable(flipLogT, flipLogFile);
+    fprintf('Saved flip log CSV: %s\n', flipLogFile);
+
+    if ~isempty(flipLog)
+        fprintf('\nFull missed flip summary by context + label:\n');
+        [G, ~] = findgroups(flipLogT.context, flipLogT.label);
+        totalFlips = splitapply(@numel, flipLogT.missed, G);
+        nPositive = splitapply(@(x) sum(x > 0), flipLogT.missed, G);
+        nOver1ms = splitapply(@(x) sum(x > 0.001), flipLogT.missed, G);
+        nOverHalfFrame = splitapply(@(x) sum(x > 0.5 * ifi), flipLogT.missed, G);
+        nOverOneFrame = splitapply(@(x) sum(x > ifi), flipLogT.missed, G);
+        maxMissedMs = splitapply(@(x) max(1000 * x), flipLogT.missed, G);
+        ctxUniq = splitapply(@(x) x(1), flipLogT.context, G);
+        lblUniq = splitapply(@(x) x(1), flipLogT.label, G);
+        for ii = 1:numel(G)
+            fprintf('  %-20s %-22s total=%4d missed=%3d maxMs=%8.3f >1ms=%3d >halfF=%3d >1F=%3d\n', ...
+                char(ctxUniq(ii)), char(lblUniq(ii)), totalFlips(ii), nPositive(ii), maxMissedMs(ii), ...
+                nOver1ms(ii), nOverHalfFrame(ii), nOverOneFrame(ii));
+        end
+
+        fprintf('\nMissed flips only:\n');
+        disp(flipLogT(flipLogT.missedFlag, {'idx','context','label','trialNum','blockNum','scheduled','when','vbl','missed','missedMs','over1ms','overHalfFrame','overOneFrame'}));
+    end
+
     KbStrokeWait;
 
 catch ME
@@ -2157,6 +2187,11 @@ function r = emptyResultRow()
         'tS1', NaN, ...
         'tISI', NaN, ...
         'tS2', NaN, ...
+        'tGap', NaN, ...
+        'actualS1Frames', NaN, ...
+        'actualISIFrames', NaN, ...
+        'actualS2Frames', NaN, ...
+        'actualGapFrames', NaN, ...
         'missedFixOn', NaN, ...
         'missedS1', NaN, ...
         'missedISI', NaN, ...
@@ -2527,7 +2562,8 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
 
             % Q1 (PAS)
             Screen('DrawTexture', window, cfg.qTex.PAS);
-            [tQ1, ~, ~, ~] = cfg.loggedFlip('Q1_PAS', pracCfg.name, p, NaN, NaN);
+            vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
+            [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', pracCfg.name, p, NaN, vblTargetQ1);
             [pasKey, ~] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
             pas = keyToDigit(pasKey);
             
