@@ -786,34 +786,40 @@ try
     DrawFormattedText(window, endText, 'center', 'center', black, 90);
     cfg.loggedFlip('experiment_end', 'experiment_end', NaN, NaN, NaN);
 
-    flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_%s.csv', cfg.participantID, timestamp));
-    flipLogT = struct2table(flipLog);
-    flipLogT.missedMs = 1000 * flipLogT.missed;
-    flipLogT.over1ms = flipLogT.missed > 0.001;
-    flipLogT.overHalfFrame = flipLogT.missed > 0.5 * ifi;
-    flipLogT.overOneFrame = flipLogT.missed > ifi;
-    writetable(flipLogT, flipLogFile);
-    fprintf('Saved flip log CSV: %s\n', flipLogFile);
-
     if ~isempty(flipLog)
+        flipLogT = struct2table(flipLog);
+
+        flipLogT.missedMs = 1000 * flipLogT.missed;
+        flipLogT.over1ms = flipLogT.missed > 0.001;
+        flipLogT.overHalfFrame = flipLogT.missed > 0.5 * ifi;
+        flipLogT.overOneFrame = flipLogT.missed > ifi;
+
+        flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_%s.csv', cfg.participantID, timestamp));
+        writetable(flipLogT, flipLogFile);
+        fprintf('Saved flip log CSV: %s\n', flipLogFile);
+
         fprintf('\nFull missed flip summary by context + label:\n');
-        [G, ~] = findgroups(flipLogT.context, flipLogT.label);
+
+        [G, ctxGroup, labelGroup] = findgroups(flipLogT.context, flipLogT.label);
+
         totalFlips = splitapply(@numel, flipLogT.missed, G);
         nPositive = splitapply(@(x) sum(x > 0), flipLogT.missed, G);
+        maxMissedMs = splitapply(@(x) max(1000*x), flipLogT.missed, G);
         nOver1ms = splitapply(@(x) sum(x > 0.001), flipLogT.missed, G);
         nOverHalfFrame = splitapply(@(x) sum(x > 0.5 * ifi), flipLogT.missed, G);
         nOverOneFrame = splitapply(@(x) sum(x > ifi), flipLogT.missed, G);
-        maxMissedMs = splitapply(@(x) max(1000 * x), flipLogT.missed, G);
-        ctxUniq = splitapply(@(x) x(1), flipLogT.context, G);
-        lblUniq = splitapply(@(x) x(1), flipLogT.label, G);
-        for ii = 1:numel(G)
-            fprintf('  %-20s %-22s total=%4d missed=%3d maxMs=%8.3f >1ms=%3d >halfF=%3d >1F=%3d\n', ...
-                char(ctxUniq(ii)), char(lblUniq(ii)), totalFlips(ii), nPositive(ii), maxMissedMs(ii), ...
+
+        for ii = 1:numel(totalFlips)
+            fprintf('  %-20s %-24s total=%4d missed=%3d maxMs=%8.3f >1ms=%3d >halfF=%3d >1F=%3d\n', ...
+                char(ctxGroup(ii)), char(labelGroup(ii)), ...
+                totalFlips(ii), nPositive(ii), maxMissedMs(ii), ...
                 nOver1ms(ii), nOverHalfFrame(ii), nOverOneFrame(ii));
         end
 
         fprintf('\nMissed flips only:\n');
-        disp(flipLogT(flipLogT.missedFlag, {'idx','context','label','trialNum','blockNum','scheduled','when','vbl','missed','missedMs','over1ms','overHalfFrame','overOneFrame'}));
+        missedOnly = flipLogT(flipLogT.missedFlag, ...
+            {'idx','context','label','trialNum','blockNum','scheduled','when','vbl','missed','missedMs','over1ms','overHalfFrame','overOneFrame'});
+        disp(missedOnly);
     end
 
     KbStrokeWait;
