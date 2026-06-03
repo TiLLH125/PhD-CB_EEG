@@ -1,6 +1,6 @@
 function CB_4xGratings_Minimal
 % Minimal CB demo: SPACE to start, then fixed S1-ISI-S2 change trials.
-% Gabor drawing and trial presentation match CB_4xGratings.m.
+% Cleaned version relying solely on native Psychtoolbox timing diagnostics.
 
 close all;
 try ListenChar(0); catch, end
@@ -12,8 +12,11 @@ elseif exist('Screen','file') == 2
     Screen('CloseAll');
 end
 
+% Set up the universal keyboard dictionary FIRST
+KbName('UnifyKeyNames');
+
 cfg = struct();
-cfg.screenNumber = max(Screen('Screens'));
+cfg.screenNumber = max(Screen('Screens')); % Automatically defaults to the best testing screen
 cfg.kbDev = -1;
 cfg.keys.escape = KbName('ESCAPE');
 cfg.keys.space = KbName('space');
@@ -21,7 +24,7 @@ cfg.keys.space = KbName('space');
 cfg.displayProfile = 'viewpixx';
 cfg.display = makeDisplayProfile(cfg.displayProfile);
 
-cfg.nTrials = 10;
+cfg.nTrials = 50;
 cfg.startDurFrames = 30;
 cfg.postS2Gap_sec = 0.20;
 cfg.itiSec = 0.5;
@@ -39,9 +42,8 @@ cfg.fix.sizeDeg = 0.37;
 cfg.fix.lineWidthDeg = 0.08;
 
 Screen('Preference','VisualDebugLevel', 1);
-Screen('Preference','SkipSyncTests', 1);
+Screen('Preference','SkipSyncTests', 0);
 
-KbName('UnifyKeyNames');
 PsychDefaultSetup(2);
 
 bg = cfg.stim.backgroundGrey;
@@ -72,9 +74,6 @@ try
     cfg.fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
     durFrames = cfg.startDurFrames;
 
-    missedFlipFramesTotal = 0;
-    missedFlipEventsTotal = 0;
-
     baseRect = [0 0 cfg.stim.squareSizePx cfg.stim.squareSizePx];
     xPos = [xCentre - cfg.stim.spacingPx, xCentre + cfg.stim.spacingPx, ...
             xCentre - cfg.stim.spacingPx, xCentre + cfg.stim.spacingPx];
@@ -85,6 +84,7 @@ try
         allRects(i,:) = CenterRectOnPoint(baseRect, xPos(i), yPos(i));
     end
 
+    % Pre-draw the Gabor texture once
     gratingTex = makeGratingTexture(window, cfg.stim.squareSizePx, ...
         cfg.stim.cyclesPerStim, cfg.stim.contrast, bg, cfg.stim.gaborSigmaFrac);
     fixationCoords = [-cfg.fix.sizePx cfg.fix.sizePx 0 0; 0 0 -cfg.fix.sizePx cfg.fix.sizePx];
@@ -98,6 +98,10 @@ try
     Screen('Flip', window);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
 
+    % Establish baseline initial fixation time anchor
+    drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+    tFix = Screen('Flip', window);
+
     for t = 1:cfg.nTrials
         checkAbort(cfg);
 
@@ -108,47 +112,48 @@ try
         oriS2(changeQuad) = mod(oriS1(changeQuad) + 90, 180);
 
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
-        drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tFixOn = Screen('Flip', window);
-        holdForSecondsWithAbort(tFixOn + jitterFrames * ifi, cfg);
-
+        
+        % --- 1. PRESENT S1 ---
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tS1 = Screen('Flip', window);
+        vblTargetS1 = tFix + (jitterFrames - 0.5) * ifi;
+        holdForSecondsWithAbort(vblTargetS1 - 0.002, cfg);
+        tS1 = Screen('Flip', window, vblTargetS1);
 
+        % --- 2. PRESENT ISI ---
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tISI_target = tS1 + (durFrames - 0.5) * ifi;
-        tISI = Screen('Flip', window, tISI_target);
-        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
-            missedFlipFramesTotal, missedFlipEventsTotal, tISI_target, tISI, ifi);
+        vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
+        holdForSecondsWithAbort(vblTargetISI - 0.002, cfg);
+        tISI = Screen('Flip', window, vblTargetISI);
 
+        % --- 3. PRESENT S2 ---
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tS2_target = tISI + (cfg.ISI_frames - 0.5) * ifi;
-        tS2 = Screen('Flip', window, tS2_target);
-        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
-            missedFlipFramesTotal, missedFlipEventsTotal, tS2_target, tS2, ifi);
-        holdForSecondsWithAbort(tS2 + durFrames * ifi, cfg);
+        vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
+        holdForSecondsWithAbort(vblTargetS2 - 0.002, cfg);
+        tS2 = Screen('Flip', window, vblTargetS2);
 
+        % --- 4. PRESENT GAP ---
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tGap = Screen('Flip', window);
-        holdForSecondsWithAbort(tGap + cfg.gap_frames * ifi, cfg);
+        vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
+        holdForSecondsWithAbort(vblTargetGap - 0.002, cfg);
+        tGap = Screen('Flip', window, vblTargetGap);
 
+        % --- 5. PRESENT ITI ---
         Screen('FillRect', window, bg);
-        tITI = Screen('Flip', window);
-        holdForSecondsWithAbort(tITI + cfg.ITI_frames * ifi, cfg);
+        vblTargetITI = tGap + (cfg.gap_frames - 0.5) * ifi;
+        holdForSecondsWithAbort(vblTargetITI - 0.002, cfg);
+        tITI = Screen('Flip', window, vblTargetITI);
+        
+        % Carry forward the actual ITI onset timestamp as anchor for next trial
+        tFix = tITI;
     end
 
     Screen('FillRect', window, bg);
     DrawFormattedText(window, 'Finished', 'center', 'center', black);
     tDone = Screen('Flip', window);
     holdForSecondsWithAbort(tDone + 0.75, cfg);
-    fprintf('\n--- Missed Flips Summary ---\n');
-    fprintf('Total missed-flip events: %d\n', missedFlipEventsTotal);
-    fprintf('Total missed frames: %d\n', missedFlipFramesTotal);
-    fprintf('----------------------------\n\n');
 
-    %#ok<NASGU>
     clear cleanupObj
 catch ME
     try cleanup(window, cfg); catch, end
@@ -200,15 +205,6 @@ while true
         return;
     end
     WaitSecs(0.001);
-end
-end
-
-function [missedFramesTotal, missedEventsTotal] = addMissedFlips(missedFramesTotal, missedEventsTotal, targetTime, actualTime, ifi)
-lateSec = actualTime - targetTime;
-lateFrames = floor((lateSec / ifi) + 0.5);
-if lateFrames > 0
-    missedFramesTotal = missedFramesTotal + lateFrames;
-    missedEventsTotal = missedEventsTotal + 1;
 end
 end
 
@@ -332,7 +328,7 @@ try
     try Priority(0); catch, end
     try KbQueueRelease(cfg.kbDev); catch, end
     try ShowCursor; catch, end
-    try Screen('Close', 'all'); catch, end
+    try Screen('Close'); catch, end
     if ~isempty(window)
         try Screen('CloseAll'); catch, end
     end
