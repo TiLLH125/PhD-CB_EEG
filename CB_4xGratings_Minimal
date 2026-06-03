@@ -1,5 +1,6 @@
 function CB_4xGratings_Minimal
-% Minimal CB demo: SPACE to start, then fixed S1-ISI-S2 trials.
+% Minimal CB demo: SPACE to start, then fixed S1-ISI-S2 change trials.
+% Gabor drawing and trial presentation match CB_4xGratings.m.
 
 close all;
 try ListenChar(0); catch, end
@@ -17,22 +18,25 @@ cfg.kbDev = -1;
 cfg.keys.escape = KbName('ESCAPE');
 cfg.keys.space = KbName('space');
 
+cfg.displayProfile = 'viewpixx';
+cfg.display = makeDisplayProfile(cfg.displayProfile);
+
 cfg.nTrials = 10;
-cfg.stimSec = 0.5;
-cfg.isiSec = 0.1;
+cfg.startDurFrames = 30;
+cfg.postS2Gap_sec = 0.20;
 cfg.itiSec = 0.5;
 cfg.fixJitterRangeSec = [0.5 0.8];
 
-cfg.stim.squareSizePx = 220;
-cfg.stim.spacingPx = 150;
+cfg.stim.squareSizeDeg = 4.0;
+cfg.stim.spacingDeg = 2.2;
 cfg.stim.cyclesPerStim = 10;
 cfg.stim.contrast = 0.8;
 cfg.stim.backgroundGrey = 0.5;
 cfg.stim.gaborSigmaFrac = 0.40;
 cfg.stim.allowedOri = 0:22.5:157.5;
 
-cfg.fix.sizePx = 14;
-cfg.fix.lineWidthPx = 3;
+cfg.fix.sizeDeg = 0.37;
+cfg.fix.lineWidthDeg = 0.08;
 
 Screen('Preference','VisualDebugLevel', 1);
 Screen('Preference','SkipSyncTests', 1);
@@ -55,10 +59,19 @@ try
     ifi = Screen('GetFlipInterval', window);
     [xCentre, yCentre] = RectCenter(windowRect);
 
-    stimFrames = max(1, round(cfg.stimSec / ifi));
-    isiFrames = max(1, round(cfg.isiSec / ifi));
-    itiFrames = max(1, round(cfg.itiSec / ifi));
-    fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
+    geom = computeDisplayGeometry(cfg.display, windowRect);
+    cfg.display.geom = geom;
+    cfg.stim.squareSizePx = max(10, round(degToPx(cfg.stim.squareSizeDeg, geom)));
+    cfg.stim.spacingPx    = max(5,  round(degToPx(cfg.stim.spacingDeg, geom)));
+    cfg.fix.sizePx        = max(4,  round(degToPx(cfg.fix.sizeDeg, geom)));
+    cfg.fix.lineWidthPx   = max(1,  round(degToPx(cfg.fix.lineWidthDeg, geom)));
+
+    cfg.ISI_frames = 9;
+    cfg.gap_frames = max(0, round(cfg.postS2Gap_sec / ifi));
+    cfg.ITI_frames = max(0, round(cfg.itiSec / ifi));
+    cfg.fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
+    durFrames = cfg.startDurFrames;
+
     missedFlipFramesTotal = 0;
     missedFlipEventsTotal = 0;
 
@@ -88,39 +101,42 @@ try
     for t = 1:cfg.nTrials
         checkAbort(cfg);
 
-        oriS1 = cfg.stim.allowedOri(randperm(numel(cfg.stim.allowedOri), 4))';
+        changeQuad = randi(4);
+        changeStartOri = cfg.stim.allowedOri(randi(numel(cfg.stim.allowedOri)));
+        oriS1 = makeOriS1_noPostChangeDup(changeQuad, changeStartOri, cfg.stim.allowedOri);
         oriS2 = oriS1;
+        oriS2(changeQuad) = mod(oriS1(changeQuad) + 90, 180);
 
-        jitterFrames = randi([fixJitterFrames(1), fixJitterFrames(2)], 1, 1);
+        jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tFix = Screen('Flip', window);
-        holdForSecondsWithAbort(tFix + jitterFrames * ifi, cfg);
+        tFixOn = Screen('Flip', window);
+        holdForSecondsWithAbort(tFixOn + jitterFrames * ifi, cfg);
 
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         tS1 = Screen('Flip', window);
-        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
-            missedFlipFramesTotal, missedFlipEventsTotal, tFix + jitterFrames * ifi, tS1, ifi);
-        holdForSecondsWithAbort(tS1 + stimFrames * ifi, cfg);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tISI = Screen('Flip', window);
+        tISI_target = tS1 + (durFrames - 0.5) * ifi;
+        tISI = Screen('Flip', window, tISI_target);
         [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
-            missedFlipFramesTotal, missedFlipEventsTotal, tS1 + stimFrames * ifi, tISI, ifi);
-        holdForSecondsWithAbort(tISI + isiFrames * ifi, cfg);
+            missedFlipFramesTotal, missedFlipEventsTotal, tISI_target, tISI, ifi);
 
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tS2 = Screen('Flip', window);
+        tS2_target = tISI + (cfg.ISI_frames - 0.5) * ifi;
+        tS2 = Screen('Flip', window, tS2_target);
         [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
-            missedFlipFramesTotal, missedFlipEventsTotal, tISI + isiFrames * ifi, tS2, ifi);
-        holdForSecondsWithAbort(tS2 + stimFrames * ifi, cfg);
+            missedFlipFramesTotal, missedFlipEventsTotal, tS2_target, tS2, ifi);
+        holdForSecondsWithAbort(tS2 + durFrames * ifi, cfg);
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        tGap = Screen('Flip', window);
+        holdForSecondsWithAbort(tGap + cfg.gap_frames * ifi, cfg);
+
+        Screen('FillRect', window, bg);
         tITI = Screen('Flip', window);
-        [missedFlipFramesTotal, missedFlipEventsTotal] = addMissedFlips( ...
-            missedFlipFramesTotal, missedFlipEventsTotal, tS2 + stimFrames * ifi, tITI, ifi);
-        holdForSecondsWithAbort(tITI + itiFrames * ifi, cfg);
+        holdForSecondsWithAbort(tITI + cfg.ITI_frames * ifi, cfg);
     end
 
     Screen('FillRect', window, bg);
@@ -196,21 +212,71 @@ if lateFrames > 0
 end
 end
 
+function displayCfg = makeDisplayProfile(profileName)
+name = lower(strtrim(profileName));
+switch name
+    case 'viewpixx'
+        displayCfg = struct();
+        displayCfg.profile = 'viewpixx';
+        displayCfg.viewDistanceCm = 60;
+        displayCfg.screenWidthCm = 53.1;
+        displayCfg.screenWidthPx = 1920;
+    case 'default'
+        displayCfg = struct();
+        displayCfg.profile = 'default';
+        displayCfg.viewDistanceCm = 60;
+        displayCfg.screenWidthCm = 53.1;
+        displayCfg.screenWidthPx = 1920;
+    otherwise
+        error('Unknown display profile: %s. Use ''viewpixx'' or ''default''.', profileName);
+end
+end
+
+function geom = computeDisplayGeometry(displayCfg, windowRect)
+geom = struct();
+activeWidthPx = windowRect(3) - windowRect(1);
+if isfield(displayCfg,'screenWidthPx') && displayCfg.screenWidthPx > 0
+    activeWidthPx = displayCfg.screenWidthPx;
+end
+geom.activeWidthPx = activeWidthPx;
+geom.screenWidthCm = displayCfg.screenWidthCm;
+geom.viewDistanceCm = displayCfg.viewDistanceCm;
+geom.pixelsPerCm = geom.activeWidthPx / geom.screenWidthCm;
+cmPerDeg = 2 * geom.viewDistanceCm * tan((1 * pi / 180) / 2);
+geom.pxPerDeg = geom.pixelsPerCm * cmPerDeg;
+end
+
+function px = degToPx(deg, geom)
+px = deg * geom.pxPerDeg;
+end
+
 function tex = makeGratingTexture(window, sz, cyclesPerStim, contrast, bg, gaborSigmaFrac)
+
 if nargin < 6 || isempty(gaborSigmaFrac)
     gaborSigmaFrac = 0.40;
 end
-[x, y] = meshgrid(linspace(-1, 1, sz), linspace(-1, 1, sz));
-radius = sqrt(x.^2 + y.^2);
-carrier = cos(2 * pi * cyclesPerStim * x);
-sigma = max(1, gaborSigmaFrac);
-envelope = exp(-(radius.^2) / (2 * sigma^2));
+
+[xRad, ~] = meshgrid(linspace(-pi, pi, sz), linspace(-pi, pi, sz));
+carrier = sin(cyclesPerStim * xRad);
+
+[xPix, yPix] = meshgrid(1:sz, 1:sz);
+xPix = xPix - (sz+1)/2;
+yPix = yPix - (sz+1)/2;
+
+radius = (sz/2 - 1);
+sigma  = max(1, radius * gaborSigmaFrac);
+
+envelope = exp(-(xPix.^2 + yPix.^2) / (2*sigma^2));
+
 img = bg + (contrast * 0.5) * (envelope .* carrier);
 img = min(max(img, 0), 1);
+
 alpha = min(max(envelope, 0), 1);
-rgb = uint8(img * 255);
-a = uint8(alpha * 255);
+
+rgb  = uint8(img * 255);
+a    = uint8(alpha * 255);
 rgba = cat(3, rgb, rgb, rgb, a);
+
 tex = Screen('MakeTexture', window, rgba);
 end
 
@@ -228,6 +294,36 @@ end
 function drawFixationOnly(window, bg, fixationCoords, lineWidthPx, colour, xCentre, yCentre)
 Screen('FillRect', window, bg);
 drawFixation(window, fixationCoords, lineWidthPx, colour, xCentre, yCentre);
+end
+
+function oriS1 = makeOriS1_noPostChangeDup(changeQuad, startOri, allowedOri)
+
+allowedOri = allowedOri(:)';
+
+if isempty(startOri) || ~isfinite(startOri)
+    startOri = allowedOri(randi(numel(allowedOri)));
+else
+    [~, idx] = min(abs(allowedOri - startOri));
+    startOri = allowedOri(idx);
+end
+
+changedOri = mod(startOri + 90, 180);
+
+tol = 1e-6;
+keep = ~ismembertol(allowedOri, [startOri changedOri], tol);
+rem = allowedOri(keep);
+
+if numel(rem) < 3
+    error('Need at least 5 allowed orientations to avoid duplicates after change.');
+end
+
+rem = rem(randperm(numel(rem), 3));
+
+oriS1 = nan(4,1);
+oriS1(changeQuad) = startOri;
+
+otherIdx = setdiff(1:4, changeQuad);
+oriS1(otherIdx) = rem(:);
 end
 
 function cleanup(window, cfg)
