@@ -40,11 +40,11 @@ if isempty(cfg.participantID), cfg.participantID = 'UNKNOWN'; end
 
 cfg.debugWindow      = false;     % smaller window
 cfg.visualDebugLevel = 1;
-cfg.skipSyncTests    = 1;         % 1 while debugging; use 0 for real data
+cfg.skipSyncTests    = 0;         % 1 while debugging; use 0 for real data
 
 % Screen selection (don't use 0 unless you WANT desktop-spanning)
 % cfg.screenNumber = max(Screen('Screens'));
-cfg.screenNumber = 0;
+cfg.screenNumber = 2;
 
 % Keyboard device: -1 = default keyboard
 cfg.kbDev = -1;
@@ -328,7 +328,8 @@ try
     cfg.ITI_frames      = max(0, round(cfg.ITI_sec / ifi));
     cfg.fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
 
-    Priority(0);
+    topPriorityLevel = MaxPriority(window);
+    Priority(topPriorityLevel);
     HideCursor;
 
     ListenChar(0);
