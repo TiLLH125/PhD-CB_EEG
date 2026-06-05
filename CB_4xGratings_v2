@@ -49,6 +49,34 @@ cfg.screenNumber = 0;
 % Keyboard device: -1 = default keyboard
 cfg.kbDev = -1;
 
+% ---- EEG serial triggers (phase 1: infrastructure only; no trial markers yet) ----
+cfg.eeg.enable            = false;   % default false for safe behavioural testing
+cfg.eeg.serialPort        = 'COM4';
+cfg.eeg.baudRate          = 115200;
+cfg.eeg.warnOnSendError   = true;
+
+% Important: avoid blocking reset by default
+cfg.eeg.resetMode         = 'none';  % options later: 'none', 'blocking', 'deferred'
+cfg.eeg.pulseWidthSec     = 0.005;   % only used if resetMode = 'blocking' later
+
+cfg.eeg.codes = struct();
+cfg.eeg.codes.trialStart = 11;
+cfg.eeg.codes.s1On       = 21;
+cfg.eeg.codes.isiOn      = 22;
+cfg.eeg.codes.s2On       = 23;
+cfg.eeg.codes.gapOn      = 24;
+cfg.eeg.codes.q1On       = 31;
+cfg.eeg.codes.q2On       = 32;
+cfg.eeg.codes.trialEnd   = 12;
+cfg.eeg.codes.pasBase    = 40; % 40 + PAS digit
+cfg.eeg.codes.locBase    = 50; % 50 + localisation digit
+
+cfg.eeg.markerPolicy = struct();
+cfg.eeg.markerPolicy.markPracticeTrials = false;
+cfg.eeg.markerPolicy.markAuxScreens     = false;
+cfg.eeg.markerPolicy.markResponses      = true;
+cfg.eeg.markerPolicy.markMainTrials     = true;
+
 % ---- Display profile ----
 % Options: 'viewpixx' (lab monitor), 'default' (general monitor fallback)
 cfg.displayProfile = 'viewpixx';
@@ -254,6 +282,25 @@ try
     );
     flipN = 0;
     cfg.loggedFlip = @loggedFlip;
+
+    cfg.trigger = initSerialTrigger(cfg.eeg);
+
+    triggerLog = struct( ...
+        'idx', {}, ...
+        'label', {}, ...
+        'context', {}, ...
+        'trialNum', {}, ...
+        'blockNum', {}, ...
+        'code', {}, ...
+        'linkedFlipLabel', {}, ...
+        'linkedFlipTime', {}, ...
+        'sendStart', {}, ...
+        'sendEnd', {}, ...
+        'sendDurationMs', {}, ...
+        'enabled', {}, ...
+        'error', {} ...
+    );
+    triggerN = 0;
 
     [xCentre, yCentre] = RectCenter(windowRect);
 
@@ -828,6 +875,13 @@ try
         disp(missedOnly);
     end
 
+    if exist('triggerLog', 'var') && ~isempty(triggerLog)
+        triggerLogT = struct2table(triggerLog);
+        triggerLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_TriggerLog_%s.csv', cfg.participantID, timestamp));
+        writetable(triggerLogT, triggerLogFile);
+        fprintf('Saved trigger log CSV: %s\n', triggerLogFile);
+    end
+
     KbStrokeWait;
 
 catch ME
@@ -851,6 +905,54 @@ catch ME
 
     rethrow(ME);
 end
+
+    function emitTrigger(label, context, trialNum, blockNum, code, linkedFlipLabel, linkedFlipTime)
+
+        if nargin < 7
+            linkedFlipTime = NaN;
+        end
+        if nargin < 6
+            linkedFlipLabel = '';
+        end
+
+        if isnan(code) || code < 0 || code > 255
+            return;
+        end
+
+        sendStart = GetSecs;
+        errMsg = '';
+        didEnable = false;
+
+        try
+            if isfield(cfg, 'trigger') && cfg.trigger.enabled && ~isempty(cfg.trigger.handle)
+                IOPort('Write', cfg.trigger.handle, uint8(code), 0);
+                didEnable = true;
+                % resetMode 'blocking' / zero reset deferred to a later phase
+            end
+        catch ME
+            errMsg = mExceptionText(ME);
+            if isfield(cfg, 'eeg') && isfield(cfg.eeg, 'warnOnSendError') && cfg.eeg.warnOnSendError
+                warning('EEG trigger send failed (%d): %s', code, errMsg);
+            end
+        end
+
+        sendEnd = GetSecs;
+
+        triggerN = triggerN + 1;
+        triggerLog(triggerN).idx = triggerN;
+        triggerLog(triggerN).label = string(label);
+        triggerLog(triggerN).context = string(context);
+        triggerLog(triggerN).trialNum = trialNum;
+        triggerLog(triggerN).blockNum = blockNum;
+        triggerLog(triggerN).code = code;
+        triggerLog(triggerN).linkedFlipLabel = string(linkedFlipLabel);
+        triggerLog(triggerN).linkedFlipTime = linkedFlipTime;
+        triggerLog(triggerN).sendStart = sendStart;
+        triggerLog(triggerN).sendEnd = sendEnd;
+        triggerLog(triggerN).sendDurationMs = 1000 * (sendEnd - sendStart);
+        triggerLog(triggerN).enabled = didEnable;
+        triggerLog(triggerN).error = string(errMsg);
+    end
 
     function [vbl, stimOnsetTime, flipTimestamp, missed] = loggedFlip(label, context, trialNum, blockNum, when)
 
@@ -2270,11 +2372,57 @@ function qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg)
     Screen('FillRect', window, bg);
 end
 
+function trigger = initSerialTrigger(eegCfg)
+
+    trigger = struct( ...
+        'enabled', false, ...
+        'handle', [], ...
+        'resetMode', 'none', ...
+        'warnOnSendError', true, ...
+        'pulseWidthSec', 0.005);
+
+    if ~isfield(eegCfg, 'enable') || ~eegCfg.enable
+        return;
+    end
+
+    if isfield(eegCfg, 'resetMode')
+        trigger.resetMode = eegCfg.resetMode;
+    end
+    if isfield(eegCfg, 'warnOnSendError')
+        trigger.warnOnSendError = eegCfg.warnOnSendError;
+    end
+    if isfield(eegCfg, 'pulseWidthSec')
+        trigger.pulseWidthSec = eegCfg.pulseWidthSec;
+    end
+
+    try
+        cfgString = sprintf('BaudRate=%d DTR=1 RTS=1', eegCfg.baudRate);
+        trigger.handle = IOPort('OpenSerialPort', eegCfg.serialPort, cfgString);
+        trigger.enabled = true;
+        fprintf('EEG serial trigger enabled on %s @ %d baud.\n', eegCfg.serialPort, eegCfg.baudRate);
+    catch ME
+        trigger.enabled = false;
+        trigger.handle = [];
+        warning('EEG serial trigger disabled: %s', mExceptionText(ME));
+    end
+end
+
+function closeSerialTrigger(cfg)
+    try
+        if isfield(cfg, 'trigger') && isfield(cfg.trigger, 'enabled') && cfg.trigger.enabled && ...
+                isfield(cfg.trigger, 'handle') && ~isempty(cfg.trigger.handle)
+            IOPort('Close', cfg.trigger.handle);
+        end
+    catch
+    end
+end
+
 function cleanup(~, cfg)
     try
         try ListenChar(0); catch, end
         try Priority(0); catch, end
         try KbQueueRelease(cfg.kbDev); catch, end
+        try closeSerialTrigger(cfg); catch, end
         try ShowCursor; catch, end
 
         if isfield(cfg, 'qTex')
