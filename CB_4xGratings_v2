@@ -72,10 +72,12 @@ cfg.eeg.codes.pasBase    = 40; % 40 + PAS digit
 cfg.eeg.codes.locBase    = 50; % 50 + localisation digit
 
 cfg.eeg.markerPolicy = struct();
-cfg.eeg.markerPolicy.markPracticeTrials = false;
-cfg.eeg.markerPolicy.markAuxScreens     = false;
-cfg.eeg.markerPolicy.markResponses      = true;
-cfg.eeg.markerPolicy.markMainTrials     = true;
+cfg.eeg.markerPolicy.markPracticeTrials  = true;
+cfg.eeg.markerPolicy.markPracticeBlock1  = false;
+cfg.eeg.markerPolicy.markPracticeBlock2  = true;
+cfg.eeg.markerPolicy.markAuxScreens      = false;
+cfg.eeg.markerPolicy.markResponses       = true;
+cfg.eeg.markerPolicy.markMainTrials      = true;
 
 % ---- Display profile ----
 % Options: 'viewpixx' (lab monitor), 'default' (general monitor fallback)
@@ -282,6 +284,7 @@ try
     );
     flipN = 0;
     cfg.loggedFlip = @loggedFlip;
+    cfg.emitTrigger = @emitTrigger;
 
     cfg.trigger = initSerialTrigger(cfg.eeg);
 
@@ -294,6 +297,7 @@ try
         'code', {}, ...
         'linkedFlipLabel', {}, ...
         'linkedFlipTime', {}, ...
+        'rtFromLinkedFlipMs', {}, ...
         'sendStart', {}, ...
         'sendEnd', {}, ...
         'sendDurationMs', {}, ...
@@ -570,6 +574,11 @@ try
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
         pasRT = pasTime - tQ1;
         pas   = keyToDigit(pasKey);
+        if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
+            if ~isnan(pas) && pas >= 1 && pas <= 4
+                emitTrigger('pasResponse', 'main_trial', t, blockNum, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tQ1);
+            end
+        end
         
         % Define "detection" from PAS
         hit = double(~isnan(pas) && pas > 1);
@@ -597,6 +606,11 @@ try
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
         resp2RT = resp2Time - tQ2;
         resp2   = keyToDigit(resp2Key);
+        if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
+            if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
+                emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + resp2, 'Q2_Loc', tQ2);
+            end
+        end
         
         % Localisation correctness (only meaningful on change trials)
         if trial.isChange
@@ -914,6 +928,20 @@ try
         fprintf('>half frame: %d\n', sum(triggerLogT.sendDurationMs > 1000 * 0.5 * ifi));
         fprintf('>one frame: %d\n', sum(triggerLogT.sendDurationMs > 1000 * ifi));
 
+        fprintf('\nTrigger count summary by context + label:\n');
+        [G, ctxGroup, labelGroup] = findgroups(triggerLogT.context, triggerLogT.label);
+        triggerCounts = splitapply(@numel, triggerLogT.code, G);
+        for ii = 1:numel(triggerCounts)
+            fprintf('  %-20s %-16s count=%4d\n', char(ctxGroup(ii)), char(labelGroup(ii)), triggerCounts(ii));
+        end
+
+        fprintf('\nTrigger count by code:\n');
+        [Gc, codeGroup, labelGroupC] = findgroups(triggerLogT.code, triggerLogT.label);
+        codeCounts = splitapply(@numel, triggerLogT.code, Gc);
+        for ii = 1:numel(codeCounts)
+            fprintf('  code=%3d  %-16s  count=%4d\n', codeGroup(ii), char(labelGroupC(ii)), codeCounts(ii));
+        end
+
         triggerLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_TriggerLog_%s.csv', cfg.participantID, timestamp));
         writetable(triggerLogT, triggerLogFile);
         fprintf('Saved trigger log CSV: %s\n', triggerLogFile);
@@ -984,6 +1012,11 @@ end
         triggerLog(triggerN).code = code;
         triggerLog(triggerN).linkedFlipLabel = string(linkedFlipLabel);
         triggerLog(triggerN).linkedFlipTime = linkedFlipTime;
+        if ~isnan(linkedFlipTime)
+            triggerLog(triggerN).rtFromLinkedFlipMs = 1000 * (sendStart - linkedFlipTime);
+        else
+            triggerLog(triggerN).rtFromLinkedFlipMs = NaN;
+        end
         triggerLog(triggerN).sendStart = sendStart;
         triggerLog(triggerN).sendEnd = sendEnd;
         triggerLog(triggerN).sendDurationMs = 1000 * (sendEnd - sendStart);
@@ -2697,6 +2730,11 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     % --- Build mixed practice trial list (STD / NCH / EASY) ---
     pTrials = buildPracticeTrialList(pracCfg, allowedOri);
 
+    isPractice2 = strcmp(pracCfg.name, 'Practice Block 2');
+    doPracticeTriggers = isPractice2 && ...
+        isfield(cfg.eeg.markerPolicy, 'markPracticeBlock2') && ...
+        cfg.eeg.markerPolicy.markPracticeBlock2;
+
     % --- Practice metrics counters (Phase C scaffold) ---
     m = struct();
     
@@ -2737,25 +2775,40 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             Screen('DrawingFinished', window);
             vblTargetFixOn = GetSecs + 0.5 * ifi;
             [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', pracCfg.name, p, NaN, vblTargetFixOn);
+            if doPracticeTriggers
+                cfg.emitTrigger('trialStart', pracCfg.name, p, NaN, cfg.eeg.codes.trialStart, 'FixOn', tFixOn);
+            end
             tTrialStart = tFixOn;
 
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
             [tS1,  ~, ~, ~]  = cfg.loggedFlip('S1', pracCfg.name, p, NaN, vblTargetS1);
+            if doPracticeTriggers
+                cfg.emitTrigger('s1On', pracCfg.name, p, NaN, cfg.eeg.codes.s1On, 'S1', tS1);
+            end
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
             [tISI, ~, ~, ~] = cfg.loggedFlip('ISI', pracCfg.name, p, NaN, vblTargetISI);
+            if doPracticeTriggers
+                cfg.emitTrigger('isiOn', pracCfg.name, p, NaN, cfg.eeg.codes.isiOn, 'ISI', tISI);
+            end
 
             drawGratings(window, gratingTex, allRects, oriS2, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
             [tS2,  ~, ~, ~]  = cfg.loggedFlip('S2', pracCfg.name, p, NaN, vblTargetS2);
+            if doPracticeTriggers
+                cfg.emitTrigger('s2On', pracCfg.name, p, NaN, cfg.eeg.codes.s2On, 'S2', tS2);
+            end
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
             [tGap, ~, ~, ~] = cfg.loggedFlip('Gap', pracCfg.name, p, NaN, vblTargetGap);
+            if doPracticeTriggers
+                cfg.emitTrigger('gapOn', pracCfg.name, p, NaN, cfg.eeg.codes.gapOn, 'Gap', tGap);
+            end
     
             % ---- Questions ----
 
@@ -2763,8 +2816,16 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             Screen('DrawTexture', window, cfg.qTex.PAS);
             vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
             [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', pracCfg.name, p, NaN, vblTargetQ1);
+            if doPracticeTriggers
+                cfg.emitTrigger('q1On', pracCfg.name, p, NaN, cfg.eeg.codes.q1On, 'Q1_PAS', tQ1);
+            end
             [pasKey, ~] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
             pas = keyToDigit(pasKey);
+            if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
+                if ~isnan(pas) && pas >= 1 && pas <= 4
+                    cfg.emitTrigger('pasResponse', pracCfg.name, p, NaN, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tQ1);
+                end
+            end
             
             detected = double(~isnan(pas) && pas > 1);
     
@@ -2783,8 +2844,16 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             Screen('DrawingFinished', window);
             vblTargetQ2 = GetSecs + 0.5 * ifi;
             [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', pracCfg.name, p, NaN, vblTargetQ2);
+            if doPracticeTriggers
+                cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On, 'Q2_Loc', tQ2);
+            end
             [resp2Key, ~] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
             resp2 = keyToDigit(resp2Key);
+            if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
+                if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
+                    cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + resp2, 'Q2_Loc', tQ2);
+                end
+            end
             
             if trial.isChange
                 if isnan(resp2)
@@ -2926,6 +2995,9 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             Screen('DrawingFinished', window);
             vblTargetITI = GetSecs + 0.5 * ifi;
             [tITI, ~, ~, missedITI] = cfg.loggedFlip('ITI', pracCfg.name, p, NaN, vblTargetITI);
+            if doPracticeTriggers
+                cfg.emitTrigger('trialEnd', pracCfg.name, p, NaN, cfg.eeg.codes.trialEnd, 'ITI', tITI);
+            end
             holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
         end
 
