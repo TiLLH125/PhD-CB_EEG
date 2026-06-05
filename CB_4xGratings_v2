@@ -22,6 +22,7 @@ close all;
 % Prevents: "KbQueueCreate ... already in use by GetChar() et al."
 try ListenChar(0); catch, end
 try KbQueueRelease(-1); catch, end
+try IOPort('CloseAll'); catch, end
 
 % ---- Safer "close screens" (in case sca isn't on path temporarily)
 if exist('sca','file') == 2
@@ -49,8 +50,9 @@ cfg.screenNumber = 2;
 % Keyboard device: -1 = default keyboard
 cfg.kbDev = -1;
 
-% ---- EEG serial triggers (phase 1: infrastructure only; no trial markers yet) ----
+% ---- EEG serial triggers (Phase 3: event + response markers on main trials and Practice Block 2) ----
 cfg.eeg.enable            = false;   % default false for safe behavioural testing
+cfg.eeg.requirePort       = true;    % if true, abort clearly if EEG serial port cannot open
 cfg.eeg.serialPort        = 'COM4';
 cfg.eeg.baudRate          = 115200;
 cfg.eeg.warnOnSendError   = true;
@@ -252,6 +254,14 @@ if ~exist(outDir,'dir'), mkdir(outDir); end
 timestamp = datestr(now,'yyyymmdd_HHMMSS');
 outFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FullRun_%s.csv', cfg.participantID, timestamp));
 
+cfg.trigger = initSerialTrigger(cfg.eeg);
+
+if cfg.eeg.enable && cfg.eeg.requirePort && ~cfg.trigger.enabled
+    error(['EEG serial trigger port could not be opened. ' ...
+           'Close any programme using %s, run IOPort(''CloseAll''), reconnect the trigger device if needed, then try again.'], ...
+           cfg.eeg.serialPort);
+end
+
 try
     if cfg.debugWindow
         [window, windowRect] = PsychImaging('OpenWindow', cfg.screenNumber, bg, [100 100 900 700]);
@@ -285,8 +295,6 @@ try
     flipN = 0;
     cfg.loggedFlip = @loggedFlip;
     cfg.emitTrigger = @emitTrigger;
-
-    cfg.trigger = initSerialTrigger(cfg.eeg);
 
     triggerLog = struct( ...
         'idx', {}, ...
@@ -2493,6 +2501,7 @@ function cleanup(~, cfg)
         try Priority(0); catch, end
         try KbQueueRelease(cfg.kbDev); catch, end
         try closeSerialTrigger(cfg); catch, end
+        try IOPort('CloseAll'); catch, end
         try ShowCursor; catch, end
 
         if isfield(cfg, 'qTex')
