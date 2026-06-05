@@ -513,39 +513,59 @@ try
             oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + 90, 180);
         end
 
+        blockNum = ceil(t / cfg.trialsPerBlock);
+
         % ---------------- TIMELINE (scheduled VBL; ESC in ITI/questions/instructions) ----------------
         % Fixation jitter
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         Screen('DrawingFinished', window);
         vblTargetFixOn = GetSecs + 0.5 * ifi;
-        [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetFixOn);
+        [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', 'main_trial', t, blockNum, vblTargetFixOn);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('trialStart', 'main_trial', t, blockNum, cfg.eeg.codes.trialStart, 'FixOn', tFixOn);
+        end
         tTrialStart = tFixOn;
 
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
-        [tS1,  ~, ~, missedS1]  = cfg.loggedFlip('S1', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetS1);
+        [tS1,  ~, ~, missedS1]  = cfg.loggedFlip('S1', 'main_trial', t, blockNum, vblTargetS1);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('s1On', 'main_trial', t, blockNum, cfg.eeg.codes.s1On, 'S1', tS1);
+        end
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
-        [tISI, ~, ~, missedISI] = cfg.loggedFlip('ISI', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetISI);
+        [tISI, ~, ~, missedISI] = cfg.loggedFlip('ISI', 'main_trial', t, blockNum, vblTargetISI);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('isiOn', 'main_trial', t, blockNum, cfg.eeg.codes.isiOn, 'ISI', tISI);
+        end
 
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
-        [tS2,  ~, ~, missedS2]  = cfg.loggedFlip('S2', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetS2);
+        [tS2,  ~, ~, missedS2]  = cfg.loggedFlip('S2', 'main_trial', t, blockNum, vblTargetS2);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('s2On', 'main_trial', t, blockNum, cfg.eeg.codes.s2On, 'S2', tS2);
+        end
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
-        [tGap, ~, ~, missedGap] = cfg.loggedFlip('Gap', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetGap);
+        [tGap, ~, ~, missedGap] = cfg.loggedFlip('Gap', 'main_trial', t, blockNum, vblTargetGap);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('gapOn', 'main_trial', t, blockNum, cfg.eeg.codes.gapOn, 'Gap', tGap);
+        end
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
         Screen('DrawTexture', window, cfg.qTex.PAS);
         vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
-        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetQ1);
+        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, blockNum, vblTargetQ1);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('q1On', 'main_trial', t, blockNum, cfg.eeg.codes.q1On, 'Q1_PAS', tQ1);
+        end
         
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
         pasRT = pasTime - tQ1;
@@ -569,7 +589,10 @@ try
         end
         Screen('DrawingFinished', window);
         vblTargetQ2 = GetSecs + 0.5 * ifi;
-        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetQ2);
+        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, blockNum, vblTargetQ2);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('q2On', 'main_trial', t, blockNum, cfg.eeg.codes.q2On, 'Q2_Loc', tQ2);
+        end
         
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
         resp2RT = resp2Time - tQ2;
@@ -594,7 +617,10 @@ try
         Screen('FillRect', window, bg);
         Screen('DrawingFinished', window);
         vblTargetITI = GetSecs + 0.5 * ifi;
-        [tITI, ~, ~, missedITI] = cfg.loggedFlip('ITI', 'main_trial', t, ceil(t / cfg.trialsPerBlock), vblTargetITI);
+        [tITI, ~, ~, missedITI] = cfg.loggedFlip('ITI', 'main_trial', t, blockNum, vblTargetITI);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('trialEnd', 'main_trial', t, blockNum, cfg.eeg.codes.trialEnd, 'ITI', tITI);
+        end
         holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
 
         % ---------------- QUEST+ POSTERIOR UPDATE (CHANGE trials only) ----------------
@@ -878,6 +904,16 @@ try
 
     if exist('triggerLog', 'var') && ~isempty(triggerLog)
         triggerLogT = struct2table(triggerLog);
+
+        fprintf('\nTrigger timing summary:\n');
+        fprintf('Total trigger attempts: %d\n', height(triggerLogT));
+        fprintf('Enabled sends: %d\n', sum(triggerLogT.enabled));
+        fprintf('Mean send duration: %.3f ms\n', mean(triggerLogT.sendDurationMs));
+        fprintf('Max send duration: %.3f ms\n', max(triggerLogT.sendDurationMs));
+        fprintf('>1 ms: %d\n', sum(triggerLogT.sendDurationMs > 1));
+        fprintf('>half frame: %d\n', sum(triggerLogT.sendDurationMs > 1000 * 0.5 * ifi));
+        fprintf('>one frame: %d\n', sum(triggerLogT.sendDurationMs > 1000 * ifi));
+
         triggerLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_TriggerLog_%s.csv', cfg.participantID, timestamp));
         writetable(triggerLogT, triggerLogFile);
         fprintf('Saved trigger log CSV: %s\n', triggerLogFile);
