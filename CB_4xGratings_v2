@@ -235,9 +235,24 @@ end
 % Keys
 cfg.keys.escape = KbName('ESCAPE');
 cfg.keys.space  = KbName('space');
-cfg.keys.quad   = [KbName('1!') KbName('2@') KbName('3#') KbName('4$')]; 
-cfg.keys.pas    = [KbName('1!') KbName('2@') KbName('3#') KbName('4$')];
-            
+
+% Q1 PAS: left hand (q/w/e/r). Q2 loc: right hand (numpad 7/9/1/3).
+% If numpad keys fail at runtime, run KbName interactively (e.g. KbName('KP_7'))
+% to confirm correct names on this system — do not remap to top-row number keys.
+cfg.keys.pasPhysical = {'q','w','e','r'};
+cfg.keys.pasValues   = [1 2 3 4];
+
+cfg.keys.quadPhysical = {'KP_7','KP_9','KP_1','KP_3'};
+cfg.keys.quadValues   = [1 2 3 4];
+
+cfg.keys.pas  = KbName(cfg.keys.pasPhysical);
+cfg.keys.quad = KbName(cfg.keys.quadPhysical);
+
+fprintf('PAS key mapping: q=1, w=2, e=3, r=4\n');
+fprintf('LOC key mapping: numpad7=1, numpad9=2, numpad1=3, numpad3=4\n');
+fprintf('PAS KbName codes: %s\n', mat2str(cfg.keys.pas));
+fprintf('LOC KbName codes: %s\n', mat2str(cfg.keys.quad));
+
 
 %% ------------------------- SETUP PTB -------------------------
 Screen('Preference','VisualDebugLevel', cfg.visualDebugLevel);
@@ -581,7 +596,7 @@ try
         
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
         pasRT = pasTime - tQ1;
-        pas   = keyToDigit(pasKey);
+        pas   = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
             if ~isnan(pas) && pas >= 1 && pas <= 4
                 emitTrigger('pasResponse', 'main_trial', t, blockNum, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tQ1);
@@ -613,7 +628,7 @@ try
         
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
         resp2RT = resp2Time - tQ2;
-        resp2   = keyToDigit(resp2Key);
+        resp2   = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
             if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
                 emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + resp2, 'Q2_Loc', tQ2);
@@ -2201,11 +2216,25 @@ function drawPAS(window, windowRect, colour, bg, cfg)
     end
 end
 
-function d = keyToDigit(keyCode)
-    if isnan(keyCode), d = NaN; return; end
-    name = KbName(keyCode);
-    if iscell(name), name = name{1}; end
-    d = str2double(name(1));
+function val = keyToMappedValue(keyCode, keyList, valueList)
+    val = NaN;
+    if isempty(keyCode) || (isscalar(keyCode) && isnan(keyCode))
+        return;
+    end
+
+    % Scalar key code from waitForKeyQueue; tolerate vector for safety
+    if ~isscalar(keyCode)
+        idxPress = find(keyCode > 0, 1, 'first');
+        if isempty(idxPress)
+            return;
+        end
+        keyCode = keyList(idxPress);
+    end
+
+    idx = find(keyList == keyCode, 1, 'first');
+    if ~isempty(idx)
+        val = valueList(idx);
+    end
 end
 
 function v = clamp(v, lo, hi)
@@ -2829,7 +2858,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 cfg.emitTrigger('q1On', pracCfg.name, p, NaN, cfg.eeg.codes.q1On, 'Q1_PAS', tQ1);
             end
             [pasKey, ~] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
-            pas = keyToDigit(pasKey);
+            pas = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
             if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
                 if ~isnan(pas) && pas >= 1 && pas <= 4
                     cfg.emitTrigger('pasResponse', pracCfg.name, p, NaN, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tQ1);
@@ -2857,7 +2886,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On, 'Q2_Loc', tQ2);
             end
             [resp2Key, ~] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
-            resp2 = keyToDigit(resp2Key);
+            resp2 = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
             if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
                 if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
                     cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + resp2, 'Q2_Loc', tQ2);
