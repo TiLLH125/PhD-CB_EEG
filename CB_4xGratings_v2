@@ -10,7 +10,7 @@
 %   closest to its target:
 %       1 Blind       -> P(Blind)         ~= 0.725
 %       2 Sensing     -> P(detect)        ~= 0.50
-%       3 Seeing      -> P(loc | aware)   ~= 0.775
+%       3 Seeing      -> P(loc | aware)   ~= 0.65
 
 
 
@@ -155,24 +155,27 @@ cfg.calib.convergenceMinTrials = 40;   % minimum updates per track before freeze
 cfg.calib.convergenceWindow    = 12;   % recent xCurrent values inspected for stability
 cfg.calib.convergenceTolFrames = 1;    % max range in that window for freeze
 
-cfg.calib.questPlus.alphaDetRange = linspace(2, 60, 20);   % detection threshold (frames)
-cfg.calib.questPlus.betaDetRange  = [1 2 3 4 5];           % detection slope
-cfg.calib.questPlus.alphaLocRange = linspace(2, 60, 20);   % localization threshold (frames)
-cfg.calib.questPlus.betaLocRange  = [1 2 3 4 5];           % localization slope
-cfg.calib.questPlus.lambdaRange   = [0 0.02 0.04 0.06];    % constrained lapse
+cfg.calib.questPlus.alphaDetRange = [-20 -15 -10 -6 -3 1 4 8 11 15 19 22 26 29 33 36 40];
+cfg.calib.questPlus.betaDetRange  = [0.00934 0.0136 0.0198 0.0289 0.0421 0.0614 0.0895];
+cfg.calib.questPlus.alphaLocRange = [1 7 13 18 24 30 36 42 48 53 59 65 71 77 83 88 94 100];
+cfg.calib.questPlus.betaLocRange  = [0.00146 0.00246 0.00413 0.00693 0.0116 0.0195 0.0328 0.0551];
+cfg.calib.questPlus.lambdaRange   = [0 0.01 0.02 0.04 0.05];
 cfg.calib.questPlus.gammaLoc      = 0.25;                  % 4-AFC guess rate
 
 cfg.calib.tracks(1).name          = 'Blind';
 cfg.calib.tracks(1).targetOutcome = 'Blind';
 cfg.calib.tracks(1).targetProb    = 0.725;     % aim for ~72.5% Blind (~27.5% detection)
+cfg.calib.tracks(1).startFrames   = 1;
 
 cfg.calib.tracks(2).name          = 'Sensing';
 cfg.calib.tracks(2).targetOutcome = 'PdetThreshold';   % target the 50% detection threshold
 cfg.calib.tracks(2).targetProb    = 0.50;
+cfg.calib.tracks(2).startFrames   = 4;
 
 cfg.calib.tracks(3).name          = 'Seeing';
-cfg.calib.tracks(3).targetOutcome = 'PlocGivenAware';  % aim for 77.5% loc-given-aware
-cfg.calib.tracks(3).targetProb    = 0.775;
+cfg.calib.tracks(3).targetOutcome = 'PlocGivenAware';  % P(loc correct | aware); MOCS-informed target
+cfg.calib.tracks(3).targetProb    = 0.65;
+cfg.calib.tracks(3).startFrames   = 41;
 
 % Trial counts
 cfg.debug.trialLog = true;
@@ -383,22 +386,31 @@ try
         'nOutcomes', 3);
 
     tracks = repmat(struct( ...
-        'name', '', 'targetOutcome', '', 'targetProb', 0, ...
-        'xCurrent', cfg.startDurFrames, 'xHistory', [], ...
+        'name', '', 'targetOutcome', '', 'targetProb', 0, 'startFrames', NaN, ...
+        'xCurrent', NaN, 'xHistory', [], ...
         'nUpdates', 0, 'converged', false, ...
         'frozen', false, 'frozenFrames', NaN), 1, 3);
     for k = 1:3
         tracks(k).name          = cfg.calib.tracks(k).name;
         tracks(k).targetOutcome = cfg.calib.tracks(k).targetOutcome;
         tracks(k).targetProb    = cfg.calib.tracks(k).targetProb;
+        tracks(k).startFrames   = cfg.calib.tracks(k).startFrames;
+        tracks(k).xCurrent      = cfg.calib.tracks(k).startFrames;
     end
 
     fprintf('QUEST+ initialized: posterior over %d parameter combinations, %d candidate stimuli, 3 outcomes.\n', ...
         size(questData.psiParamsDomain, 1), numel(qp.stimDomain));
-    fprintf('Tracks: %s (target=%.3f), %s (target=%.3f), %s (target=%.3f)\n', ...
-        tracks(1).name, tracks(1).targetProb, ...
-        tracks(2).name, tracks(2).targetProb, ...
-        tracks(3).name, tracks(3).targetProb);
+    fprintf('\nQUEST+ MOCS-informed setup:\n');
+    for k = 1:3
+        fprintf('Track %d %s: target=%s, targetProb=%.3f, startFrames=%d, xCurrent=%d\n', ...
+            k, tracks(k).name, tracks(k).targetOutcome, tracks(k).targetProb, ...
+            tracks(k).startFrames, tracks(k).xCurrent);
+    end
+    nAD = numel(qp.alphaDetRange); nBD = numel(qp.betaDetRange);
+    nAL = numel(qp.alphaLocRange); nBL = numel(qp.betaLocRange);
+    nL  = numel(qp.lambdaRange);
+    fprintf('QUEST+ parameter grid: alphaDet=%d betaDet=%d alphaLoc=%d betaLoc=%d lambda=%d total=%d\n', ...
+        nAD, nBD, nAL, nBL, nL, nAD*nBD*nAL*nBL*nL);
     
 
     %% ------------------------- STIMULUS GEOMETRY ---------------------------
@@ -512,6 +524,7 @@ try
 
     % --- QUEST+ tracker fields are stored inside the tracks struct (set up above)
 
+    firstTrackUsePrinted = false(1, 3);
 
     for t = 1:cfg.nTotal
         checkAbort(cfg);
@@ -524,6 +537,11 @@ try
             durFrames = tracks(k).frozenFrames;
         else
             durFrames = clamp(round(tracks(k).xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
+        end
+
+        if ~firstTrackUsePrinted(k)
+            fprintf('First %s track trial used %d frames\n', tracks(k).name, durFrames);
+            firstTrackUsePrinted(k) = true;
         end
 
         % Build S1
@@ -786,7 +804,7 @@ try
     trackFrames = nan(1,3);
     for kk = 1:3
         if isempty(tracks(kk).xHistory)
-            trackFrames(kk) = cfg.startDurFrames;
+            trackFrames(kk) = tracks(kk).startFrames;
         else
             n = min(NRecent, numel(tracks(kk).xHistory));
             trackFrames(kk) = round(median(tracks(kk).xHistory(end-n+1:end)));
@@ -846,6 +864,10 @@ try
     T.track1_frozenFramesFinal = repmat(tracks(1).frozenFrames, height(T), 1);
     T.track2_frozenFramesFinal = repmat(tracks(2).frozenFrames, height(T), 1);
     T.track3_frozenFramesFinal = repmat(tracks(3).frozenFrames, height(T), 1);
+
+    T.track1_startFrames = repmat(cfg.calib.tracks(1).startFrames, height(T), 1);
+    T.track2_startFrames = repmat(cfg.calib.tracks(2).startFrames, height(T), 1);
+    T.track3_startFrames = repmat(cfg.calib.tracks(3).startFrames, height(T), 1);
 
     T.qpAlphaDet = repmat(psiParamsMAP(1), height(T), 1);
     T.qpBetaDet  = repmat(psiParamsMAP(2), height(T), 1);
