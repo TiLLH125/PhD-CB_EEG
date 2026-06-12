@@ -41,7 +41,7 @@ cfg.skipSyncTests    = 1;         % 1 while debugging; use 0 for real data
 
 % Screen selection (don't use 0 unless you WANT desktop-spanning)
 % cfg.screenNumber = max(Screen('Screens'));
-cfg.screenNumber = 2;
+cfg.screenNumber = 0;
 
 % Keyboard device: -1 = default keyboard
 cfg.kbDev = -1;
@@ -302,6 +302,24 @@ try
     Screen('TextSize', window, 45);
 
     ifi = Screen('GetFlipInterval', window);
+
+    flipLog = struct( ...
+        'idx', {}, ...
+        'label', {}, ...
+        'context', {}, ...
+        'trialNum', {}, ...
+        'blockNum', {}, ...
+        'scheduled', {}, ...
+        'when', {}, ...
+        'vbl', {}, ...
+        'stimOnsetTime', {}, ...
+        'flipTimestamp', {}, ...
+        'missed', {}, ...
+        'missedFlag', {} ...
+    );
+    flipN = 0;
+    cfg.loggedFlip = @loggedFlip;
+
     [xCentre, yCentre] = RectCenter(windowRect);
 
     % ---- Display geometry conversion for visual-angle locked stimuli ----
@@ -512,11 +530,13 @@ try
             oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + 90, 180);
         end
 
+        blockNum = ceil(t / cfg.trialsPerBlock);
+
         % ---------------- TIMELINE (ESC checked during each hold) ----------------
         % Fixation jitter
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tFixOn = Screen('Flip', window);
+        [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', 'main_trial', t, blockNum, NaN);
         if cfg.eeg.markerPolicy.alignTrialStartToFixationFlip
             sendTrigger(cfg.trigger, cfg.eeg.codes.trialStart);
         end
@@ -526,33 +546,33 @@ try
         % S1
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tS1 = Screen('Flip', window);
+        [tS1, ~, ~, missedS1] = cfg.loggedFlip('S1', 'main_trial', t, blockNum, NaN);
         sendTrigger(cfg.trigger, cfg.eeg.codes.s1On);
         holdForSecondsWithAbort(tS1 + durFrames*ifi, cfg);
 
         % ISI
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tISI = Screen('Flip', window);
+        [tISI, ~, ~, missedISI] = cfg.loggedFlip('ISI', 'main_trial', t, blockNum, NaN);
         sendTrigger(cfg.trigger, cfg.eeg.codes.isiOn);
         holdForSecondsWithAbort(tISI + cfg.ISI_frames*ifi, cfg);
 
         % S2
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tS2 = Screen('Flip', window);
+        [tS2, ~, ~, missedS2] = cfg.loggedFlip('S2', 'main_trial', t, blockNum, NaN);
         sendTrigger(cfg.trigger, cfg.eeg.codes.s2On);
         holdForSecondsWithAbort(tS2 + durFrames*ifi, cfg);
 
         % Gap
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-        tGap = Screen('Flip', window);
+        [tGap, ~, ~, missedGap] = cfg.loggedFlip('Gap', 'main_trial', t, blockNum, NaN);
         holdForSecondsWithAbort(tGap + cfg.gap_frames*ifi, cfg);
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
         drawPAS(window, windowRect, black, bg, cfg);
-        tQ1 = Screen('Flip', window);
+        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, blockNum, NaN);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q1On);
         
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
@@ -578,7 +598,7 @@ try
                 
         % Q2 (Localise) — ALWAYS ask (even if PAS == 1)
         drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
-        tQ2 = Screen('Flip', window);
+        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, blockNum, NaN);
         sendTrigger(cfg.trigger, cfg.eeg.codes.q2On);
         
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
@@ -609,7 +629,7 @@ try
         % ITI
         % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         Screen('FillRect', window, bg);
-        tITI = Screen('Flip', window);
+        [tITI, ~, ~, missedITI] = cfg.loggedFlip('ITI', 'main_trial', t, blockNum, NaN);
         if cfg.eeg.markerPolicy.alignTrialEndToItiOnset
             sendTrigger(cfg.trigger, cfg.eeg.codes.trialEnd);
         end
@@ -636,7 +656,8 @@ try
                 end
             end
 
-            if tracks(k).nUpdates >= cfg.calib.convergenceMinTrials && ...
+            if ~tracks(k).frozen && ...
+               tracks(k).nUpdates >= cfg.calib.convergenceMinTrials && ...
                numel(tracks(k).xHistory) >= cfg.calib.convergenceWindow
                 w = tracks(k).xHistory(end-cfg.calib.convergenceWindow+1:end);
                 if (max(w) - min(w)) <= cfg.calib.convergenceTolFrames
@@ -670,6 +691,20 @@ try
         results(t).tS1 = tS1;
         results(t).tISI = tISI;
         results(t).tS2 = tS2;
+        results(t).tGap = tGap;
+        results(t).actualFixFrames = (tS1 - tFixOn) / ifi;
+        results(t).actualS1Frames = (tISI - tS1) / ifi;
+        results(t).actualISIFrames = (tS2 - tISI) / ifi;
+        results(t).actualS2Frames = (tGap - tS2) / ifi;
+        results(t).actualGapFrames = (tQ1 - tGap) / ifi;
+        results(t).missedFixOn = missedFixOn;
+        results(t).missedS1 = missedS1;
+        results(t).missedISI = missedISI;
+        results(t).missedS2 = missedS2;
+        results(t).missedGap = missedGap;
+        results(t).missedQ1 = missedQ1;
+        results(t).missedQ2 = missedQ2;
+        results(t).missedITI = missedITI;
         results(t).tQ1 = tQ1;
         results(t).tQ2 = tQ2;
 
@@ -763,6 +798,17 @@ try
 
     T = struct2table(results);
 
+    fprintf('\nActual main trial frame duration summary:\n');
+    durVars = {'actualFixFrames','actualS1Frames','actualISIFrames','actualS2Frames','actualGapFrames'};
+    for dv = 1:numel(durVars)
+        x = T.(durVars{dv});
+        x = x(~isnan(x));
+        if ~isempty(x)
+            fprintf('  %s: mean=%.3f min=%.3f max=%.3f sd=%.3f\n', ...
+                durVars{dv}, mean(x), min(x), max(x), std(x));
+        end
+    end
+
     % --- Add final calibration summary values as columns (same value every row) ---
     T.calibTimestamp = repmat(string(timestamp), height(T), 1);
 
@@ -837,7 +883,44 @@ try
 
     endText = 'You have finished the experiment, well done!\n\nPress any key to exit.';
     DrawFormattedText(window, endText, 'center', 'center', black, 90);
-    Screen('Flip', window);
+    cfg.loggedFlip('experiment_end', 'experiment_end', NaN, NaN, NaN);
+
+    if exist('flipLog', 'var') && ~isempty(flipLog)
+        flipLogT = struct2table(flipLog);
+
+        flipLogT.missedMs = 1000 * flipLogT.missed;
+        flipLogT.over1ms = flipLogT.missed > 0.001;
+        flipLogT.overHalfFrame = flipLogT.missed > 0.5 * ifi;
+        flipLogT.overOneFrame = flipLogT.missed > ifi;
+
+        flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_%s.csv', cfg.participantID, timestamp));
+        writetable(flipLogT, flipLogFile);
+        fprintf('Saved flip log CSV: %s\n', flipLogFile);
+
+        fprintf('\nFull missed flip summary by context + label:\n');
+
+        [G, ctxGroup, labelGroup] = findgroups(flipLogT.context, flipLogT.label);
+
+        totalFlips = splitapply(@numel, flipLogT.missed, G);
+        nPositive = splitapply(@(x) sum(x > 0), flipLogT.missed, G);
+        maxMissedMs = splitapply(@(x) max(1000*x), flipLogT.missed, G);
+        nOver1ms = splitapply(@(x) sum(x > 0.001), flipLogT.missed, G);
+        nOverHalfFrame = splitapply(@(x) sum(x > 0.5 * ifi), flipLogT.missed, G);
+        nOverOneFrame = splitapply(@(x) sum(x > ifi), flipLogT.missed, G);
+
+        for ii = 1:numel(totalFlips)
+            fprintf('  %-20s %-24s total=%4d missed=%3d maxMs=%8.3f >1ms=%3d >halfF=%3d >1F=%3d\n', ...
+                char(ctxGroup(ii)), char(labelGroup(ii)), ...
+                totalFlips(ii), nPositive(ii), maxMissedMs(ii), ...
+                nOver1ms(ii), nOverHalfFrame(ii), nOverOneFrame(ii));
+        end
+
+        fprintf('\nMissed flips only:\n');
+        missedOnly = flipLogT(flipLogT.missedFlag, ...
+            {'idx','context','label','trialNum','blockNum','scheduled','when','vbl','missed','missedMs','over1ms','overHalfFrame','overOneFrame'});
+        disp(missedOnly);
+    end
+
     KbStrokeWait;
 
 catch ME
@@ -859,8 +942,52 @@ catch ME
     end
     end
 
+    try
+        if exist('flipLog', 'var') && ~isempty(flipLog) && exist('ifi', 'var')
+            flipLogT = struct2table(flipLog);
+            flipLogT.missedMs = 1000 * flipLogT.missed;
+            flipLogT.over1ms = flipLogT.missed > 0.001;
+            flipLogT.overHalfFrame = flipLogT.missed > 0.5 * ifi;
+            flipLogT.overOneFrame = flipLogT.missed > ifi;
+
+            flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_PARTIAL_%s.csv', cfg.participantID, timestamp));
+            writetable(flipLogT, flipLogFile);
+            fprintf('Saved partial flip log CSV: %s\n', flipLogFile);
+        end
+    catch logME
+        fprintf(2, 'Could not save partial flip log: %s\n', logME.message);
+    end
+
     rethrow(ME);
 end
+
+    function [vbl, stimOnsetTime, flipTimestamp, missed] = loggedFlip(label, context, trialNum, blockNum, when)
+
+        if nargin < 5 || isempty(when) || isnan(when)
+            [vbl, stimOnsetTime, flipTimestamp, missed] = Screen('Flip', window);
+            scheduled = false;
+            whenVal = NaN;
+        else
+            [vbl, stimOnsetTime, flipTimestamp, missed] = Screen('Flip', window, when);
+            scheduled = true;
+            whenVal = when;
+        end
+
+        flipN = flipN + 1;
+        flipLog(flipN).idx = flipN;
+        flipLog(flipN).label = string(label);
+        flipLog(flipN).context = string(context);
+        flipLog(flipN).trialNum = trialNum;
+        flipLog(flipN).blockNum = blockNum;
+        flipLog(flipN).scheduled = scheduled;
+        flipLog(flipN).when = whenVal;
+        flipLog(flipN).vbl = vbl;
+        flipLog(flipN).stimOnsetTime = stimOnsetTime;
+        flipLog(flipN).flipTimestamp = flipTimestamp;
+        flipLog(flipN).missed = missed;
+        flipLog(flipN).missedFlag = missed > 0;
+    end
+
 end
 
 %% ========================= LOCAL FUNCTIONS =========================
@@ -910,7 +1037,7 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.instrGrey);
+    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.instrGrey, 'instrGrey', 'instructions');
 
     KbQueueFlush(cfg.kbDev);
     holdForSecondsWithAbort(tOn + lockSec, cfg);
@@ -927,7 +1054,7 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
 
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.instrActive);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.instrActive, 'instrActive', 'instructions');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1055,7 +1182,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.overviewGrey);
+    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.overviewGrey, 'overviewGrey', 'instructions');
 
     % Lockout (ESC still works)
     KbQueueFlush(cfg.kbDev);
@@ -1084,7 +1211,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
 
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.overviewActive);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.overviewActive, 'overviewActive', 'instructions');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1135,7 +1262,7 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1Grey);
+    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1Grey, 'practice1Grey', 'practice_intro');
 
     KbQueueFlush(cfg.kbDev);
 
@@ -1154,7 +1281,7 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     drawFirstInstrBody(window, practiceBodyY, black, tcfg, practice1Segs, practice1SegBold);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1Active);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1Active, 'practice1Active', 'practice_intro');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1173,7 +1300,7 @@ function showPractice1BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1BeginActive);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice1BeginActive, 'practice1Begin', 'practice_intro');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1222,7 +1349,7 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Grey);
+    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Grey, 'practice2Grey', 'practice_intro');
 
     KbQueueFlush(cfg.kbDev);
 
@@ -1244,7 +1371,7 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Active);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Active, 'practice2Active', 'practice_intro');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1263,7 +1390,7 @@ function showPractice2BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Active);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.practice2Active, 'practice2Begin', 'practice_intro');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1303,7 +1430,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.calibIntroGrey);
+    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.calibIntroGrey, 'calibIntroGrey', 'main_intro');
 
     KbQueueFlush(cfg.kbDev);
 
@@ -1322,7 +1449,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.calibIntroActive);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.calibIntroActive, 'calibIntroActive', 'main_intro');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1341,7 +1468,7 @@ function showMainTrialBeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.mainBeginActive);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.mainBeginActive, 'mainBegin', 'main_intro');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1369,7 +1496,7 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
-    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockBreakGrey);
+    tOn = emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockBreakGrey, 'blockBreakGrey', 'block_break');
     KbQueueFlush(cfg.kbDev);
     if lockSec > 0
         holdForSecondsWithAbort(tOn + lockSec, cfg);
@@ -1383,7 +1510,7 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
     DrawFormattedText(window, mergedTxt, 'center', 'center', black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockBreakActive);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockBreakActive, 'blockBreakActive', 'block_break');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -1402,7 +1529,7 @@ function showBlockResumeScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
     Screen('TextStyle', window, 1);
     DrawFormattedText(window, titleTxt, 'center', 'center', black);
     Screen('TextStyle', window, 0);
-    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockResumeActive);
+    emitAuxFlip(window, cfg, cfg.eeg.codes.aux.blockResumeActive, 'blockResume', 'block_break');
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
@@ -2211,6 +2338,20 @@ function r = emptyResultRow()
         'tS1', NaN, ...
         'tISI', NaN, ...
         'tS2', NaN, ...
+        'tGap', NaN, ...
+        'actualFixFrames', NaN, ...
+        'actualS1Frames', NaN, ...
+        'actualISIFrames', NaN, ...
+        'actualS2Frames', NaN, ...
+        'actualGapFrames', NaN, ...
+        'missedFixOn', NaN, ...
+        'missedS1', NaN, ...
+        'missedISI', NaN, ...
+        'missedS2', NaN, ...
+        'missedGap', NaN, ...
+        'missedQ1', NaN, ...
+        'missedQ2', NaN, ...
+        'missedITI', NaN, ...
         'tQ1', NaN, ...
         'tQ2', NaN, ...
         'resp2', NaN, ...
@@ -2302,11 +2443,21 @@ function emitSerialAndPixel(window, cfg, code)
     sendTrigger(cfg.trigger, code);
 end
 
-function tFlip = emitAuxFlip(window, cfg, code)
+function tFlip = emitAuxFlip(window, cfg, code, flipLabel, flipContext)
+    if nargin < 4
+        flipLabel = '';
+    end
+    if nargin < 5
+        flipContext = 'instructions';
+    end
     if isfield(cfg, 'eeg') && isfield(cfg.eeg, 'markerPolicy') && cfg.eeg.markerPolicy.markAuxScreens
         emitSerialAndPixel(window, cfg, code);
     end
-    tFlip = Screen('Flip', window);
+    if ~isempty(flipLabel) && isfield(cfg, 'loggedFlip') && ~isempty(cfg.loggedFlip)
+        [tFlip, ~, ~, ~] = cfg.loggedFlip(flipLabel, flipContext, NaN, NaN, NaN);
+    else
+        tFlip = Screen('Flip', window);
+    end
 end
 
 function emitAuxSpaceEcho(window, cfg, code, bg)
@@ -2590,6 +2741,9 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     
     m.nChange = 0; m.nChange_detect = 0; m.nChange_see = 0;
 
+    context = pracCfg.name;
+    blockNum = NaN;
+
         for p = 1:numel(pTrials)
             trial = pTrials(p);
                 checkAbort(cfg);
@@ -2616,7 +2770,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % Fixation jitter
             jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tFixOn = Screen('Flip', window);
+            [tFixOn, ~, ~, ~] = cfg.loggedFlip('FixOn', context, p, blockNum, NaN);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.trialStart);
             end
@@ -2626,7 +2780,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % S1
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tS1 = Screen('Flip', window);
+            [tS1, ~, ~, ~] = cfg.loggedFlip('S1', context, p, blockNum, NaN);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.s1On);
             end
@@ -2634,7 +2788,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     
             % ISI (same as main)
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tISI = Screen('Flip', window);
+            [tISI, ~, ~, ~] = cfg.loggedFlip('ISI', context, p, blockNum, NaN);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.isiOn);
             end
@@ -2643,7 +2797,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % S2
             drawGratings(window, gratingTex, allRects, oriS2, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tS2 = Screen('Flip', window);
+            [tS2, ~, ~, ~] = cfg.loggedFlip('S2', context, p, blockNum, NaN);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.s2On);
             end
@@ -2651,14 +2805,14 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     
             % Gap
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
-            tGap = Screen('Flip', window);
+            [tGap, ~, ~, ~] = cfg.loggedFlip('Gap', context, p, blockNum, NaN);
             holdForSecondsWithAbort(tGap + cfg.gap_frames*ifi, cfg);
     
             % ---- Questions ----
 
             % Q1 (PAS)
             drawPAS(window, windowRect, black, bg, cfg);
-            tQ1 = Screen('Flip', window);
+            [tQ1, ~, ~, ~] = cfg.loggedFlip('Q1_PAS', context, p, blockNum, NaN);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.q1On);
             end
@@ -2682,7 +2836,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             
             % Q2 (ALWAYS)
             drawQuadrantPrompt(window, windowRect, black, bg, q2Prompt, cfg);
-            Screen('Flip', window);
+            [tQ2, ~, ~, ~] = cfg.loggedFlip('Q2_Loc', context, p, blockNum, NaN);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.q2On);
             end
@@ -2818,7 +2972,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
                 end
                 
-                Screen('Flip', window);
+                cfg.loggedFlip('Feedback', context, p, blockNum, NaN);
         
         
                 if cfg.practice.feedbackWaitForSpace
@@ -2831,7 +2985,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % ITI
             % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             Screen('FillRect', window, bg);
-            tITI = Screen('Flip', window);
+            [tITI, ~, ~, ~] = cfg.loggedFlip('ITI', context, p, blockNum, NaN);
             if cfg.eeg.markerPolicy.markPracticeTrials
                 sendTrigger(cfg.trigger, cfg.eeg.codes.practice.trialEnd);
             end
