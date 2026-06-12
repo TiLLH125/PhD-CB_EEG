@@ -346,6 +346,13 @@ try
     cfg.ITI_frames      = max(0, round(cfg.ITI_sec / ifi));
     cfg.fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
 
+    fprintf('\nTiming configuration:\n');
+    fprintf('  ifi = %.9f sec (%.3f Hz)\n', ifi, 1/ifi);
+    fprintf('  cfg.ISI_frames = %d (%.3f ms)\n', cfg.ISI_frames, 1000*cfg.ISI_frames*ifi);
+    fprintf('  cfg.gap_frames = %d (%.3f ms)\n', cfg.gap_frames, 1000*cfg.gap_frames*ifi);
+    fprintf('  cfg.ITI_frames = %d (%.3f ms)\n', cfg.ITI_frames, 1000*cfg.ITI_frames*ifi);
+    fprintf('  cfg.fixJitterFrames = [%d %d]\n', cfg.fixJitterFrames(1), cfg.fixJitterFrames(2));
+
     Priority(0);
     HideCursor;
 
@@ -692,11 +699,48 @@ try
         results(t).tISI = tISI;
         results(t).tS2 = tS2;
         results(t).tGap = tGap;
-        results(t).actualFixFrames = (tS1 - tFixOn) / ifi;
-        results(t).actualS1Frames = (tISI - tS1) / ifi;
-        results(t).actualISIFrames = (tS2 - tISI) / ifi;
-        results(t).actualS2Frames = (tGap - tS2) / ifi;
-        results(t).actualGapFrames = (tQ1 - tGap) / ifi;
+        actualFixFrames = (tS1 - tFixOn) / ifi;
+        actualS1Frames  = (tISI - tS1) / ifi;
+        actualISIFrames = (tS2 - tISI) / ifi;
+        actualS2Frames  = (tGap - tS2) / ifi;
+        actualGapFrames = (tQ1 - tGap) / ifi;
+
+        results(t).actualFixFrames = actualFixFrames;
+        results(t).actualS1Frames = actualS1Frames;
+        results(t).actualISIFrames = actualISIFrames;
+        results(t).actualS2Frames = actualS2Frames;
+        results(t).actualGapFrames = actualGapFrames;
+
+        expectedFixFrames = jitterFrames;
+        expectedS1Frames  = durFrames;
+        expectedISIFrames = cfg.ISI_frames;
+        expectedS2Frames  = durFrames;
+        expectedGapFrames = cfg.gap_frames;
+
+        errorFixFrames = actualFixFrames - expectedFixFrames;
+        errorS1Frames  = actualS1Frames  - expectedS1Frames;
+        errorISIFrames = actualISIFrames - expectedISIFrames;
+        errorS2Frames  = actualS2Frames  - expectedS2Frames;
+        errorGapFrames = actualGapFrames - expectedGapFrames;
+
+        results(t).expectedFixFrames = expectedFixFrames;
+        results(t).expectedS1Frames = expectedS1Frames;
+        results(t).expectedISIFrames = expectedISIFrames;
+        results(t).expectedS2Frames = expectedS2Frames;
+        results(t).expectedGapFrames = expectedGapFrames;
+
+        results(t).errorFixFrames = errorFixFrames;
+        results(t).errorS1Frames = errorS1Frames;
+        results(t).errorISIFrames = errorISIFrames;
+        results(t).errorS2Frames = errorS2Frames;
+        results(t).errorGapFrames = errorGapFrames;
+
+        results(t).errorFixMs = 1000 * errorFixFrames * ifi;
+        results(t).errorS1Ms = 1000 * errorS1Frames * ifi;
+        results(t).errorISIMs = 1000 * errorISIFrames * ifi;
+        results(t).errorS2Ms = 1000 * errorS2Frames * ifi;
+        results(t).errorGapMs = 1000 * errorGapFrames * ifi;
+
         results(t).missedFixOn = missedFixOn;
         results(t).missedS1 = missedS1;
         results(t).missedISI = missedISI;
@@ -807,6 +851,28 @@ try
             fprintf('  %s: mean=%.3f min=%.3f max=%.3f sd=%.3f\n', ...
                 durVars{dv}, mean(x), min(x), max(x), std(x));
         end
+    end
+
+    fprintf('\nExpected-vs-actual timing error summary for main trials:\n');
+    errVars = {'errorFixFrames','errorS1Frames','errorISIFrames','errorS2Frames','errorGapFrames'};
+    for ev = 1:numel(errVars)
+        x = T.(errVars{ev});
+        x = x(~isnan(x));
+        if ~isempty(x)
+            fprintf('  %s: mean=%.3f frames | min=%.3f | max=%.3f | sd=%.3f | meanMs=%.3f\n', ...
+                errVars{ev}, mean(x), min(x), max(x), std(x), 1000*mean(x)*ifi);
+        end
+    end
+
+    fprintf('\nTrial-level timing check:\n');
+    disp(T(:, {'trialNum','durFrames', ...
+               'expectedS1Frames','actualS1Frames','errorS1Frames', ...
+               'expectedISIFrames','actualISIFrames','errorISIFrames', ...
+               'expectedS2Frames','actualS2Frames','errorS2Frames', ...
+               'expectedGapFrames','actualGapFrames','errorGapFrames'}));
+
+    if any(abs(T.errorISIFrames) > 1)
+        warning('ISI timing error exceeds 1 frame on at least one trial. Check cfg.ISI_frames and tISI/tS2 timing.');
     end
 
     % --- Add final calibration summary values as columns (same value every row) ---
@@ -2344,6 +2410,21 @@ function r = emptyResultRow()
         'actualISIFrames', NaN, ...
         'actualS2Frames', NaN, ...
         'actualGapFrames', NaN, ...
+        'expectedFixFrames', NaN, ...
+        'expectedS1Frames', NaN, ...
+        'expectedISIFrames', NaN, ...
+        'expectedS2Frames', NaN, ...
+        'expectedGapFrames', NaN, ...
+        'errorFixFrames', NaN, ...
+        'errorS1Frames', NaN, ...
+        'errorISIFrames', NaN, ...
+        'errorS2Frames', NaN, ...
+        'errorGapFrames', NaN, ...
+        'errorFixMs', NaN, ...
+        'errorS1Ms', NaN, ...
+        'errorISIMs', NaN, ...
+        'errorS2Ms', NaN, ...
+        'errorGapMs', NaN, ...
         'missedFixOn', NaN, ...
         'missedS1', NaN, ...
         'missedISI', NaN, ...
