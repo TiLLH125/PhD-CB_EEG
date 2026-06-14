@@ -266,20 +266,19 @@ end
 cfg.keys.escape = KbName('ESCAPE');
 cfg.keys.space  = KbName('space');
 
-% Q1 PAS: left hand (q/w/e/r). Q2 loc: right hand (numpad 7/9/1/3).
-% If numpad keys fail at runtime, run KbName interactively (e.g. KbName('KP_7'))
-% to confirm correct names on this system — do not remap to top-row number keys.
+% Q1 PAS: left hand (q/w/e/r). Q2 loc: top-row number keys 7/9/1/3.
+% PTB KbName symbols: &7, (9, !1, #3 (top row with shift where needed).
 cfg.keys.pasPhysical = {'q','w','e','r'};
 cfg.keys.pasValues   = [1 2 3 4];
 
-cfg.keys.quadPhysical = {'7','9','1','3'};
-cfg.keys.quadValues   = [1 2 3 4];
+cfg.keys.quadPhysical = {'&7','(9','!1','#3'};
+cfg.keys.quadValues   = [1 2 3 4];   % 1=TL, 2=TR, 3=BL, 4=BR
 
 cfg.keys.pas  = KbName(cfg.keys.pasPhysical);
 cfg.keys.quad = KbName(cfg.keys.quadPhysical);
 
 fprintf('PAS key mapping: q=1, w=2, e=3, r=4\n');
-fprintf('LOC key mapping: numpad7=1, numpad9=2, numpad1=3, numpad3=4\n');
+fprintf('LOC key mapping: 7=TL(1), 9=TR(2), 1=BL(3), 3=BR(4) [top-row keys]\n');
 fprintf('PAS KbName codes: %s\n', mat2str(cfg.keys.pas));
 fprintf('LOC KbName codes: %s\n', mat2str(cfg.keys.quad));
 
@@ -1164,8 +1163,8 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     ];
     instrQ2Bold = 'Question 2: Where was the change?\n';
     instrBodyC = [ ...
-        'Press a number key:\n\n' ...
-        '[1] Top Left    [2] Top Right    [3] Bottom Left    [4] Bottom Right\n\n' ...
+        'Press the top-row number keys:\n\n' ...
+        '7 = Top Left    9 = Top Right    1 = Bottom Left    3 = Bottom Right\n\n' ...
         'You will always be asked both questions — even if you said there was no change in Question 1.\n\n' ...
     ];
     instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC };
