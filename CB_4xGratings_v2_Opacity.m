@@ -271,7 +271,7 @@ cfg.keys.space  = KbName('space');
 cfg.keys.pasPhysical = {'q','w','e','r'};
 cfg.keys.pasValues   = [1 2 3 4];
 
-cfg.keys.quadPhysical = {'&7','(9','!1','#3'};
+cfg.keys.quadPhysical = {'7','9','1','3'};
 cfg.keys.quadValues   = [1 2 3 4];   % 1=TL, 2=TR, 3=BL, 4=BR
 
 cfg.keys.pas  = KbName(cfg.keys.pasPhysical);
