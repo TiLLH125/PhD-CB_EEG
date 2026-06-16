@@ -51,9 +51,11 @@ cfg.screenNumber = 2;
 cfg.kbDev = -1;
 
 % ---- EEG serial triggers (Phase 3: event + response markers on main trials and Practice Block 2) ----
-cfg.eeg.enable            = false;   % default false for safe behavioural testing
+% Behaviour-only testing: cfg.eeg.enable = false;
+% Lab EEG/trigger testing (current): cfg.eeg.enable = true; COM7 @ 115200
+cfg.eeg.enable            = true;
 cfg.eeg.requirePort       = true;    % if true, abort clearly if EEG serial port cannot open
-cfg.eeg.serialPort        = 'COM4';
+cfg.eeg.serialPort        = 'COM7';
 cfg.eeg.baudRate          = 115200;
 cfg.eeg.warnOnSendError   = true;
 
@@ -149,7 +151,7 @@ cfg.practice1Criteria.minEasyDetect  = 0.60;
 cfg.practice1Criteria.minEasySee     = 0.40;
 
 % ---- Multinomial QUEST+ calibration ----
-cfg.calib.maxTrials = 9;             % full run total trials
+cfg.calib.maxTrials = 800;             % full run total trials
 
 cfg.calib.convergenceMinTrials = 40;   % minimum updates per track before freeze allowed
 cfg.calib.convergenceWindow    = 12;   % recent xCurrent values inspected for stability
@@ -165,37 +167,44 @@ cfg.calib.questPlus.gammaLoc      = 0.25;                  % 4-AFC guess rate
 cfg.calib.tracks(1).name          = 'Blind';
 cfg.calib.tracks(1).targetOutcome = 'Blind';
 cfg.calib.tracks(1).targetProb    = 0.725;     % aim for ~72.5% Blind (~27.5% detection)
-cfg.calib.tracks(1).startFrames   = 1;
+cfg.calib.tracks(1).startFrames   = 3;
 
 cfg.calib.tracks(2).name          = 'Sensing';
 cfg.calib.tracks(2).targetOutcome = 'PdetThreshold';   % target the 50% detection threshold
 cfg.calib.tracks(2).targetProb    = 0.50;
-cfg.calib.tracks(2).startFrames   = 4;
+cfg.calib.tracks(2).startFrames   = 10;
 
 cfg.calib.tracks(3).name          = 'Seeing';
 cfg.calib.tracks(3).targetOutcome = 'PlocGivenAware';  % P(loc correct | aware); MOCS-informed target
 cfg.calib.tracks(3).targetProb    = 0.65;
 cfg.calib.tracks(3).startFrames   = 41;
 
-% Trial counts
-cfg.debug.trialLog = true;
-cfg.nTotal = cfg.calib.maxTrials;
-cfg.trialDial.pChange = 0.75; 
-cfg.debug.trialLog   = true;
+% Trial counts — 800-trial full lab run (16 blocks × 50 trials)
+cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
 
-% Apply the dial
-cfg = applyTrialDial(cfg);
-cfg.trialsPerBlock = 3;
-cfg.nBlocks = ceil(cfg.nTotal / cfg.trialsPerBlock);
-cfg.trialDial.applyPerBlock = true;
-cfg.trialDial.nChangePerBlock = round(cfg.trialsPerBlock * cfg.trialDial.pChange);
-assert(mod(cfg.nTotal, cfg.trialsPerBlock) == 0, 'nTotal must be divisible by trialsPerBlock');
-assert(mod(cfg.nChange,3) == 0, 'nChange must be divisible by 3 for Blind/Sensing/Seeing split');
-assert(mod(cfg.nCatch,3) == 0, 'nCatch must be divisible by 3 for Blind/Sensing/Seeing split');
+cfg.nTotal = cfg.calib.maxTrials;
 
-cfg.nChangePerTrack = cfg.nChange/3;   % 150 each at default 600 total, pChange=0.75
-cfg.nCatchPerTrack  = cfg.nCatch/3;    % 50 each
+cfg.trialsPerBlock = 50;
+cfg.nBlocks = cfg.nTotal / cfg.trialsPerBlock;
+
+cfg.trialDial.applyPerBlock = true;
+cfg.trialDial.nChangePerBlock   = 38;
+cfg.trialDial.nNoChangePerBlock = 12;
+cfg.trialDial.pChange = cfg.trialDial.nChangePerBlock / cfg.trialsPerBlock;  % 0.76
+
+cfg.nChange = cfg.nBlocks * cfg.trialDial.nChangePerBlock;      % 608
+cfg.nCatch  = cfg.nBlocks * cfg.trialDial.nNoChangePerBlock;    % 192
+
+assert(mod(cfg.nTotal, cfg.trialsPerBlock) == 0, ...
+    'nTotal must be divisible by trialsPerBlock');
+assert(cfg.trialDial.nChangePerBlock + cfg.trialDial.nNoChangePerBlock == cfg.trialsPerBlock, ...
+    'Per-block change + no-change counts must equal trialsPerBlock');
+assert(mod(cfg.nCatch, 3) == 0, ...
+    'nCatch should be divisible by 3 for catch-trial balance');
+
+cfg.nCatchPerTrack = cfg.nCatch / 3;   % 64 each (exact)
+% nChange (608) not divisible by 3; per-block builder rotates remainders across tracks
 
 % Timing (seconds)
 cfg.fixJitterRangeSec = [1.00 1.50];  % fixation before S1
@@ -352,11 +361,26 @@ try
         cfg.fix.lineWidthDeg, cfg.fix.lineWidthPx);
 
     % Convert timing to frames
-    cfg.ISI_frames      = 9;                  % fixed globally for practice + main
+    cfg.ISI_frames      = 18;                 % 150 ms at 120 Hz (fixed globally for practice + main)
     % cfg.ISI_sec         = cfg.ISI_frames*ifi; % keep cfg.ISI_sec consistent for logging
     cfg.gap_frames      = max(0, round(cfg.postS2Gap_sec / ifi));
     cfg.ITI_frames      = max(0, round(cfg.ITI_sec / ifi));
     cfg.fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
+
+    fprintf('\nDuration-based run\n');
+    fprintf('Total trials: %d\n', cfg.nTotal);
+    fprintf('Blocks: %d\n', cfg.nBlocks);
+    fprintf('Trials/block: %d\n', cfg.trialsPerBlock);
+    fprintf('Change/block: %d\n', cfg.trialDial.nChangePerBlock);
+    fprintf('No-change/block: %d\n', cfg.trialDial.nNoChangePerBlock);
+    fprintf('Total change: %d\n', cfg.nChange);
+    fprintf('Total no-change: %d\n', cfg.nCatch);
+    fprintf('ISI_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.ISI_frames, cfg.ISI_frames * ifi * 1000, 1/ifi);
+    if cfg.debug.trialLog
+        fprintf('Trial logging: ON\n\n');
+    else
+        fprintf('Trial logging: OFF\n\n');
+    end
 
     topPriorityLevel = MaxPriority(window);
     Priority(topPriorityLevel);
