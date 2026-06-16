@@ -105,9 +105,9 @@ cfg.practice1.name      = 'Practice Block 1';
 cfg.practice1.feedback  = true;
 
 % Trial composition (20 total; tweak as needed)
-cfg.practice1.nSTD      = 1;   % standard change trials
-cfg.practice1.nNCH      = 1;    % no-change trials (liberal catch)
-cfg.practice1.nEASY     = 1;    % obvious change trials (conservative catch)
+cfg.practice1.nSTD      = 13;   % standard change trials
+cfg.practice1.nNCH      = 6;    % no-change trials (liberal catch)
+cfg.practice1.nEASY     = 6;    % obvious change trials (conservative catch)
 cfg.practice1.nTrials   = cfg.practice1.nSTD + cfg.practice1.nNCH + cfg.practice1.nEASY;
 
 % Durations (frames) by trial type
@@ -124,13 +124,13 @@ cfg.practice2.name      = 'Practice Block 2';
 cfg.practice2.feedback  = false;
 
 % Trial composition (placeholder for now)
-cfg.practice2.nSTD      = 1;
-cfg.practice2.nNCH      = 1;
-cfg.practice2.nEASY     = 1;
+cfg.practice2.nSTD      = 13;
+cfg.practice2.nNCH      = 6;
+cfg.practice2.nEASY     = 6;
 cfg.practice2.nTrials   = cfg.practice2.nSTD + cfg.practice2.nNCH + cfg.practice2.nEASY;
 
 % Base durations (used when tiered assignment is disabled)
-cfg.practice2.durSTDFrames  = 20;
+cfg.practice2.durSTDFrames  = 10;
 cfg.practice2.durEASYFrames = 30;
 cfg.practice2.durNCHFrames  = 20;
 
