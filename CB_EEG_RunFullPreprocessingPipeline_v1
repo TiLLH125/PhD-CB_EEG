@@ -1,0 +1,1551 @@
+function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath, varargin)
+% CB_EEG_RunFullPreprocessingPipeline
+%
+% Full EEG preprocessing + S1/S2 ERP ROI plotting pipeline.
+%
+% Pipeline:
+%   1. Import raw BioSemi BDF
+%   2. Downsample to 512 Hz
+%   3. Create ICA-training copy: 1-30 Hz + average reference
+%   4. Run Picard ICA on scalp channels 1:64 with PCA rank 63
+%   5. Run ICLabel
+%   6. Manually enter ICA components to remove
+%   7. Create ERP-analysis copy: 0.1-20 Hz + average reference
+%   8. Transfer ICA weights to ERP-analysis copy
+%   9. Remove manually selected ICA components
+%   10. Match EEG triggers to behavioural FullRun CSV
+%   11. Add synthetic S1/S2 outcome-specific event codes
+%   12. Create S1-locked and S2-locked epochs
+%   13. Apply S1 baseline to both S1 and S2 epochs
+%   14. Run joint automated artefact rejection
+%   15. Plot S1/S2 Blind/Sensing/Seeing ROI ERPs
+%
+% Main assumptions:
+%   - BioSemi file has 72 channels total
+%   - Channels 1:64 = scalp EEG
+%   - Channels 65:72 = EXG channels
+%   - Synthetic codes:
+%       S1: 201 Blind, 202 Sensing, 203 Seeing, 211 CR, 212 FA
+%       S2: 301 Blind, 302 Sensing, 303 Seeing, 311 CR, 312 FA
+%
+% Example:
+%   dataPath = 'C:\Users\hrl310\Documents\EEGData_HL';
+%
+%   report = CB_EEG_RunFullPreprocessingPipeline( ...
+%       'MAV01', ...
+%       dataPath, ...
+%       'BdfFile', 'MAV01.bdf', ...
+%       'FullRunCsv', 'CB_4xGratings_MAV01_FullRun_20260616_160252.csv');
+%
+% Notes:
+%   - This script pauses after ICLabel and asks you to manually enter ICs
+%     to remove.
+%   - Positive amplitudes are plotted above zero.
+%   - The script writes both a text diary log and a structured CSV log.
+
+% ========================================================================
+% Parse inputs and config
+% ========================================================================
+
+if nargin < 1 || isempty(participantID)
+participantID = 'MAV01';
+end
+
+if nargin < 2 || isempty(dataPath)
+dataPath = 'C:\Users\hrl310\Documents\EEGData_HL';
+end
+
+participantID = char(participantID);
+dataPath = char(dataPath);
+
+if ~strcmp(dataPath(end), filesep)
+dataPath = [dataPath filesep];
+end
+
+defaultBdfFile = sprintf('%s.bdf', participantID);
+defaultFullRunPattern = sprintf('CB_4xGratings_%s_FullRun_*.csv', participantID);
+defaultOutputRoot = dataPath;
+
+isText = @(x) ischar(x) || isstring(x);
+
+p = inputParser;
+addParameter(p, 'BdfFile', defaultBdfFile, isText);
+addParameter(p, 'FullRunCsv', '', isText);
+addParameter(p, 'FullRunPattern', defaultFullRunPattern, isText);
+addParameter(p, 'OutputRoot', defaultOutputRoot, isText);
+
+% Core config
+addParameter(p, 'NScalpChans', 64, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'ExternalChans', 65:72, @(x) isnumeric(x) && isvector(x));
+addParameter(p, 'TargetSrate', 512, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'ICAFilterHz', [1 30], @(x) isnumeric(x) && numel(x)==2);
+addParameter(p, 'ERPFilterHz', [0.1 20], @(x) isnumeric(x) && numel(x)==2);
+addParameter(p, 'ICAType', 'picard', isText);
+addParameter(p, 'ICAPcaDim', 63, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'ICAMaxIter', 500, @(x) isnumeric(x) && isscalar(x));
+
+% Trial config
+addParameter(p, 'NTriggeredPractice', 25, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'ExpectedMainTrials', 800, @(x) isnumeric(x) && isscalar(x));
+
+% Epoching/baseline
+addParameter(p, 'S1EpochWinSec', [-0.200 1.400], @(x) isnumeric(x) && numel(x)==2);
+addParameter(p, 'S2EpochWinSec', [-0.900 0.800], @(x) isnumeric(x) && numel(x)==2);
+addParameter(p, 'S1BaselineMs', [-199 0], @(x) isnumeric(x) && numel(x)==2);
+
+% Artefact rejection
+addParameter(p, 'ArtifactAbsThresholdUv', 100, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'ArtifactPeakToPeakThresholdUv', 150, @(x) isnumeric(x) && isscalar(x));
+
+% Manual ICA
+addParameter(p, 'ManualICAReject', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ComponentsToRemove', [], @(x) isnumeric(x));
+
+% Plotting
+addParameter(p, 'VisiblePlots', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'NegativeUp', false, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'SaveFig', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'SavePng', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'SaveCsv', true, @(x) islogical(x) || isnumeric(x));
+
+% Behaviour variable overrides
+addParameter(p, 'PASVar', '', isText);
+addParameter(p, 'LocCorrectVar', '', isText);
+addParameter(p, 'LocRespVar', '', isText);
+addParameter(p, 'IsChangeVar', '', isText);
+
+% Safety/restart
+addParameter(p, 'Overwrite', true, @(x) islogical(x) || isnumeric(x));
+
+parse(p, varargin{:});
+cfg = p.Results;
+
+cfg.BdfFile = char(cfg.BdfFile);
+cfg.FullRunCsv = char(cfg.FullRunCsv);
+cfg.FullRunPattern = char(cfg.FullRunPattern);
+cfg.OutputRoot = char(cfg.OutputRoot);
+cfg.ICAType = char(cfg.ICAType);
+
+cfg.ScalpChans = 1:cfg.NScalpChans;
+cfg.NExternalChans = numel(cfg.ExternalChans);
+cfg.TotalExpectedChans = cfg.NScalpChans + cfg.NExternalChans;
+
+cfg.ManualICAReject = logical(cfg.ManualICAReject);
+cfg.VisiblePlots = logical(cfg.VisiblePlots);
+cfg.NegativeUp = logical(cfg.NegativeUp);
+cfg.SaveFig = logical(cfg.SaveFig);
+cfg.SavePng = logical(cfg.SavePng);
+cfg.SaveCsv = logical(cfg.SaveCsv);
+cfg.Overwrite = logical(cfg.Overwrite);
+
+if ~strcmp(cfg.OutputRoot(end), filesep)
+cfg.OutputRoot = [cfg.OutputRoot filesep];
+end
+
+% ========================================================================
+% Output folders and logging
+% ========================================================================
+
+runStamp = datestr(now, 'yyyymmdd_HHMMSS');
+
+outDir = fullfile(cfg.OutputRoot, sprintf('%s_Preproc_%s', participantID, runStamp));
+if ~exist(outDir, 'dir')
+mkdir(outDir);
+end
+
+plotDir = fullfile(outDir, sprintf('%s_ERP_ROI_Plots', participantID));
+if ~exist(plotDir, 'dir')
+mkdir(plotDir);
+end
+
+logTxtFile = fullfile(outDir, sprintf('%s_PreprocessingLog_%s.txt', participantID, runStamp));
+logCsvFile = fullfile(outDir, sprintf('%s_PreprocessingLog_%s.csv', participantID, runStamp));
+
+logRows = table( ...
+strings(0,1), strings(0,1), strings(0,1), strings(0,1), strings(0,1), strings(0,1), ...
+'VariableNames', {'Timestamp','Stage','Status','Message','Value','File'});
+
+diary(logTxtFile);
+diary on;
+
+fprintf('\n============================================================\n');
+fprintf('CB EEG FULL PREPROCESSING PIPELINE\n');
+fprintf('Participant: %s\n', participantID);
+fprintf('Started: %s\n', datestr(now));
+fprintf('Output folder:\n%s\n', outDir);
+fprintf('============================================================\n\n');
+
+logStep('pipeline', 'START', 'Pipeline started', participantID, outDir);
+
+try
+
+
+% ====================================================================
+% Stage 1: Resolve input files
+% ====================================================================
+
+bdfPath = cfg.BdfFile;
+if exist(bdfPath, 'file') ~= 2
+    bdfPath = fullfile(dataPath, cfg.BdfFile);
+end
+if exist(bdfPath, 'file') ~= 2
+    error('BDF file not found: %s', cfg.BdfFile);
+end
+
+fullRunCsv = cfg.FullRunCsv;
+if isempty(fullRunCsv)
+    csvFiles = dir(fullfile(dataPath, cfg.FullRunPattern));
+    if isempty(csvFiles)
+        error('No behavioural FullRun CSV found using pattern: %s', fullfile(dataPath, cfg.FullRunPattern));
+    end
+    [~, newestIdx] = max([csvFiles.datenum]);
+    fullRunCsv = fullfile(csvFiles(newestIdx).folder, csvFiles(newestIdx).name);
+else
+    if exist(fullRunCsv, 'file') ~= 2
+        fullRunCsv = fullfile(dataPath, fullRunCsv);
+    end
+    if exist(fullRunCsv, 'file') ~= 2
+        error('Behavioural FullRun CSV not found: %s', cfg.FullRunCsv);
+    end
+end
+
+logStep('input', 'OK', 'Resolved BDF file', '', bdfPath);
+logStep('input', 'OK', 'Resolved FullRun CSV', '', fullRunCsv);
+
+% ====================================================================
+% Stage 2: Import raw BDF
+% ====================================================================
+
+fprintf('\n\n================ STAGE 2: RAW BDF IMPORT ================\n');
+
+EEG_raw = pop_biosig(bdfPath);
+EEG_raw.setname = sprintf('%s_raw', participantID);
+EEG_raw = eeg_checkset(EEG_raw);
+
+fprintf('Raw channels: %d\n', EEG_raw.nbchan);
+fprintf('Raw points:   %d\n', EEG_raw.pnts);
+fprintf('Raw srate:    %.1f Hz\n', EEG_raw.srate);
+
+if EEG_raw.nbchan ~= cfg.TotalExpectedChans
+    error('Expected %d channels but loaded %d channels.', cfg.TotalExpectedChans, EEG_raw.nbchan);
+end
+
+rawSet = sprintf('%s_raw.set', participantID);
+EEG_raw = pop_saveset(EEG_raw, 'filename', rawSet, 'filepath', outDir);
+
+logStep('raw_import', 'OK', 'Imported raw BDF', sprintf('%d channels', EEG_raw.nbchan), rawSet);
+
+% ====================================================================
+% Stage 3: Downsample
+% ====================================================================
+
+fprintf('\n\n================ STAGE 3: DOWNSAMPLE ================\n');
+
+EEG_ds = pop_resample(EEG_raw, cfg.TargetSrate);
+EEG_ds.setname = sprintf('%s_ds%d', participantID, cfg.TargetSrate);
+EEG_ds = eeg_checkset(EEG_ds);
+
+dsSet = sprintf('%s_ds%d.set', participantID, cfg.TargetSrate);
+EEG_ds = pop_saveset(EEG_ds, 'filename', dsSet, 'filepath', outDir);
+
+fprintf('Downsampled to %.1f Hz\n', EEG_ds.srate);
+logStep('downsample', 'OK', 'Downsampled continuous data', sprintf('%.1f Hz', EEG_ds.srate), dsSet);
+
+% ====================================================================
+% Stage 4: Create ICA-training dataset
+% ====================================================================
+
+fprintf('\n\n================ STAGE 4: ICA-TRAINING DATASET ================\n');
+
+EEG_ica = EEG_ds;
+
+EEG_ica = pop_eegfiltnew(EEG_ica, ...
+    'locutoff', cfg.ICAFilterHz(1), ...
+    'hicutoff', cfg.ICAFilterHz(2), ...
+    'plotfreqz', 0);
+
+EEG_ica.setname = sprintf('%s_ds%d_bp%dto%d', ...
+    participantID, cfg.TargetSrate, cfg.ICAFilterHz(1), cfg.ICAFilterHz(2));
+
+EEG_ica = pop_reref(EEG_ica, [], 'exclude', cfg.ExternalChans);
+EEG_ica.setname = sprintf('%s_ds%d_bp%dto%d_avgref_ICAtraining', ...
+    participantID, cfg.TargetSrate, cfg.ICAFilterHz(1), cfg.ICAFilterHz(2));
+
+EEG_ica = localFixChanlocsForICLabel(EEG_ica);
+EEG_ica = eeg_checkset(EEG_ica);
+
+icaTrainingSet = sprintf('%s_ds%d_bp%dto%d_avgref_ICAtraining.set', ...
+    participantID, cfg.TargetSrate, cfg.ICAFilterHz(1), cfg.ICAFilterHz(2));
+
+EEG_ica = pop_saveset(EEG_ica, 'filename', icaTrainingSet, 'filepath', outDir);
+
+logStep('ica_training_dataset', 'OK', 'Created 1-30 Hz average-referenced ICA-training dataset', '', icaTrainingSet);
+
+% ====================================================================
+% Stage 5: Picard ICA
+% ====================================================================
+
+fprintf('\n\n================ STAGE 5: PICARD ICA ================\n');
+
+EEG_ica.icaact = [];
+EEG_ica.icawinv = [];
+EEG_ica.icasphere = [];
+EEG_ica.icaweights = [];
+EEG_ica.icachansind = [];
+
+fprintf('Running %s ICA on scalp channels 1:%d with PCA %d...\n', ...
+    cfg.ICAType, cfg.NScalpChans, cfg.ICAPcaDim);
+
+tic;
+EEG_ica = pop_runica(EEG_ica, ...
+    'icatype', cfg.ICAType, ...
+    'chanind', cfg.ScalpChans, ...
+    'pca', cfg.ICAPcaDim, ...
+    'maxiter', cfg.ICAMaxIter, ...
+    'mode', 'standard');
+icaElapsedSec = toc;
+
+EEG_ica = eeg_checkset(EEG_ica);
+
+fprintf('\nICA finished in %.2f minutes.\n', icaElapsedSec/60);
+fprintf('icaweights size: [%d x %d]\n', size(EEG_ica.icaweights,1), size(EEG_ica.icaweights,2));
+fprintf('icawinv size:    [%d x %d]\n', size(EEG_ica.icawinv,1), size(EEG_ica.icawinv,2));
+fprintf('icachansind:     %d channels\n', numel(EEG_ica.icachansind));
+
+if size(EEG_ica.icaweights,1) ~= cfg.ICAPcaDim || ...
+        size(EEG_ica.icaweights,2) ~= cfg.NScalpChans || ...
+        size(EEG_ica.icawinv,1) ~= cfg.NScalpChans || ...
+        size(EEG_ica.icawinv,2) ~= cfg.ICAPcaDim
+    error('ICA dimensions are not as expected. Expected weights [%d x %d] and icawinv [%d x %d].', ...
+        cfg.ICAPcaDim, cfg.NScalpChans, cfg.NScalpChans, cfg.ICAPcaDim);
+end
+
+picardSet = sprintf('%s_ds%d_bp%dto%d_avgref_PicardICA_pca%d.set', ...
+    participantID, cfg.TargetSrate, cfg.ICAFilterHz(1), cfg.ICAFilterHz(2), cfg.ICAPcaDim);
+
+EEG_ica.setname = erase(picardSet, '.set');
+EEG_ica = pop_saveset(EEG_ica, 'filename', picardSet, 'filepath', outDir);
+
+logStep('picard_ica', 'OK', 'Picard ICA completed', sprintf('%.2f min', icaElapsedSec/60), picardSet);
+logStep('picard_ica', 'OK', 'ICA dimensions', sprintf('weights %dx%d; icawinv %dx%d', ...
+    size(EEG_ica.icaweights,1), size(EEG_ica.icaweights,2), size(EEG_ica.icawinv,1), size(EEG_ica.icawinv,2)), picardSet);
+
+% ====================================================================
+% Stage 6: ICLabel
+% ====================================================================
+
+fprintf('\n\n================ STAGE 6: ICLABEL ================\n');
+
+EEG_ica = localFixChanlocsForICLabel(EEG_ica);
+EEG_ica = eeg_checkset(EEG_ica);
+
+EEG_ica = pop_iclabel(EEG_ica, 'default');
+EEG_ica = eeg_checkset(EEG_ica);
+
+iclabelSet = sprintf('%s_ds%d_bp%dto%d_avgref_PicardICA_pca%d_ICLabel.set', ...
+    participantID, cfg.TargetSrate, cfg.ICAFilterHz(1), cfg.ICAFilterHz(2), cfg.ICAPcaDim);
+
+EEG_ica.setname = erase(iclabelSet, '.set');
+EEG_ica = pop_saveset(EEG_ica, 'filename', iclabelSet, 'filepath', outDir);
+
+T_ic = localMakeICLabelTable(EEG_ica);
+iclabelCsv = fullfile(outDir, sprintf('%s_ICLabel_Table.csv', participantID));
+writetable(T_ic, iclabelCsv);
+
+fprintf('\nFirst 25 ICLabel classifications:\n');
+disp(T_ic(1:min(25,height(T_ic)),:));
+
+logStep('iclabel', 'OK', 'ICLabel completed', sprintf('%d ICs', height(T_ic)), iclabelSet);
+logStep('iclabel', 'OK', 'Saved ICLabel table', '', iclabelCsv);
+
+% ====================================================================
+% Stage 7: Manual ICA component selection
+% ====================================================================
+
+fprintf('\n\n================ STAGE 7: MANUAL ICA REJECTION ================\n');
+
+fprintf('\nOpening component viewer for ICs 1:35.\n');
+fprintf('Inspect maps, time courses, and ICLabel classifications.\n\n');
+
+try
+    pop_selectcomps(EEG_ica, 1:min(35, size(EEG_ica.icaweights,1)));
+catch ME
+    warning('Could not open pop_selectcomps: %s', ME.message);
+end
+
+componentsToRemove = cfg.ComponentsToRemove;
+
+if cfg.ManualICAReject
+    fprintf('\nSuggested workflow:\n');
+    fprintf('  1. Inspect the component maps/window.\n');
+    fprintf('  2. Decide which ICs are ocular/muscle/artefact.\n');
+    fprintf('  3. Enter them below as a vector, e.g., [1 2 3 4].\n');
+    fprintf('  4. Enter [] if you want to remove none.\n\n');
+
+    if isempty(componentsToRemove)
+        componentsToRemove = input('Enter ICs to remove, e.g. [1 2 3 4], or [] for none: ');
+    else
+        fprintf('Using provided ComponentsToRemove: ');
+        disp(componentsToRemove);
+    end
+end
+
+componentsToRemove = unique(componentsToRemove(:))';
+
+if any(componentsToRemove < 1) || any(componentsToRemove > size(EEG_ica.icaweights,1))
+    error('ComponentsToRemove contains invalid component indices.');
+end
+
+componentDecisionTable = table( ...
+    string(participantID), ...
+    {componentsToRemove}, ...
+    string(datestr(now)), ...
+    'VariableNames', {'ParticipantID','ComponentsToRemove','DecisionTime'});
+
+componentDecisionCsv = fullfile(outDir, sprintf('%s_ManualICAComponentsToRemove.csv', participantID));
+writetable(componentDecisionTable, componentDecisionCsv);
+
+fprintf('\nManual components selected for removal:\n');
+disp(componentsToRemove);
+
+logStep('manual_ica_rejection', 'OK', 'Manual ICs selected for removal', mat2str(componentsToRemove), componentDecisionCsv);
+
+% ====================================================================
+% Stage 8: Create ERP-analysis dataset
+% ====================================================================
+
+fprintf('\n\n================ STAGE 8: ERP-ANALYSIS DATASET ================\n');
+
+EEG_erp = EEG_ds;
+
+EEG_erp = pop_eegfiltnew(EEG_erp, ...
+    'locutoff', cfg.ERPFilterHz(1), ...
+    'hicutoff', cfg.ERPFilterHz(2), ...
+    'plotfreqz', 0);
+
+EEG_erp.setname = sprintf('%s_ds%d_bp0p1to20', participantID, cfg.TargetSrate);
+
+EEG_erp = pop_reref(EEG_erp, [], 'exclude', cfg.ExternalChans);
+EEG_erp.setname = sprintf('%s_ds%d_bp0p1to20_avgref', participantID, cfg.TargetSrate);
+
+EEG_erp = localFixChanlocsForICLabel(EEG_erp);
+EEG_erp = eeg_checkset(EEG_erp);
+
+erpSet = sprintf('%s_ds%d_bp0p1to20_avgref.set', participantID, cfg.TargetSrate);
+EEG_erp = pop_saveset(EEG_erp, 'filename', erpSet, 'filepath', outDir);
+
+logStep('erp_dataset', 'OK', 'Created 0.1-20 Hz average-referenced ERP-analysis dataset', '', erpSet);
+
+% ====================================================================
+% Stage 9: Transfer ICA and remove selected components
+% ====================================================================
+
+fprintf('\n\n================ STAGE 9: ICA TRANSFER AND COMPONENT REMOVAL ================\n');
+
+localCheckIcaTransferCompatibility(EEG_ica, EEG_erp);
+
+EEG_erp.icaweights = EEG_ica.icaweights;
+EEG_erp.icasphere  = EEG_ica.icasphere;
+EEG_erp.icawinv    = EEG_ica.icawinv;
+EEG_erp.icachansind = EEG_ica.icachansind;
+EEG_erp.icaact = [];
+
+if isfield(EEG_ica, 'etc') && isfield(EEG_ica.etc, 'ic_classification')
+    EEG_erp.etc.ic_classification = EEG_ica.etc.ic_classification;
+end
+
+EEG_erp = eeg_checkset(EEG_erp);
+
+transferredSet = sprintf('%s_ds%d_bp0p1to20_avgref_PicardICAtransferred.set', participantID, cfg.TargetSrate);
+EEG_erp.setname = erase(transferredSet, '.set');
+EEG_erp = pop_saveset(EEG_erp, 'filename', transferredSet, 'filepath', outDir);
+
+if ~isempty(componentsToRemove)
+    EEG_clean = pop_subcomp(EEG_erp, componentsToRemove, 0);
+else
+    EEG_clean = EEG_erp;
+end
+
+EEG_clean.icaact = [];
+EEG_clean = eeg_checkset(EEG_clean);
+
+compTag = localComponentTag(componentsToRemove);
+cleanSet = sprintf('%s_ds%d_bp0p1to20_avgref_%sRemoved.set', ...
+    participantID, cfg.TargetSrate, compTag);
+
+EEG_clean.setname = erase(cleanSet, '.set');
+EEG_clean = pop_saveset(EEG_clean, 'filename', cleanSet, 'filepath', outDir);
+
+logStep('ica_transfer', 'OK', 'Transferred Picard ICA weights to ERP dataset', '', transferredSet);
+logStep('component_removal', 'OK', 'Removed selected ICA components from ERP dataset', mat2str(componentsToRemove), cleanSet);
+
+% ====================================================================
+% Stage 10: Behavioural CSV and event matching
+% ====================================================================
+
+fprintf('\n\n================ STAGE 10: EVENT MATCHING ================\n');
+
+T_beh = readtable(fullRunCsv);
+
+fprintf('Behavioural FullRun rows: %d\n', height(T_beh));
+if height(T_beh) ~= cfg.ExpectedMainTrials
+    error('Expected %d behavioural rows but found %d.', cfg.ExpectedMainTrials, height(T_beh));
+end
+
+varMap = localInferBehaviourVars(T_beh, cfg);
+
+fprintf('\nBehaviour variables:\n');
+
+varMapTable = table( ...
+    string(varMap.PASVar), ...
+    string(varMap.LocCorrectVar), ...
+    string(varMap.LocRespVar), ...
+    string(varMap.IsChangeVar), ...
+    'VariableNames', {'PASVar','LocCorrectVar','LocRespVar','IsChangeVar'});
+
+disp(varMapTable);
+
+varMapCsv = fullfile(outDir, sprintf('%s_BehaviourVariableMap.csv', participantID));
+writetable(varMapTable, varMapCsv);
+
+logStep('event_matching', 'OK', 'Behaviour variable map inferred', ...
+    sprintf('PAS=%s; LocCorrect=%s; LocResp=%s; IsChange=%s', ...
+    varMap.PASVar, varMap.LocCorrectVar, varMap.LocRespVar, varMap.IsChangeVar), ...
+    varMapCsv);
+
+trialsAll = localExtractTriggeredTrials(EEG_clean);
+nTriggered = numel(trialsAll.s1EventIdx);
+
+fprintf('Triggered S1-defined EEG trials: %d\n', nTriggered);
+
+requiredTriggered = cfg.NTriggeredPractice + cfg.ExpectedMainTrials;
+if nTriggered < requiredTriggered
+    error('Not enough triggered trials. Need at least %d, found %d.', requiredTriggered, nTriggered);
+end
+
+mainIdx = cfg.NTriggeredPractice + (1:cfg.ExpectedMainTrials);
+trialsMain = localSubsetTrialStruct(trialsAll, mainIdx);
+
+pasBeh = double(T_beh.(varMap.PASVar));
+locRespBeh = [];
+if ~isempty(varMap.LocRespVar)
+    locRespBeh = double(T_beh.(varMap.LocRespVar));
+end
+
+locCorrect = localColumnToLogicalCorrect(T_beh.(varMap.LocCorrectVar));
+isChange = localColumnToLogicalChange(T_beh.(varMap.IsChangeVar));
+
+pasMismatch = sum(trialsMain.pasResp(:) ~= pasBeh(:), 'omitnan');
+
+if ~isempty(locRespBeh)
+    locMismatch = sum(trialsMain.locResp(:) ~= locRespBeh(:), 'omitnan');
+else
+    locMismatch = NaN;
+end
+
+fprintf('\nPAS mismatches EEG vs CSV: %d\n', pasMismatch);
+if isnan(locMismatch)
+    fprintf('LOC response mismatch check skipped: no loc response column identified.\n');
+else
+    fprintf('LOC mismatches EEG vs CSV: %d\n', locMismatch);
+end
+
+if pasMismatch ~= 0
+    error('PAS mismatch detected between EEG triggers and behavioural CSV.');
+end
+
+if ~isnan(locMismatch) && locMismatch ~= 0
+    error('Localisation response mismatch detected between EEG triggers and behavioural CSV.');
+end
+
+logStep('event_matching', 'OK', 'Triggered EEG trials', sprintf('%d total; %d practice skipped; %d main', ...
+    nTriggered, cfg.NTriggeredPractice, cfg.ExpectedMainTrials), '');
+logStep('event_matching', 'OK', 'PAS mismatches EEG vs CSV', num2str(pasMismatch), '');
+logStep('event_matching', 'OK', 'LOC mismatches EEG vs CSV', num2str(locMismatch), '');
+
+% ====================================================================
+% Stage 11: Add synthetic S1/S2 outcome codes
+% ====================================================================
+
+fprintf('\n\n================ STAGE 11: ADD S1/S2 OUTCOME CODES ================\n');
+
+[outcome, s1Codes, s2Codes] = localMakeOutcomeCodes(pasBeh, locCorrect, isChange);
+
+outcomeCounts = groupsummary(table(string(outcome(:)), s1Codes(:), s2Codes(:), ...
+    'VariableNames', {'Outcome','S1Code','S2Code'}), 'Outcome');
+
+fprintf('\nBehavioural outcome counts before artefact rejection:\n');
+disp(outcomeCounts);
+
+EEG_coded = localAddSyntheticS1S2Events(EEG_clean, trialsMain, s1Codes, s2Codes, outcome);
+EEG_coded = eeg_checkset(EEG_coded, 'eventconsistency');
+
+codedSet = sprintf('%s_ds%d_bp0p1to20_avgref_%sRemoved_S1S2coded.set', ...
+    participantID, cfg.TargetSrate, compTag);
+
+EEG_coded.setname = erase(codedSet, '.set');
+EEG_coded = pop_saveset(EEG_coded, 'filename', codedSet, 'filepath', outDir);
+
+logStep('s1s2_coding', 'OK', 'Added synthetic S1/S2 outcome codes', sprintf('%d S1 + %d S2', numel(s1Codes), numel(s2Codes)), codedSet);
+
+% ====================================================================
+% Stage 12: Epoch S1 and S2 with S1 baseline logic
+% ====================================================================
+
+fprintf('\n\n================ STAGE 12: EPOCH S1/S2 ================\n');
+
+s1EventCodes = {'201','202','203','211','212'};
+s2EventCodes = {'301','302','303','311','312'};
+
+baselineMeans = localComputePreS1BaselineMeans(EEG_coded, trialsMain.s1Latency, cfg.S1BaselineMs);
+
+EEG_S1 = pop_epoch(EEG_coded, s1EventCodes, cfg.S1EpochWinSec, 'epochinfo', 'yes');
+EEG_S1 = eeg_checkset(EEG_S1);
+EEG_S1 = pop_rmbase(EEG_S1, cfg.S1BaselineMs);
+EEG_S1.icaact = [];
+EEG_S1.etc.cb_epoching.baseline = 'pre-S1 baseline';
+EEG_S1.etc.cb_epoching.baselineMs = cfg.S1BaselineMs;
+EEG_S1.etc.cb_epoching.lock = 'S1';
+EEG_S1.etc.cb_epoching.fullRunRows = (1:cfg.ExpectedMainTrials)';
+EEG_S1 = eeg_checkset(EEG_S1);
+
+EEG_S2 = pop_epoch(EEG_coded, s2EventCodes, cfg.S2EpochWinSec, 'epochinfo', 'yes');
+EEG_S2 = eeg_checkset(EEG_S2);
+
+if EEG_S2.trials ~= cfg.ExpectedMainTrials
+    error('S2 epoch count mismatch. Expected %d, got %d.', cfg.ExpectedMainTrials, EEG_S2.trials);
+end
+
+for tr = 1:EEG_S2.trials
+    EEG_S2.data(:,:,tr) = double(EEG_S2.data(:,:,tr)) - baselineMeans(:,tr);
+end
+
+EEG_S2.icaact = [];
+EEG_S2.etc.cb_epoching.baseline = 'trial-wise pre-S1 baseline';
+EEG_S2.etc.cb_epoching.baselineMs = cfg.S1BaselineMs;
+EEG_S2.etc.cb_epoching.lock = 'S2';
+EEG_S2.etc.cb_epoching.fullRunRows = (1:cfg.ExpectedMainTrials)';
+EEG_S2 = eeg_checkset(EEG_S2);
+
+s1EpochSet = sprintf('%s_ERP_S1locked_m200to1400_S1base.set', participantID);
+s2EpochSet = sprintf('%s_ERP_S2locked_m900to800_S1base.set', participantID);
+
+EEG_S1.setname = erase(s1EpochSet, '.set');
+EEG_S2.setname = erase(s2EpochSet, '.set');
+
+EEG_S1 = pop_saveset(EEG_S1, 'filename', s1EpochSet, 'filepath', outDir);
+EEG_S2 = pop_saveset(EEG_S2, 'filename', s2EpochSet, 'filepath', outDir);
+
+fprintf('S1 epochs: %d | %.1f to %.1f ms\n', EEG_S1.trials, EEG_S1.xmin*1000, EEG_S1.xmax*1000);
+fprintf('S2 epochs: %d | %.1f to %.1f ms\n', EEG_S2.trials, EEG_S2.xmin*1000, EEG_S2.xmax*1000);
+
+logStep('epoching', 'OK', 'Created S1 epochs with S1 baseline', sprintf('%d epochs', EEG_S1.trials), s1EpochSet);
+logStep('epoching', 'OK', 'Created S2 epochs with trial-wise S1 baseline', sprintf('%d epochs', EEG_S2.trials), s2EpochSet);
+
+% ====================================================================
+% Stage 13: Joint artefact rejection
+% ====================================================================
+
+fprintf('\n\n================ STAGE 13: JOINT ARTEFACT REJECTION ================\n');
+
+badS1 = localFindBadEpochs(EEG_S1, cfg.ScalpChans, cfg.ArtifactAbsThresholdUv, cfg.ArtifactPeakToPeakThresholdUv);
+badS2 = localFindBadEpochs(EEG_S2, cfg.ScalpChans, cfg.ArtifactAbsThresholdUv, cfg.ArtifactPeakToPeakThresholdUv);
+
+badUnion = badS1.anyBad | badS2.anyBad;
+rejectIdx = find(badUnion);
+keepIdx = find(~badUnion);
+
+fprintf('S1 bad epochs:    %d / %d\n', sum(badS1.anyBad), EEG_S1.trials);
+fprintf('S2 bad epochs:    %d / %d\n', sum(badS2.anyBad), EEG_S2.trials);
+fprintf('Union rejected:   %d / %d\n', numel(rejectIdx), EEG_S1.trials);
+fprintf('Remaining epochs: %d / %d\n', numel(keepIdx), EEG_S1.trials);
+
+EEG_S1_clean = pop_select(EEG_S1, 'trial', keepIdx);
+EEG_S2_clean = pop_select(EEG_S2, 'trial', keepIdx);
+
+EEG_S1_clean.etc.cb_artifactReject.keptOriginalTrialIdx = keepIdx(:);
+EEG_S2_clean.etc.cb_artifactReject.keptOriginalTrialIdx = keepIdx(:);
+EEG_S1_clean.etc.cb_artifactReject.rejectedOriginalTrialIdx = rejectIdx(:);
+EEG_S2_clean.etc.cb_artifactReject.rejectedOriginalTrialIdx = rejectIdx(:);
+EEG_S1_clean.etc.cb_artifactReject.thresholdAbsUv = cfg.ArtifactAbsThresholdUv;
+EEG_S2_clean.etc.cb_artifactReject.thresholdAbsUv = cfg.ArtifactAbsThresholdUv;
+EEG_S1_clean.etc.cb_artifactReject.thresholdPeakToPeakUv = cfg.ArtifactPeakToPeakThresholdUv;
+EEG_S2_clean.etc.cb_artifactReject.thresholdPeakToPeakUv = cfg.ArtifactPeakToPeakThresholdUv;
+
+s1CleanSet = sprintf('%s_ERP_S1locked_m200to1400_S1base_ARclean.set', participantID);
+s2CleanSet = sprintf('%s_ERP_S2locked_m900to800_S1base_ARclean.set', participantID);
+
+EEG_S1_clean.setname = erase(s1CleanSet, '.set');
+EEG_S2_clean.setname = erase(s2CleanSet, '.set');
+
+EEG_S1_clean = pop_saveset(EEG_S1_clean, 'filename', s1CleanSet, 'filepath', outDir);
+EEG_S2_clean = pop_saveset(EEG_S2_clean, 'filename', s2CleanSet, 'filepath', outDir);
+
+arReport = localMakeArtifactReport(EEG_S1, EEG_S2, badS1, badS2, badUnion, keepIdx, rejectIdx);
+arCsv = fullfile(outDir, sprintf('%s_EpochArtifactRejectionReport.csv', participantID));
+writetable(arReport, arCsv);
+
+countsBefore = localConditionCountsFromEpochs(EEG_S1, [201 202 203 211 212]);
+countsAfter  = localConditionCountsFromEpochs(EEG_S1_clean, [201 202 203 211 212]);
+
+countsBeforeCsv = fullfile(outDir, sprintf('%s_ConditionCountsBeforeAR.csv', participantID));
+countsAfterCsv = fullfile(outDir, sprintf('%s_ConditionCountsAfterAR.csv', participantID));
+writetable(countsBefore, countsBeforeCsv);
+writetable(countsAfter, countsAfterCsv);
+
+fprintf('\nCondition counts before artefact rejection:\n');
+disp(countsBefore);
+
+fprintf('\nCondition counts after artefact rejection:\n');
+disp(countsAfter);
+
+logStep('artifact_rejection', 'OK', 'Joint S1/S2 artefact rejection complete', sprintf('%d rejected; %d kept', numel(rejectIdx), numel(keepIdx)), arCsv);
+logStep('artifact_rejection', 'OK', 'Saved AR-clean S1 dataset', '', s1CleanSet);
+logStep('artifact_rejection', 'OK', 'Saved AR-clean S2 dataset', '', s2CleanSet);
+
+% ====================================================================
+% Stage 14: ROI plotting
+% ====================================================================
+
+fprintf('\n\n================ STAGE 14: ROI PLOTTING ================\n');
+
+plotReport = localPlotAllRois(EEG_S1_clean, EEG_S2_clean, participantID, plotDir, cfg);
+
+plotReportCsv = fullfile(plotDir, sprintf('%s_ROIPlotFiles.csv', participantID));
+writetable(plotReport.plotFiles, plotReportCsv);
+
+logStep('roi_plotting', 'OK', 'Generated S1/S2 ROI plots', sprintf('%d plot rows', height(plotReport.plotFiles)), plotReportCsv);
+
+% ====================================================================
+% Final report
+% ====================================================================
+
+report = struct();
+report.participantID = participantID;
+report.dataPath = dataPath;
+report.outDir = outDir;
+report.plotDir = plotDir;
+report.logTxtFile = logTxtFile;
+report.logCsvFile = logCsvFile;
+report.bdfPath = bdfPath;
+report.fullRunCsv = fullRunCsv;
+report.cfg = cfg;
+report.componentsToRemove = componentsToRemove;
+report.icaElapsedSec = icaElapsedSec;
+report.icaElapsedMin = icaElapsedSec/60;
+report.cleanContinuousSet = cleanSet;
+report.codedContinuousSet = codedSet;
+report.s1EpochSet = s1EpochSet;
+report.s2EpochSet = s2EpochSet;
+report.s1CleanSet = s1CleanSet;
+report.s2CleanSet = s2CleanSet;
+report.countsBeforeAR = countsBefore;
+report.countsAfterAR = countsAfter;
+report.plotReport = plotReport;
+
+finalReportMat = fullfile(outDir, sprintf('%s_FinalPipelineReport.mat', participantID));
+save(finalReportMat, 'report');
+
+logStep('pipeline', 'DONE', 'Pipeline completed successfully', '', finalReportMat);
+
+writeLogCsv();
+
+fprintf('\n============================================================\n');
+fprintf('PIPELINE COMPLETE\n');
+fprintf('Finished: %s\n', datestr(now));
+fprintf('Output folder:\n%s\n', outDir);
+fprintf('Text log:\n%s\n', logTxtFile);
+fprintf('CSV log:\n%s\n', logCsvFile);
+fprintf('============================================================\n\n');
+
+diary off;
+
+
+catch ME
+fprintf('\n============================================================\n');
+fprintf('PIPELINE ERROR\n');
+fprintf('%s\n', ME.message);
+fprintf('============================================================\n\n');
+
+
+logStep('pipeline', 'ERROR', ME.message, '', '');
+
+try
+    writeLogCsv();
+catch
+end
+
+diary off;
+rethrow(ME);
+
+
+end
+
+% ========================================================================
+% Nested logging functions
+% ========================================================================
+
+
+function logStep(stage, status, message, value, file)
+    if nargin < 4 || isempty(value)
+        value = "";
+    end
+    if nargin < 5 || isempty(file)
+        file = "";
+    end
+
+    ts = string(datestr(now, 'yyyy-mm-dd HH:MM:SS'));
+
+    fprintf('[%s] %-24s %-8s %s', ts, char(stage), char(status), char(message));
+    if strlength(string(value)) > 0
+        fprintf(' | %s', char(string(value)));
+    end
+    if strlength(string(file)) > 0
+        fprintf(' | %s', char(string(file)));
+    end
+    fprintf('\n');
+
+    newRow = table( ...
+        ts, string(stage), string(status), string(message), string(value), string(file), ...
+        'VariableNames', {'Timestamp','Stage','Status','Message','Value','File'});
+
+    logRows = [logRows; newRow];
+end
+
+function writeLogCsv()
+    writetable(logRows, logCsvFile);
+end
+
+
+end
+
+% ========================================================================
+% Helper functions
+% ========================================================================
+
+function EEG = localFixChanlocsForICLabel(EEG)
+
+if isfield(EEG, 'chaninfo')
+if isfield(EEG.chaninfo, 'plotrad')
+EEG.chaninfo = rmfield(EEG.chaninfo, 'plotrad');
+end
+if isfield(EEG.chaninfo, 'shrink')
+EEG.chaninfo = rmfield(EEG.chaninfo, 'shrink');
+end
+end
+
+try
+EEG = pop_chanedit(EEG, 'lookup', 'standard-10-5-cap385.elp');
+catch ME
+warning('Could not load standard channel locations: %s', ME.message);
+end
+
+end
+
+function T_ic = localMakeICLabelTable(EEG)
+
+if ~isfield(EEG.etc, 'ic_classification') || ...
+~isfield(EEG.etc.ic_classification, 'ICLabel') || ...
+~isfield(EEG.etc.ic_classification.ICLabel, 'classifications')
+error('ICLabel classifications not found in EEG.etc.');
+end
+
+classMat = EEG.etc.ic_classification.ICLabel.classifications;
+classNames = EEG.etc.ic_classification.ICLabel.classes;
+
+[bestProb, bestClassIdx] = max(classMat, [], 2);
+
+T_ic = table( ...
+(1:size(classMat,1))', ...
+string(classNames(bestClassIdx))', ...
+bestProb * 100, ...
+classMat(:,1) * 100, ...
+classMat(:,2) * 100, ...
+classMat(:,3) * 100, ...
+classMat(:,4) * 100, ...
+classMat(:,5) * 100, ...
+classMat(:,6) * 100, ...
+classMat(:,7) * 100, ...
+'VariableNames', {'IC','BestClass','BestPct','BrainPct','MusclePct','EyePct','HeartPct','LineNoisePct','ChannelNoisePct','OtherPct'});
+
+end
+
+function localCheckIcaTransferCompatibility(EEG_source, EEG_target)
+
+if EEG_source.nbchan ~= EEG_target.nbchan
+error('ICA source/target channel counts do not match.');
+end
+
+if EEG_source.pnts ~= EEG_target.pnts
+error('ICA source/target point counts do not match.');
+end
+
+if EEG_source.srate ~= EEG_target.srate
+error('ICA source/target sampling rates do not match.');
+end
+
+labelsSource = string({EEG_source.chanlocs.labels});
+labelsTarget = string({EEG_target.chanlocs.labels});
+
+if ~isequal(labelsSource(:), labelsTarget(:))
+error('ICA source/target channel labels do not match.');
+end
+
+end
+
+function compTag = localComponentTag(componentsToRemove)
+
+if isempty(componentsToRemove)
+compTag = 'NoICs';
+else
+compTag = sprintf('ICs%s', strjoin(string(componentsToRemove), 'to'));
+end
+
+end
+
+function varMap = localInferBehaviourVars(T, cfg)
+
+vars = string(T.Properties.VariableNames);
+
+varMap = struct();
+
+if ~isempty(char(cfg.PASVar))
+varMap.PASVar = char(cfg.PASVar);
+else
+varMap.PASVar = localFindVar(vars, ["PAS","pas","pasResp","pasResponse","PASresponse","q1","Q1","q1Resp","q1Response","q1PAS"], true, 'PAS response');
+end
+
+if ~isempty(char(cfg.LocCorrectVar))
+varMap.LocCorrectVar = char(cfg.LocCorrectVar);
+else
+varMap.LocCorrectVar = localFindVar(vars, ["locCorrect","localisationCorrect","localizationCorrect","isLocCorrect","locAcc","localisationAcc","localizationAcc","q2Correct"], true, 'localisation correctness');
+end
+
+if ~isempty(char(cfg.LocRespVar))
+varMap.LocRespVar = char(cfg.LocRespVar);
+else
+varMap.LocRespVar = localFindVar(vars, ["locResp","locResponse","localisationResp","localizationResp","locChoice","q2","Q2","q2Resp","q2Response"], false, 'localisation response');
+end
+
+if ~isempty(char(cfg.IsChangeVar))
+varMap.IsChangeVar = char(cfg.IsChangeVar);
+else
+varMap.IsChangeVar = localFindVar(vars, ["isChange","isChangeTrial","changeTrial","changePresent","changed","isChanged","trialType","trialCondition","condition"], true, 'change/no-change trial type');
+end
+
+end
+
+function varName = localFindVar(vars, candidates, required, purpose)
+
+varName = '';
+
+normVars = lower(regexprep(vars, '[^a-zA-Z0-9]', ''));
+normCandidates = lower(regexprep(candidates, '[^a-zA-Z0-9]', ''));
+
+for c = 1:numel(normCandidates)
+hit = find(normVars == normCandidates(c), 1, 'first');
+if ~isempty(hit)
+varName = char(vars(hit));
+return;
+end
+end
+
+if required
+fprintf('\nCould not identify behavioural variable for: %s\n', purpose);
+fprintf('Available variables:\n');
+disp(vars');
+error('Please pass the correct variable name as an input parameter.');
+end
+
+end
+
+function isCorrect = localColumnToLogicalCorrect(x)
+
+if islogical(x)
+isCorrect = x(:);
+elseif isnumeric(x)
+isCorrect = x(:) ~= 0;
+else
+s = upper(strtrim(string(x(:))));
+isCorrect = s == "1" | s == "TRUE" | s == "CORRECT" | s == "YES" | s == "Y";
+end
+
+end
+
+function isChange = localColumnToLogicalChange(x)
+
+if islogical(x)
+isChange = x(:);
+elseif isnumeric(x)
+isChange = x(:) ~= 0;
+else
+s = upper(strtrim(string(x(:))));
+isChange = s == "1" | s == "TRUE" | s == "CHANGE" | s == "CHG" | s == "C" | ...
+(contains(s, "CHANGE") & ~contains(s, "NO"));
+end
+
+end
+
+function trials = localExtractTriggeredTrials(EEG)
+
+eventNums = arrayfun(@(e) localEventTypeToNumber(e.type), EEG.event);
+s1Idx = find(eventNums == 21);
+
+n = numel(s1Idx);
+
+trials = struct();
+trials.s1EventIdx = nan(n,1);
+trials.s2EventIdx = nan(n,1);
+trials.s1Latency = nan(n,1);
+trials.s2Latency = nan(n,1);
+trials.pasCode = nan(n,1);
+trials.pasResp = nan(n,1);
+trials.locCode = nan(n,1);
+trials.locResp = nan(n,1);
+
+for t = 1:n
+startIdx = s1Idx(t);
+
+
+if t < n
+    stopIdx = s1Idx(t+1) - 1;
+else
+    stopIdx = numel(EEG.event);
+end
+
+segIdx = startIdx:stopIdx;
+segNums = eventNums(segIdx);
+
+s2Rel = find(segNums == 23, 1, 'first');
+pasRel = find(segNums >= 41 & segNums <= 44, 1, 'first');
+locRel = find(segNums >= 51 & segNums <= 54, 1, 'first');
+
+trials.s1EventIdx(t) = startIdx;
+trials.s1Latency(t) = EEG.event(startIdx).latency;
+
+if ~isempty(s2Rel)
+    trials.s2EventIdx(t) = segIdx(s2Rel);
+    trials.s2Latency(t) = EEG.event(segIdx(s2Rel)).latency;
+end
+
+if ~isempty(pasRel)
+    trials.pasCode(t) = segNums(pasRel);
+    trials.pasResp(t) = segNums(pasRel) - 40;
+end
+
+if ~isempty(locRel)
+    trials.locCode(t) = segNums(locRel);
+    trials.locResp(t) = segNums(locRel) - 50;
+end
+
+
+end
+
+if any(isnan(trials.s2EventIdx))
+error('Some S1-defined trials are missing S2 trigger 23.');
+end
+
+if any(isnan(trials.pasResp))
+error('Some S1-defined trials are missing PAS response trigger 41-44.');
+end
+
+if any(isnan(trials.locResp))
+error('Some S1-defined trials are missing localisation response trigger 51-54.');
+end
+
+end
+
+function trialsOut = localSubsetTrialStruct(trialsIn, idx)
+
+fields = fieldnames(trialsIn);
+trialsOut = struct();
+
+for f = 1:numel(fields)
+trialsOut.(fields{f}) = trialsIn.(fields{f})(idx);
+end
+
+end
+
+function x = localEventTypeToNumber(eventType)
+
+if isnumeric(eventType)
+x = double(eventType);
+else
+x = str2double(string(eventType));
+end
+
+end
+
+function [outcome, s1Codes, s2Codes] = localMakeOutcomeCodes(pas, locCorrect, isChange)
+
+n = numel(pas);
+
+outcome = strings(n,1);
+s1Codes = nan(n,1);
+s2Codes = nan(n,1);
+
+for i = 1:n
+if isChange(i)
+if pas(i) == 1
+outcome(i) = "Blind";
+s1Codes(i) = 201;
+s2Codes(i) = 301;
+elseif pas(i) > 1 && ~locCorrect(i)
+outcome(i) = "Sensing";
+s1Codes(i) = 202;
+s2Codes(i) = 302;
+elseif pas(i) > 1 && locCorrect(i)
+outcome(i) = "Seeing";
+s1Codes(i) = 203;
+s2Codes(i) = 303;
+else
+outcome(i) = "UnknownChange";
+s1Codes(i) = 299;
+s2Codes(i) = 399;
+end
+else
+if pas(i) == 1
+outcome(i) = "NoChange_CR";
+s1Codes(i) = 211;
+s2Codes(i) = 311;
+else
+outcome(i) = "NoChange_FA";
+s1Codes(i) = 212;
+s2Codes(i) = 312;
+end
+end
+end
+
+end
+
+function EEG = localAddSyntheticS1S2Events(EEG, trialsMain, s1Codes, s2Codes, outcome)
+
+if ~isfield(EEG.event, 'cb_mainTrial')
+[EEG.event.cb_mainTrial] = deal([]);
+end
+if ~isfield(EEG.event, 'cb_fullRunRow')
+[EEG.event.cb_fullRunRow] = deal([]);
+end
+if ~isfield(EEG.event, 'cb_outcome')
+[EEG.event.cb_outcome] = deal([]);
+end
+if ~isfield(EEG.event, 'cb_synthetic')
+[EEG.event.cb_synthetic] = deal([]);
+end
+if ~isfield(EEG.event, 'cb_lock')
+[EEG.event.cb_lock] = deal([]);
+end
+
+n = numel(s1Codes);
+
+for i = 1:n
+s1Ev = EEG.event(trialsMain.s1EventIdx(i));
+s1Ev.type = num2str(s1Codes(i));
+s1Ev.latency = trialsMain.s1Latency(i);
+s1Ev.cb_mainTrial = i;
+s1Ev.cb_fullRunRow = i;
+s1Ev.cb_outcome = char(outcome(i));
+s1Ev.cb_synthetic = 1;
+s1Ev.cb_lock = 'S1';
+
+
+s2Ev = EEG.event(trialsMain.s2EventIdx(i));
+s2Ev.type = num2str(s2Codes(i));
+s2Ev.latency = trialsMain.s2Latency(i);
+s2Ev.cb_mainTrial = i;
+s2Ev.cb_fullRunRow = i;
+s2Ev.cb_outcome = char(outcome(i));
+s2Ev.cb_synthetic = 1;
+s2Ev.cb_lock = 'S2';
+
+EEG.event(end+1) = s1Ev; 
+EEG.event(end+1) = s2Ev;
+
+
+end
+
+[~, sortIdx] = sort([EEG.event.latency]);
+EEG.event = EEG.event(sortIdx);
+
+end
+
+function baselineMeans = localComputePreS1BaselineMeans(EEG, s1Latencies, baselineMs)
+
+nTrials = numel(s1Latencies);
+baselineMeans = nan(EEG.nbchan, nTrials);
+
+srate = EEG.srate;
+
+for tr = 1:nTrials
+s1Lat = s1Latencies(tr);
+
+
+startSample = round(s1Lat + (baselineMs(1)/1000)*srate);
+endSample   = round(s1Lat + (baselineMs(2)/1000)*srate) - 1;
+
+startSample = max(1, startSample);
+endSample = min(EEG.pnts, endSample);
+
+if endSample <= startSample
+    error('Invalid baseline sample range for trial %d.', tr);
+end
+
+baselineMeans(:,tr) = mean(double(EEG.data(:,startSample:endSample)), 2, 'omitnan');
+
+
+end
+
+end
+
+function bad = localFindBadEpochs(EEG, chans, absThr, ptpThr)
+
+nTrials = EEG.trials;
+
+badAbs = false(nTrials,1);
+badPtp = false(nTrials,1);
+
+for tr = 1:nTrials
+d = double(EEG.data(chans,:,tr));
+
+
+badAbs(tr) = any(abs(d(:)) > absThr);
+
+ptp = max(d, [], 2) - min(d, [], 2);
+badPtp(tr) = any(ptp > ptpThr);
+
+
+end
+
+bad = struct();
+bad.badAbs = badAbs;
+bad.badPtp = badPtp;
+bad.anyBad = badAbs | badPtp;
+
+end
+
+function T = localMakeArtifactReport(EEG_S1, EEG_S2, badS1, badS2, badUnion, keepIdx, rejectIdx)
+
+n = EEG_S1.trials;
+
+T = table();
+T.Epoch = (1:n)';
+T.S1_badAbs = badS1.badAbs;
+T.S1_badPtp = badS1.badPtp;
+T.S1_anyBad = badS1.anyBad;
+T.S2_badAbs = badS2.badAbs;
+T.S2_badPtp = badS2.badPtp;
+T.S2_anyBad = badS2.anyBad;
+T.RejectedUnion = badUnion(:);
+T.Kept = ~badUnion(:);
+
+T.KeptIndexAfterRejection = nan(n,1);
+T.KeptIndexAfterRejection(keepIdx) = (1:numel(keepIdx))';
+
+T.RejectionOrder = nan(n,1);
+T.RejectionOrder(rejectIdx) = (1:numel(rejectIdx))';
+
+end
+
+function counts = localConditionCountsFromEpochs(EEG, lockCodes)
+
+epochCodes = localEpochLockCodes(EEG, lockCodes);
+
+names = strings(numel(lockCodes),1);
+for i = 1:numel(lockCodes)
+switch lockCodes(i)
+case {201,301}
+names(i) = "Blind";
+case {202,302}
+names(i) = "Sensing";
+case {203,303}
+names(i) = "Seeing";
+case {211,311}
+names(i) = "NoChange_CR";
+case {212,312}
+names(i) = "NoChange_FA";
+otherwise
+names(i) = "Unknown";
+end
+end
+
+n = zeros(numel(lockCodes),1);
+for i = 1:numel(lockCodes)
+n(i) = sum(epochCodes == lockCodes(i));
+end
+
+counts = table(names(:), lockCodes(:), n(:), ...
+'VariableNames', {'Condition','Code','N'});
+
+end
+
+function epochCodes = localEpochLockCodes(EEG_epoched, lockCodes)
+
+epochCodes = nan(EEG_epoched.trials,1);
+
+for e = 1:EEG_epoched.trials
+evTypes = EEG_epoched.epoch(e).eventtype;
+
+
+if ~iscell(evTypes)
+    evTypes = {evTypes};
+end
+
+evNums = nan(numel(evTypes),1);
+
+for k = 1:numel(evTypes)
+    thisType = evTypes{k};
+
+    if isnumeric(thisType)
+        evNums(k) = double(thisType);
+    else
+        evNums(k) = str2double(string(thisType));
+    end
+end
+
+matchIdx = find(ismember(evNums, lockCodes));
+
+if isempty(matchIdx)
+    error('No lock code found for epoch %d.', e);
+end
+
+epochCodes(e) = evNums(matchIdx(1));
+
+
+end
+
+end
+
+function plotReport = localPlotAllRois(EEG_S1, EEG_S2, participantID, plotDir, cfg)
+
+roiDefs = struct();
+roiDefs(1).name = "OccipitalROI";
+roiDefs(1).labels = ["O1","Oz","O2"];
+
+roiDefs(2).name = "PosteriorROI";
+roiDefs(2).labels = ["PO7","PO8","PO3","PO4","POz"];
+
+roiDefs(3).name = "ParietalROI";
+roiDefs(3).labels = ["P3","Pz","P4"];
+
+roiDefs(4).name = "CentralROI";
+roiDefs(4).labels = ["Cz","CPz","Pz"];
+
+roiDefs(5).name = "PO7PO8";
+roiDefs(5).labels = ["PO7","PO8"];
+
+% Codes to recognise in the epoched datasets
+allS1LockCodes = [201 202 203 211 212];
+allS2LockCodes = [301 302 303 311 312];
+
+% Codes to actually plot
+plotS1CondCodes = [201 202 203];
+plotS2CondCodes = [301 302 303];
+
+plotRows = table();
+
+for r = 1:numel(roiDefs)
+
+
+rowS1 = localPlotOneRoiLock( ...
+    EEG_S1, ...
+    participantID, ...
+    plotDir, ...
+    "S1", ...
+    roiDefs(r), ...
+    plotS1CondCodes, ...
+    allS1LockCodes, ...
+    cfg);
+
+rowS2 = localPlotOneRoiLock( ...
+    EEG_S2, ...
+    participantID, ...
+    plotDir, ...
+    "S2", ...
+    roiDefs(r), ...
+    plotS2CondCodes, ...
+    allS2LockCodes, ...
+    cfg);
+
+plotRows = [plotRows; rowS1; rowS2]; %#ok<AGROW>
+
+
+end
+
+plotReport = struct();
+plotReport.plotFiles = plotRows;
+
+end
+
+function row = localPlotOneRoiLock(EEG, participantID, plotDir, lockName, roiDef, plotCondCodes, allLockCodes, cfg)
+
+condNames = ["Blind","Sensing","Seeing"];
+
+colors.Blind   = [0.000 0.447 0.741];
+colors.Sensing = [0.929 0.694 0.125];
+colors.Seeing  = [0.850 0.325 0.098];
+
+roiChanIdx = localFindChannels(EEG, roiDef.labels);
+
+% Important:
+% Use all lock codes to identify every epoch, including no-change trials.
+% Then only plot the three change-awareness conditions.
+epochCodes = localEpochLockCodes(EEG, allLockCodes);
+
+times = EEG.times(:);
+
+roiData = squeeze(mean(double(EEG.data(roiChanIdx,:,:)), 1, 'omitnan'));
+
+% Make sure orientation is time x trial
+if size(roiData,1) ~= EEG.pnts && size(roiData,2) == EEG.pnts
+roiData = roiData';
+end
+
+isBlind   = epochCodes == plotCondCodes(1);
+isSensing = epochCodes == plotCondCodes(2);
+isSeeing  = epochCodes == plotCondCodes(3);
+
+waveBlind   = mean(roiData(:, isBlind),   2, 'omitnan');
+waveSensing = mean(roiData(:, isSensing), 2, 'omitnan');
+waveSeeing  = mean(roiData(:, isSeeing),  2, 'omitnan');
+
+nBlind   = sum(isBlind);
+nSensing = sum(isSensing);
+nSeeing  = sum(isSeeing);
+
+nIgnored = EEG.trials - (nBlind + nSensing + nSeeing);
+
+fprintf('\n%s %s\n', char(lockName), char(roiDef.name));
+fprintf('  Blind:   %d\n', nBlind);
+fprintf('  Sensing: %d\n', nSensing);
+fprintf('  Seeing:  %d\n', nSeeing);
+fprintf('  Ignored no-change/other epochs: %d\n', nIgnored);
+
+waveTable = table( ...
+times, ...
+waveBlind, ...
+waveSensing, ...
+waveSeeing, ...
+'VariableNames', {'TimeMs','Blind_uV','Sensing_uV','Seeing_uV'});
+
+roiNameChar = char(roiDef.name);
+chanText = char(strjoin(roiDef.labels, ', '));
+chanFileText = char(strjoin(roiDef.labels, '_'));
+
+baseName = sprintf('%s_%slocked_ERP_%s_%s', ...
+participantID, char(lockName), roiNameChar, chanFileText);
+
+csvFile = fullfile(plotDir, [baseName '.csv']);
+pngFile = fullfile(plotDir, [baseName '.png']);
+figFile = fullfile(plotDir, [baseName '.fig']);
+
+if cfg.SaveCsv
+writetable(waveTable, csvFile);
+end
+
+if cfg.VisiblePlots
+figVis = 'on';
+else
+figVis = 'off';
+end
+
+h = figure('Color', 'w', 'Visible', figVis);
+hold on;
+
+p1 = plot(times, waveBlind, ...
+'Color', colors.Blind, ...
+'LineWidth', 2.5);
+
+p2 = plot(times, waveSensing, ...
+'Color', colors.Sensing, ...
+'LineWidth', 2.5);
+
+p3 = plot(times, waveSeeing, ...
+'Color', colors.Seeing, ...
+'LineWidth', 2.5);
+
+xline(0, 'k-', 'LineWidth', 1.2, 'HandleVisibility', 'off');
+yline(0, 'k-', 'LineWidth', 0.8, 'HandleVisibility', 'off');
+
+grid on;
+box off;
+
+xlabel(sprintf('Time from %s onset (ms)', char(lockName)));
+ylabel('Amplitude (\muV)');
+
+title({ ...
+sprintf('%s-locked ERP | %s | %s', char(lockName), roiNameChar, participantID), ...
+sprintf('Channels: %s', chanText)}, ...
+'Interpreter', 'none');
+
+legend([p1 p2 p3], ...
+sprintf('Blind (n=%d)', nBlind), ...
+sprintf('Sensing (n=%d)', nSensing), ...
+sprintf('Seeing (n=%d)', nSeeing), ...
+'Location', 'best');
+
+set(gca, 'FontSize', 12);
+
+% Positive-up orientation by default
+if cfg.NegativeUp
+set(gca, 'YDir', 'reverse');
+else
+set(gca, 'YDir', 'normal');
+end
+
+if strcmpi(char(lockName), 'S1')
+xlim([cfg.S1EpochWinSec(1)*1000 cfg.S1EpochWinSec(2)*1000]);
+else
+xlim([cfg.S2EpochWinSec(1)*1000 cfg.S2EpochWinSec(2)*1000]);
+end
+
+drawnow;
+
+if cfg.SavePng
+print(h, pngFile, '-dpng', '-r300');
+end
+
+if cfg.SaveFig
+savefig(h, figFile);
+end
+
+if ~cfg.VisiblePlots
+close(h);
+end
+
+row = table( ...
+string(lockName), ...
+string(roiDef.name), ...
+string(chanText), ...
+nBlind, ...
+nSensing, ...
+nSeeing, ...
+nIgnored, ...
+string(csvFile), ...
+string(pngFile), ...
+string(figFile), ...
+'VariableNames', {'Lock','ROI','Channels','NBlind','NSensing','NSeeing','NIgnored','CsvFile','PngFile','FigFile'});
+
+end
+
+
+function chanIdx = localFindChannels(EEG, labels)
+
+labels = string(labels);
+allLabels = string({EEG.chanlocs.labels});
+
+chanIdx = nan(numel(labels),1);
+
+for i = 1:numel(labels)
+hit = find(strcmpi(allLabels, labels(i)), 1, 'first');
+
+
+if isempty(hit)
+    error('Could not find channel label: %s', labels(i));
+end
+
+chanIdx(i) = hit;
+
+
+end
+
+end
