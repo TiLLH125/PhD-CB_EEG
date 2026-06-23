@@ -45,15 +45,15 @@ cfg.skipSyncTests    = 0;         % 1 while debugging; use 0 for real data
 
 % Screen selection (don't use 0 unless you WANT desktop-spanning)
 % cfg.screenNumber = max(Screen('Screens'));
-cfg.screenNumber = 2;
+cfg.screenNumber = 0;
 
 % Keyboard device: -1 = default keyboard
 cfg.kbDev = -1;
 
-% ---- EEG serial triggers (Phase 3: event + response markers on main trials and Practice Block 2) ----
+% ---- EEG serial triggers: main trials use base codes; Practice Blocks 1 & 2 use base + practiceCodeOffset ----
 % Behaviour-only testing: cfg.eeg.enable = false;
 % Lab EEG/trigger testing (current): cfg.eeg.enable = true; COM7 @ 115200
-cfg.eeg.enable            = true;
+cfg.eeg.enable            = false;
 cfg.eeg.requirePort       = true;    % if true, abort clearly if EEG serial port cannot open
 cfg.eeg.serialPort        = 'COM7';
 cfg.eeg.baudRate          = 115200;
@@ -75,9 +75,25 @@ cfg.eeg.codes.trialEnd   = 12;
 cfg.eeg.codes.pasBase    = 40; % 40 + PAS digit
 cfg.eeg.codes.locBase    = 50; % 50 + localisation digit
 
+% Main-trial metadata trigger codes (main trials only; not mirrored to practice +100)
+cfg.eeg.codes.trackBlind       = 61;
+cfg.eeg.codes.trackSensing     = 62;
+cfg.eeg.codes.trackSeeing      = 63;
+cfg.eeg.codes.trackNotFrozen   = 64;
+cfg.eeg.codes.trackFrozen      = 65;
+cfg.eeg.codes.outcomeBlind     = 66;
+cfg.eeg.codes.outcomeSensing   = 67;
+cfg.eeg.codes.outcomeSeeing    = 68;
+cfg.eeg.codes.outcomeNoChange  = 69;
+cfg.eeg.codes.blockBase        = 70;   % 70 + blockNum -> 71-82 for 12 blocks
+cfg.eeg.codes.durationTensBase = 90;   % planned durFrames tens: 90 + floor(dur/10); not measured photodiode timing
+cfg.eeg.codes.durationOnesBase = 101;  % planned durFrames ones: 101 + mod(dur,10)
+
+cfg.eeg.practiceCodeOffset = 100;   % practice triggers = main code + 100 (111-154 family)
+
 cfg.eeg.markerPolicy = struct();
 cfg.eeg.markerPolicy.markPracticeTrials  = true;
-cfg.eeg.markerPolicy.markPracticeBlock1  = false;
+cfg.eeg.markerPolicy.markPracticeBlock1  = true;
 cfg.eeg.markerPolicy.markPracticeBlock2  = true;
 cfg.eeg.markerPolicy.markAuxScreens      = false;
 cfg.eeg.markerPolicy.markResponses       = true;
@@ -104,10 +120,10 @@ cfg.practice1.enable    = true;
 cfg.practice1.name      = 'Practice Block 1';
 cfg.practice1.feedback  = true;
 
-% Trial composition (20 total; tweak as needed)
-cfg.practice1.nSTD      = 13;   % standard change trials
-cfg.practice1.nNCH      = 6;    % no-change trials (liberal catch)
-cfg.practice1.nEASY     = 6;    % obvious change trials (conservative catch)
+% Trial composition (15 total: 6 STD, 5 EASY, 4 NCH)
+cfg.practice1.nSTD      = 6;    % standard change trials
+cfg.practice1.nNCH      = 4;    % no-change trials
+cfg.practice1.nEASY     = 5;    % obvious/easy change trials
 cfg.practice1.nTrials   = cfg.practice1.nSTD + cfg.practice1.nNCH + cfg.practice1.nEASY;
 
 % Durations (frames) by trial type
@@ -123,14 +139,14 @@ cfg.practice2.enable    = true;
 cfg.practice2.name      = 'Practice Block 2';
 cfg.practice2.feedback  = false;
 
-% Trial composition (placeholder for now)
-cfg.practice2.nSTD      = 13;
-cfg.practice2.nNCH      = 6;
-cfg.practice2.nEASY     = 6;
+% Trial composition (15 total: 6 STD, 5 EASY, 4 NCH)
+cfg.practice2.nSTD      = 6;
+cfg.practice2.nNCH      = 4;
+cfg.practice2.nEASY     = 5;
 cfg.practice2.nTrials   = cfg.practice2.nSTD + cfg.practice2.nNCH + cfg.practice2.nEASY;
 
 % Base durations (used when tiered assignment is disabled)
-cfg.practice2.durSTDFrames  = 10;
+cfg.practice2.durSTDFrames  = 20;
 cfg.practice2.durEASYFrames = 30;
 cfg.practice2.durNCHFrames  = 20;
 
@@ -151,7 +167,7 @@ cfg.practice1Criteria.minEasyDetect  = 0.60;
 cfg.practice1Criteria.minEasySee     = 0.40;
 
 % ---- Multinomial QUEST+ calibration ----
-cfg.calib.maxTrials = 800;             % full run total trials
+cfg.calib.maxTrials = 600;             % full run total trials
 
 cfg.calib.convergenceMinTrials = 40;   % minimum updates per track before freeze allowed
 cfg.calib.convergenceWindow    = 12;   % recent xCurrent values inspected for stability
@@ -179,7 +195,7 @@ cfg.calib.tracks(3).targetOutcome = 'PlocGivenAware';  % P(loc correct | aware);
 cfg.calib.tracks(3).targetProb    = 0.65;
 cfg.calib.tracks(3).startFrames   = 41;
 
-% Trial counts — 800-trial full lab run (16 blocks × 50 trials)
+% Trial counts — 600-trial full lab run (12 blocks × 50 trials)
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
 
@@ -193,8 +209,8 @@ cfg.trialDial.nChangePerBlock   = 38;
 cfg.trialDial.nNoChangePerBlock = 12;
 cfg.trialDial.pChange = cfg.trialDial.nChangePerBlock / cfg.trialsPerBlock;  % 0.76
 
-cfg.nChange = cfg.nBlocks * cfg.trialDial.nChangePerBlock;      % 608
-cfg.nCatch  = cfg.nBlocks * cfg.trialDial.nNoChangePerBlock;    % 192
+cfg.nChange = cfg.nBlocks * cfg.trialDial.nChangePerBlock;      % 456
+cfg.nCatch  = cfg.nBlocks * cfg.trialDial.nNoChangePerBlock;    % 144
 
 assert(mod(cfg.nTotal, cfg.trialsPerBlock) == 0, ...
     'nTotal must be divisible by trialsPerBlock');
@@ -203,8 +219,8 @@ assert(cfg.trialDial.nChangePerBlock + cfg.trialDial.nNoChangePerBlock == cfg.tr
 assert(mod(cfg.nCatch, 3) == 0, ...
     'nCatch should be divisible by 3 for catch-trial balance');
 
-cfg.nCatchPerTrack = cfg.nCatch / 3;   % 64 each (exact)
-% nChange (608) not divisible by 3; per-block builder rotates remainders across tracks
+cfg.nCatchPerTrack = cfg.nCatch / 3;   % 48 each (exact)
+% nChange (456) divisible by 3 — 152 change trials per track over full run
 
 % Timing (seconds)
 cfg.fixJitterRangeSec = [1.00 1.50];  % fixation before S1
@@ -254,7 +270,7 @@ cfg.keys.space  = KbName('space');
 cfg.keys.pasPhysical = {'q','w','e','r'};
 cfg.keys.pasValues   = [1 2 3 4];
 
-cfg.keys.quadPhysical = {'7','9','1','3'};
+cfg.keys.quadPhysical = {'1!','2@','3#','4$'};
 cfg.keys.quadValues   = [1 2 3 4];
 
 cfg.keys.pas  = KbName(cfg.keys.pasPhysical);
@@ -593,6 +609,16 @@ try
         [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', 'main_trial', t, blockNum, vblTargetFixOn);
         if cfg.eeg.markerPolicy.markMainTrials
             emitTrigger('trialStart', 'main_trial', t, blockNum, cfg.eeg.codes.trialStart, 'FixOn', tFixOn);
+            emitTrigger('blockNumber', 'main_trial', t, blockNum, cfg.eeg.codes.blockBase + blockNum, 'FixOn', tFixOn);
+            trackMetaCodes = [cfg.eeg.codes.trackBlind, cfg.eeg.codes.trackSensing, cfg.eeg.codes.trackSeeing];
+            emitTrigger('questTrack', 'main_trial', t, blockNum, trackMetaCodes(k), 'FixOn', tFixOn);
+            if tracks(k).frozen
+                emitTrigger('trackFrozen', 'main_trial', t, blockNum, cfg.eeg.codes.trackFrozen, 'FixOn', tFixOn);
+            else
+                emitTrigger('trackFrozen', 'main_trial', t, blockNum, cfg.eeg.codes.trackNotFrozen, 'FixOn', tFixOn);
+            end
+            emitTrigger('durationTens', 'main_trial', t, blockNum, cfg.eeg.codes.durationTensBase + floor(durFrames / 10), 'FixOn', tFixOn);
+            emitTrigger('durationOnes', 'main_trial', t, blockNum, cfg.eeg.codes.durationOnesBase + mod(durFrames, 10), 'FixOn', tFixOn);
         end
         tTrialStart = tFixOn;
 
@@ -669,7 +695,7 @@ try
         end
         
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
-        resp2RT = resp2Time - tQ2;
+        locRT = resp2Time - tQ2;
         resp2   = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
             if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
@@ -686,6 +712,19 @@ try
             end
         else
             locCorrect = NaN; % no-change trials: not defined
+        end
+
+        if cfg.eeg.markerPolicy.markMainTrials
+            if ~trial.isChange
+                outcomeCode = cfg.eeg.codes.outcomeNoChange;
+            elseif hit == 0
+                outcomeCode = cfg.eeg.codes.outcomeBlind;
+            elseif locCorrect == 1
+                outcomeCode = cfg.eeg.codes.outcomeSeeing;
+            else
+                outcomeCode = cfg.eeg.codes.outcomeSensing;
+            end
+            emitTrigger('outcome', 'main_trial', t, blockNum, outcomeCode, 'Q2_Loc', tQ2);
         end
 
         tTrialEnd = resp2Time;
@@ -775,7 +814,7 @@ try
         results(t).tQ2 = tQ2;
 
         results(t).resp2 = resp2;
-        results(t).resp2RT = resp2RT;
+        results(t).locRT = locRT;
 
         results(t).pas = pas;
         results(t).pasRT = pasRT;
@@ -1267,6 +1306,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     topText = [ ...
         '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
         'First, a fixation cross will appear in the centre. Next, you will see the four circles, a brief blank screen, then the four circles again.\n' ...
+        'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear. Try to avoid looking around at the individual circles during the brief sequence.\n' ...
         'After the sequence, you will answer the same two questions described on the previous screen:\n\n' ...
     ];
 
@@ -1413,20 +1453,29 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
 end
 
-function showPractice1BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+function showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, flipLabel)
 
     tcfg = cfg.display.text;
     titleTxt = 'When you are ready press SPACEBAR to begin';
+    reminderTxt = 'Reminder: during each trial, please keep your eyes on the centre cross, even when the circles appear.';
 
+    [~, yc] = RectCenter(windowRect);
     Screen('FillRect', window, bg);
     Screen('TextSize', window, tcfg.titleSize);
     Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTxt, 'center', 'center', black);
+    [~, ny] = DrawFormattedText(window, titleTxt, 'center', yc - round(RectHeight(windowRect) * 0.06), black, tcfg.bodyWrap);
     Screen('TextStyle', window, 0);
-    cfg.loggedFlip('practice1_begin', 'practice1_begin', NaN, NaN, NaN);
+    Screen('TextSize', window, tcfg.bodySize);
+    DrawFormattedText(window, reminderTxt, 'center', ny + round(RectHeight(windowRect) * 0.03), black, tcfg.bodyWrap);
+    cfg.loggedFlip(flipLabel, flipLabel, NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+end
+
+function showPractice1BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+
+    showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'practice1_begin');
 end
 
 function checkAbort(cfg)
@@ -1499,18 +1548,7 @@ end
 
 function showPractice2BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
 
-    tcfg = cfg.display.text;
-    titleTxt = 'When you are ready press SPACEBAR to begin';
-
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTxt, 'center', 'center', black);
-    Screen('TextStyle', window, 0);
-    cfg.loggedFlip('practice2_begin', 'practice2_begin', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'practice2_begin');
 end
 
 function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
@@ -1528,6 +1566,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
         'The task will continue throughout the full run with regular breaks for you to rest and refresh.\n' ...
         'You will NOT receive feedback during the main run.\n\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
+        'As before, please keep your eyes on the centre fixation cross during each trial, even when the circles appear.\n\n' ...
         'Use the full 1 - 4 scale when appropriate in Quesiton 1.\n' ...
         'Use 1 whenever you are guessing or unsure.\n' ...
         'Only choose 2 – 4 when you genuinely experienced a change.\n' ...
@@ -1571,18 +1610,7 @@ end
 
 function showMainTrialBeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
 
-    tcfg = cfg.display.text;
-    titleTxt = 'When you are ready press SPACEBAR to begin';
-
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTxt, 'center', 'center', black);
-    Screen('TextStyle', window, 0);
-    cfg.loggedFlip('main_begin', 'main_begin', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'main_begin');
 end
 
 function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinished, totalBlocks)
@@ -1593,7 +1621,11 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
     promptY  = windowRect(4) * tcfg.promptYFrac;
 
     titleTxt = sprintf('Block %d of %d complete', blockJustFinished, totalBlocks);
-    bodyTxt  = 'Take a break.';
+    bodyTxt = [ ...
+        'Nice work, that block is complete.\n\n' ...
+        'Please take a moment to rest your eyes and relax your hands and shoulders. The next block will not begin until you press SPACEBAR.\n\n' ...
+        'If you would like a longer break, a sip of water, or a seated stretch, please let the researcher know.' ...
+    ];
     mergedTxt = sprintf('%s\n\n%s', titleTxt, bodyTxt);
 
     % ---- PASS 1: greyed prompt ----
@@ -1626,18 +1658,7 @@ end
 
 function showBlockResumeScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
 
-    tcfg = cfg.display.text;
-    titleTxt = 'When you are ready press SPACEBAR to begin';
-
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTxt, 'center', 'center', black);
-    Screen('TextStyle', window, 0);
-    cfg.loggedFlip('block_resume', 'block_resume', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'block_resume');
 end
 
 function result = classifyPractice1(summary, cfg)
@@ -2470,7 +2491,7 @@ function r = emptyResultRow()
         'tQ1', NaN, ...
         'tQ2', NaN, ...
         'resp2', NaN, ...
-        'resp2RT', NaN, ...
+        'locRT', NaN, ...
         'pas', NaN, ...
         'pasRT', NaN, ...
         'hit', NaN, ...
@@ -2814,10 +2835,14 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     % --- Build mixed practice trial list (STD / NCH / EASY) ---
     pTrials = buildPracticeTrialList(pracCfg, allowedOri);
 
+    isPractice1 = strcmp(pracCfg.name, 'Practice Block 1');
     isPractice2 = strcmp(pracCfg.name, 'Practice Block 2');
-    doPracticeTriggers = isPractice2 && ...
-        isfield(cfg.eeg.markerPolicy, 'markPracticeBlock2') && ...
-        cfg.eeg.markerPolicy.markPracticeBlock2;
+
+    doPracticeTriggers = ...
+        (isPractice1 && isfield(cfg.eeg.markerPolicy, 'markPracticeBlock1') && cfg.eeg.markerPolicy.markPracticeBlock1) || ...
+        (isPractice2 && isfield(cfg.eeg.markerPolicy, 'markPracticeBlock2') && cfg.eeg.markerPolicy.markPracticeBlock2);
+
+    pracOff = cfg.eeg.practiceCodeOffset;
 
     % --- Practice metrics counters (Phase C scaffold) ---
     m = struct();
@@ -2860,7 +2885,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             vblTargetFixOn = GetSecs + 0.5 * ifi;
             [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', pracCfg.name, p, NaN, vblTargetFixOn);
             if doPracticeTriggers
-                cfg.emitTrigger('trialStart', pracCfg.name, p, NaN, cfg.eeg.codes.trialStart, 'FixOn', tFixOn);
+                cfg.emitTrigger('trialStart', pracCfg.name, p, NaN, cfg.eeg.codes.trialStart + pracOff, 'FixOn', tFixOn);
             end
             tTrialStart = tFixOn;
 
@@ -2869,14 +2894,14 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
             [tS1,  ~, ~, ~]  = cfg.loggedFlip('S1', pracCfg.name, p, NaN, vblTargetS1);
             if doPracticeTriggers
-                cfg.emitTrigger('s1On', pracCfg.name, p, NaN, cfg.eeg.codes.s1On, 'S1', tS1);
+                cfg.emitTrigger('s1On', pracCfg.name, p, NaN, cfg.eeg.codes.s1On + pracOff, 'S1', tS1);
             end
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetISI = tS1 + (durFrames - 0.5) * ifi;
             [tISI, ~, ~, ~] = cfg.loggedFlip('ISI', pracCfg.name, p, NaN, vblTargetISI);
             if doPracticeTriggers
-                cfg.emitTrigger('isiOn', pracCfg.name, p, NaN, cfg.eeg.codes.isiOn, 'ISI', tISI);
+                cfg.emitTrigger('isiOn', pracCfg.name, p, NaN, cfg.eeg.codes.isiOn + pracOff, 'ISI', tISI);
             end
 
             drawGratings(window, gratingTex, allRects, oriS2, bg);
@@ -2884,14 +2909,14 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
             [tS2,  ~, ~, ~]  = cfg.loggedFlip('S2', pracCfg.name, p, NaN, vblTargetS2);
             if doPracticeTriggers
-                cfg.emitTrigger('s2On', pracCfg.name, p, NaN, cfg.eeg.codes.s2On, 'S2', tS2);
+                cfg.emitTrigger('s2On', pracCfg.name, p, NaN, cfg.eeg.codes.s2On + pracOff, 'S2', tS2);
             end
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetGap = tS2 + (durFrames - 0.5) * ifi;
             [tGap, ~, ~, ~] = cfg.loggedFlip('Gap', pracCfg.name, p, NaN, vblTargetGap);
             if doPracticeTriggers
-                cfg.emitTrigger('gapOn', pracCfg.name, p, NaN, cfg.eeg.codes.gapOn, 'Gap', tGap);
+                cfg.emitTrigger('gapOn', pracCfg.name, p, NaN, cfg.eeg.codes.gapOn + pracOff, 'Gap', tGap);
             end
     
             % ---- Questions ----
@@ -2901,13 +2926,13 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
             [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', pracCfg.name, p, NaN, vblTargetQ1);
             if doPracticeTriggers
-                cfg.emitTrigger('q1On', pracCfg.name, p, NaN, cfg.eeg.codes.q1On, 'Q1_PAS', tQ1);
+                cfg.emitTrigger('q1On', pracCfg.name, p, NaN, cfg.eeg.codes.q1On + pracOff, 'Q1_PAS', tQ1);
             end
             [pasKey, ~] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
             pas = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
             if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
                 if ~isnan(pas) && pas >= 1 && pas <= 4
-                    cfg.emitTrigger('pasResponse', pracCfg.name, p, NaN, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tQ1);
+                    cfg.emitTrigger('pasResponse', pracCfg.name, p, NaN, cfg.eeg.codes.pasBase + pas + pracOff, 'Q1_PAS', tQ1);
                 end
             end
             
@@ -2929,13 +2954,13 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             vblTargetQ2 = GetSecs + 0.5 * ifi;
             [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', pracCfg.name, p, NaN, vblTargetQ2);
             if doPracticeTriggers
-                cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On, 'Q2_Loc', tQ2);
+                cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On + pracOff, 'Q2_Loc', tQ2);
             end
             [resp2Key, ~] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
             resp2 = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
             if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
                 if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
-                    cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + resp2, 'Q2_Loc', tQ2);
+                    cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + resp2 + pracOff, 'Q2_Loc', tQ2);
                 end
             end
             
@@ -3080,7 +3105,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             vblTargetITI = GetSecs + 0.5 * ifi;
             [tITI, ~, ~, missedITI] = cfg.loggedFlip('ITI', pracCfg.name, p, NaN, vblTargetITI);
             if doPracticeTriggers
-                cfg.emitTrigger('trialEnd', pracCfg.name, p, NaN, cfg.eeg.codes.trialEnd, 'ITI', tITI);
+                cfg.emitTrigger('trialEnd', pracCfg.name, p, NaN, cfg.eeg.codes.trialEnd + pracOff, 'ITI', tITI);
             end
             holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
         end
