@@ -45,7 +45,7 @@ cfg.skipSyncTests    = 0;         % 1 while debugging; use 0 for real data
 
 % Screen selection (don't use 0 unless you WANT desktop-spanning)
 % cfg.screenNumber = max(Screen('Screens'));
-cfg.screenNumber = 0;
+cfg.screenNumber = 2;
 
 % Keyboard device: -1 = default keyboard
 cfg.kbDev = -1;
@@ -198,7 +198,7 @@ cfg.calib.tracks(3).startFrames   = 41;
 % Trial counts — 600-trial full lab run (12 blocks × 50 trials)
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
-cfg.debug.quickRun = false;   % true = ultra-short formatting/test run; false = real/full run
+cfg.debug.quickRun = true;   % true = ultra-short formatting/test run; false = real/full run
 cfg.debug.quickRunFixedDurFrames = 20;
 
 cfg.nTotal = cfg.calib.maxTrials;
@@ -292,7 +292,7 @@ cfg.keys.space  = KbName('space');
 cfg.keys.pasPhysical = {'q','w','e','r'};
 cfg.keys.pasValues   = [1 2 3 4];
 
-cfg.keys.quadPhysical = {'1','2','3','4'};
+cfg.keys.quadPhysical = {'7','9','1','3'};
 cfg.keys.quadValues   = [1 2 3 4];
 
 cfg.keys.pas  = KbName(cfg.keys.pasPhysical);
@@ -1337,7 +1337,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     % --- Text blocks (aligned with web task copy; spacebar = Continue) ---
     topText = [ ...
         '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
-        'First, a fixation cross will appear in the centre. Next, you will see the four circles, a brief blank screen, then the four circles again.\n' ...
+        'First, a fixation cross will appear in the centre. Next, you will see four circles, a brief blank screen, then the four circles again.\n' ...
         'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear.\nTry to avoid looking around at the individual circles during the brief sequence.\n\n' ...
         'After the sequence, you will answer the same two questions described on the previous screen:\n\n' ...
     ];
