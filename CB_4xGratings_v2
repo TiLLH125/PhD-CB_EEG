@@ -198,6 +198,8 @@ cfg.calib.tracks(3).startFrames   = 41;
 % Trial counts — 600-trial full lab run (12 blocks × 50 trials)
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
+cfg.debug.quickRun = false;   % true = ultra-short formatting/test run; false = real/full run
+cfg.debug.quickRunFixedDurFrames = 20;
 
 cfg.nTotal = cfg.calib.maxTrials;
 
@@ -207,7 +209,27 @@ cfg.nBlocks = cfg.nTotal / cfg.trialsPerBlock;
 cfg.trialDial.applyPerBlock = true;
 cfg.trialDial.nChangePerBlock   = 38;
 cfg.trialDial.nNoChangePerBlock = 12;
-cfg.trialDial.pChange = cfg.trialDial.nChangePerBlock / cfg.trialsPerBlock;  % 0.76
+
+% ---- DEBUG QUICK RUN (overrides counts above when enabled) ----
+if cfg.debug.quickRun
+    fprintf('\n*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
+
+    cfg.practice1.nSTD = 1;  cfg.practice1.nEASY = 0;  cfg.practice1.nNCH = 0;
+    cfg.practice1.nTrials = cfg.practice1.nSTD + cfg.practice1.nEASY + cfg.practice1.nNCH;
+
+    cfg.practice2.nSTD = 1;  cfg.practice2.nEASY = 0;  cfg.practice2.nNCH = 0;
+    cfg.practice2.nTrials = cfg.practice2.nSTD + cfg.practice2.nEASY + cfg.practice2.nNCH;
+
+    cfg.calib.maxTrials = 3;
+    cfg.nTotal = cfg.calib.maxTrials;
+    cfg.trialsPerBlock = 1;
+    cfg.nBlocks = 3;
+    cfg.trialDial.nChangePerBlock = 1;
+    cfg.trialDial.nNoChangePerBlock = 0;
+    % QUEST+ still runs; estimates from quick-run are not meaningful
+end
+
+cfg.trialDial.pChange = cfg.trialDial.nChangePerBlock / cfg.trialsPerBlock;
 
 cfg.nChange = cfg.nBlocks * cfg.trialDial.nChangePerBlock;      % 456
 cfg.nCatch  = cfg.nBlocks * cfg.trialDial.nNoChangePerBlock;    % 144
@@ -384,6 +406,9 @@ try
     cfg.fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
 
     fprintf('\nDuration-based run\n');
+    if cfg.debug.quickRun
+        fprintf('*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
+    end
     fprintf('Total trials: %d\n', cfg.nTotal);
     fprintf('Blocks: %d\n', cfg.nBlocks);
     fprintf('Trials/block: %d\n', cfg.trialsPerBlock);
@@ -577,6 +602,10 @@ try
             durFrames = tracks(k).frozenFrames;
         else
             durFrames = clamp(round(tracks(k).xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
+        end
+
+        if isfield(cfg, 'debug') && isfield(cfg.debug, 'quickRun') && cfg.debug.quickRun
+            durFrames = cfg.debug.quickRunFixedDurFrames;
         end
 
         if ~firstTrackUsePrinted(k)
@@ -938,6 +967,8 @@ try
     T.qpBetaLoc  = repmat(psiParamsMAP(4), height(T), 1);
     T.qpLambda   = repmat(psiParamsMAP(5), height(T), 1);
 
+    T.debugQuickRun = repmat(double(cfg.debug.quickRun), height(T), 1);
+
     writetable(T, outFile);
 
     T2 = readtable(outFile);   % uses the file you just saved
@@ -979,6 +1010,7 @@ try
     cal.psiParamsMAP   = psiParamsMAP;
     cal.psiParamsNames = {'alpha_det','beta_det','alpha_loc','beta_loc','lambda'};
     cal.questPlusCfg   = cfg.calib.questPlus;
+    cal.debugQuickRun  = cfg.debug.quickRun;
 
     calFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FullRun_%s.mat', cfg.participantID, timestamp));
     save(calFile, 'cal', 'questData');
@@ -1183,7 +1215,7 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
     instrBodyC = [ ...
         'Press a number key:\n\n' ...
         '[1] Top Left    [2] Top Right    [3] Bottom Left    [4] Bottom Right\n\n' ...
-        'You will always be asked both questions — even if you said there was no change in Question 1.\n\n' ...
+        'You will always be asked both questions, even if you said there was no change in Question 1.\n\n' ...
     ];
     instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC };
     instrSegBold = [ false, true, false, true, false ];
@@ -1306,7 +1338,7 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     topText = [ ...
         '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
         'First, a fixation cross will appear in the centre. Next, you will see the four circles, a brief blank screen, then the four circles again.\n' ...
-        'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear. Try to avoid looking around at the individual circles during the brief sequence.\n' ...
+        'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear.\nTry to avoid looking around at the individual circles during the brief sequence.\n\n' ...
         'After the sequence, you will answer the same two questions described on the previous screen:\n\n' ...
     ];
 
@@ -1457,7 +1489,7 @@ function showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, flipLab
 
     tcfg = cfg.display.text;
     titleTxt = 'When you are ready press SPACEBAR to begin';
-    reminderTxt = 'Reminder: during each trial, please keep your eyes on the centre cross, even when the circles appear.';
+    reminderTxt = 'Remember: during each trial, please keep your eyes on the centre cross.';
 
     [~, yc] = RectCenter(windowRect);
     Screen('FillRect', window, bg);
@@ -1466,7 +1498,7 @@ function showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, flipLab
     [~, ny] = DrawFormattedText(window, titleTxt, 'center', yc - round(RectHeight(windowRect) * 0.06), black, tcfg.bodyWrap);
     Screen('TextStyle', window, 0);
     Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, reminderTxt, 'center', ny + round(RectHeight(windowRect) * 0.03), black, tcfg.bodyWrap);
+    DrawFormattedText(window, reminderTxt, 'center', ny + round(RectHeight(windowRect) * 0.06), black, tcfg.bodyWrap);
     cfg.loggedFlip(flipLabel, flipLabel, NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
