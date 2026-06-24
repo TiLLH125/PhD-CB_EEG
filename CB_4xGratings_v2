@@ -292,7 +292,7 @@ cfg.keys.space  = KbName('space');
 cfg.keys.pasPhysical = {'q','w','e','r'};
 cfg.keys.pasValues   = [1 2 3 4];
 
-cfg.keys.quadPhysical = {'1!','2@','3#','4$'};
+cfg.keys.quadPhysical = {'1','2','3','4'};
 cfg.keys.quadValues   = [1 2 3 4];
 
 cfg.keys.pas  = KbName(cfg.keys.pasPhysical);
@@ -1489,7 +1489,7 @@ function showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, flipLab
 
     tcfg = cfg.display.text;
     titleTxt = 'When you are ready press SPACEBAR to begin';
-    reminderTxt = 'Remember: during each trial, please keep your eyes on the centre cross.';
+    reminderTxt = 'Remember: please keep your eyes on the centre cross during each trial';
 
     [~, yc] = RectCenter(windowRect);
     Screen('FillRect', window, bg);
@@ -1593,7 +1593,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     titleMainExperiment = 'Experiment Information';
 
     txt = [ ...
-        '\nWell done! You''ve finished the practice trials.\n' ...
+        '\nWell done!\nYou''ve finished the practice trials.\n' ...
         'You will now begin the main experimental trial blocks.\n\n' ...
         'The task will continue throughout the full run with regular breaks for you to rest and refresh.\n' ...
         'You will NOT receive feedback during the main run.\n\n' ...
@@ -1654,17 +1654,25 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
 
     titleTxt = sprintf('Block %d of %d complete', blockJustFinished, totalBlocks);
     bodyTxt = [ ...
-        'Nice work, that block is complete.\n\n' ...
-        'Please take a moment to rest your eyes and relax your hands and shoulders. The next block will not begin until you press SPACEBAR.\n\n' ...
+        'Nice work!\n\n' ...
+        'Please take a moment to rest your eyes and relax your hands and shoulders.\nThe next block will not begin until you press SPACEBAR.\n\n' ...
         'If you would like a longer break, a sip of water, or a seated stretch, please let the researcher know.' ...
     ];
-    mergedTxt = sprintf('%s\n\n%s', titleTxt, bodyTxt);
+    % mergedTxt = sprintf('%s\n\n%s', titleTxt, bodyTxt);
 
     % ---- PASS 1: greyed prompt ----
     Screen('FillRect', window, bg);
+    [~, yc] = RectCenter(windowRect);
+    titleY = yc - round(RectHeight(windowRect) * 0.18);
+    bodyGap = round(RectHeight(windowRect) * 0.045);
+    
+    Screen('TextSize', window, tcfg.titleSize);
+    Screen('TextStyle', window, 1);  % bold
+    [~, titleBottom] = DrawFormattedText(window, titleTxt, 'center', titleY, black, tcfg.bodyWrap);
+    
     Screen('TextSize', window, tcfg.bodySize);
-    Screen('TextStyle', window, 0);
-    DrawFormattedText(window, mergedTxt, 'center', 'center', black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextStyle', window, 0);  % normal
+    DrawFormattedText(window, bodyTxt, 'center', titleBottom + bodyGap, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
 
@@ -1677,9 +1685,15 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
 
     % ---- PASS 2: active prompt ----
     Screen('FillRect', window, bg);
+    
+    Screen('TextSize', window, tcfg.titleSize);
+    Screen('TextStyle', window, 1);  % bold
+    [~, titleBottom] = DrawFormattedText(window, titleTxt, 'center', titleY, black, tcfg.bodyWrap);
+    
     Screen('TextSize', window, tcfg.bodySize);
-    Screen('TextStyle', window, 0);
-    DrawFormattedText(window, mergedTxt, 'center', 'center', black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    Screen('TextStyle', window, 0);  % normal
+    DrawFormattedText(window, bodyTxt, 'center', titleBottom + bodyGap, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+    
     Screen('TextSize', window, tcfg.promptSize);
     DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
     cfg.loggedFlip('block_break_active', 'block_break', NaN, blockJustFinished, NaN);
