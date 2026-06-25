@@ -19,6 +19,7 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %  13. Apply S1 baseline to both S1 and S2 epochs
 %  14. Run joint automated artefact rejection
 %  15. Plot S1/S2 Blind/Sensing/Seeing ROI ERPs
+%  16. Optional extra central ROI trial traces, B/S/S overlay, and S2 VAN/LP topomaps
 %
 % Main assumptions:
 %   - BioSemi file has 72 channels total
@@ -44,6 +45,12 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %     rejection is disabled. Potentially bad channels are flagged to CSV for
 %     manual review. No channels are removed or interpolated; ICA and ERP
 %     preprocessing retain the full scalp montage.
+%   - Optional read-only 50 Hz line-noise QC runs on downsampled, ICA-training,
+%     and ERP-analysis datasets. Results are saved to CSV and optional plots.
+%     This does not apply notch filtering or channel removal.
+%   - Optional Stage 16 extra plots (central ROI trial traces, B/S/S overlay,
+%     S2 VAN/LP topomaps) run on AR-clean S1/S2 datasets when plot functions
+%     are on the MATLAB path. Disable with 'RunExtraFinalPlots', false.
 %   - By default, automatically rejects ICLabel Muscle/Eye components with
 %     probability >= 0.90. Enable manual review with 'ManualICAReject', true.
 %     Change threshold with 'AutoICARejectThreshold', 0.90.
@@ -128,6 +135,13 @@ addParameter(p, 'BadChannelCheckerFlatlineCriterion', 5, @(x) isnumeric(x) && is
 addParameter(p, 'BadChannelCheckerLineNoiseCriterion', 4, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 addParameter(p, 'BadChannelCheckerCorrelationCriterion', 0.80, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
 
+% Line-noise QC (read-only measurement; no filtering)
+addParameter(p, 'RunLineNoiseQC', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'LineNoiseFreqHz', 50, @(x) isnumeric(x) && isscalar(x) && x > 0);
+addParameter(p, 'LineNoiseNeighbourHz', [45 55], @(x) isnumeric(x) && numel(x) == 2 && x(1) < x(2));
+addParameter(p, 'LineNoiseExcludeHz', [49 51], @(x) isnumeric(x) && numel(x) == 2 && x(1) < x(2));
+addParameter(p, 'LineNoiseQCPlot', true, @(x) islogical(x) || isnumeric(x));
+
 % Trial config
 addParameter(p, 'NTriggeredPractice', 25, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'ExpectedMainTrials', 800, @(x) isnumeric(x) && isscalar(x));
@@ -154,6 +168,16 @@ addParameter(p, 'NegativeUp', false, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'SaveFig', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'SavePng', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'SaveCsv', true, @(x) islogical(x) || isnumeric(x));
+
+% Extra final ERP / topomap plotting (after ROI plots; optional)
+addParameter(p, 'RunExtraFinalPlots', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ExtraPlotVisible', false, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ExtraPlotSavePng', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ExtraPlotSaveFig', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ExtraPlotSaveCsv', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ExtraPlotCentralChannels', {'Cz','CPz','Pz'}, @(x) iscellstr(x) || isstring(x));
+addParameter(p, 'ExtraPlotVANWindowMs', [150 250], @(x) isnumeric(x) && numel(x) == 2);
+addParameter(p, 'ExtraPlotLPWindowMs', [400 600], @(x) isnumeric(x) && numel(x) == 2);
 
 % Behaviour variable overrides
 addParameter(p, 'PASVar', '', isText);
@@ -194,6 +218,27 @@ cfg.BadChannelCheckerFlatlineCriterion = double(cfg.BadChannelCheckerFlatlineCri
 cfg.BadChannelCheckerLineNoiseCriterion = double(cfg.BadChannelCheckerLineNoiseCriterion);
 cfg.BadChannelCheckerCorrelationCriterion = double(cfg.BadChannelCheckerCorrelationCriterion);
 
+cfg.RunLineNoiseQC = logical(cfg.RunLineNoiseQC);
+cfg.LineNoiseFreqHz = double(cfg.LineNoiseFreqHz);
+cfg.LineNoiseNeighbourHz = double(cfg.LineNoiseNeighbourHz);
+cfg.LineNoiseExcludeHz = double(cfg.LineNoiseExcludeHz);
+cfg.LineNoiseQCPlot = logical(cfg.LineNoiseQCPlot);
+
+cfg.RunExtraFinalPlots = logical(cfg.RunExtraFinalPlots);
+cfg.ExtraPlotVisible = logical(cfg.ExtraPlotVisible);
+cfg.ExtraPlotSavePng = logical(cfg.ExtraPlotSavePng);
+cfg.ExtraPlotSaveFig = logical(cfg.ExtraPlotSaveFig);
+cfg.ExtraPlotSaveCsv = logical(cfg.ExtraPlotSaveCsv);
+if isstring(cfg.ExtraPlotCentralChannels)
+    cfg.ExtraPlotCentralChannels = cellstr(cfg.ExtraPlotCentralChannels);
+elseif ischar(cfg.ExtraPlotCentralChannels)
+    cfg.ExtraPlotCentralChannels = {cfg.ExtraPlotCentralChannels};
+elseif iscell(cfg.ExtraPlotCentralChannels)
+    cfg.ExtraPlotCentralChannels = cellfun(@char, cfg.ExtraPlotCentralChannels, 'UniformOutput', false);
+end
+cfg.ExtraPlotVANWindowMs = double(cfg.ExtraPlotVANWindowMs);
+cfg.ExtraPlotLPWindowMs = double(cfg.ExtraPlotLPWindowMs);
+
 cfg.VisiblePlots = logical(cfg.VisiblePlots);
 cfg.NegativeUp = logical(cfg.NegativeUp);
 cfg.SaveFig = logical(cfg.SaveFig);
@@ -219,6 +264,16 @@ end
 plotDir = fullfile(outDir, sprintf('%s_ERP_ROI_Plots', participantID));
 if ~exist(plotDir, 'dir')
 mkdir(plotDir);
+end
+
+lineNoiseQCTables = {};
+lineNoisePlotDir = '';
+lineNoiseQCTableCsv = '';
+lineNoiseQCSummaryCsv = '';
+lineNoiseQCStatus = 'SKIPPED';
+if cfg.RunLineNoiseQC
+    lineNoiseQCTableCsv = fullfile(outDir, sprintf('%s_LineNoiseQC_Table.csv', participantID));
+    lineNoiseQCSummaryCsv = fullfile(outDir, sprintf('%s_LineNoiseQC_Summary.csv', participantID));
 end
 
 logTxtFile = fullfile(outDir, sprintf('%s_PreprocessingLog_%s.txt', participantID, runStamp));
@@ -347,6 +402,25 @@ else
         'Bad scalp-channel QC check disabled; no channels removed', '', badChannelCheckSummaryCsv);
 end
 
+if cfg.RunLineNoiseQC
+    try
+        [tmpLineNoiseTable, lineNoisePlotDir, lineNoiseQCSummaryStr] = localComputeLineNoiseQC( ...
+            EEG_ds, cfg, participantID, 'Downsampled_512Hz', ...
+            originalScalpLabels, flaggedBadScalpLabels, flaggedLineNoiseLabels, ...
+            outDir, lineNoisePlotDir);
+        lineNoiseQCTables{end+1} = tmpLineNoiseTable;
+        logStep('line_noise_qc', 'OK', ...
+            'Line-noise QC completed for Downsampled_512Hz', ...
+            lineNoiseQCSummaryStr, '');
+    catch ME
+        logStep('line_noise_qc', 'WARN', ...
+            'Line-noise QC failed for Downsampled_512Hz', ...
+            ME.message, '');
+    end
+else
+    logStep('line_noise_qc', 'SKIP', 'Line-noise QC disabled', '', '');
+end
+
 % ====================================================================
 % Stage 4: Create ICA-training dataset
 % ====================================================================
@@ -385,6 +459,23 @@ icaTrainingSet = sprintf('%s_ds%d_bp%dto%d_avgref_ICAtraining.set', ...
 EEG_ica = pop_saveset(EEG_ica, 'filename', icaTrainingSet, 'filepath', outDir);
 
 logStep('ica_training_dataset', 'OK', 'Created 1-30 Hz average-referenced ICA-training dataset', '', icaTrainingSet);
+
+if cfg.RunLineNoiseQC
+    try
+        [tmpLineNoiseTable, lineNoisePlotDir, lineNoiseQCSummaryStr] = localComputeLineNoiseQC( ...
+            EEG_ica, cfg, participantID, 'ICAtraining_1to30Hz', ...
+            originalScalpLabels, flaggedBadScalpLabels, flaggedLineNoiseLabels, ...
+            outDir, lineNoisePlotDir);
+        lineNoiseQCTables{end+1} = tmpLineNoiseTable;
+        logStep('line_noise_qc', 'OK', ...
+            'Line-noise QC completed for ICAtraining_1to30Hz', ...
+            lineNoiseQCSummaryStr, '');
+    catch ME
+        logStep('line_noise_qc', 'WARN', ...
+            'Line-noise QC failed for ICAtraining_1to30Hz', ...
+            ME.message, '');
+    end
+end
 
 % ====================================================================
 % Stage 5: Picard ICA
@@ -571,6 +662,44 @@ erpSet = sprintf('%s_ds%d_bp0p1to20_avgref.set', participantID, cfg.TargetSrate)
 EEG_erp = pop_saveset(EEG_erp, 'filename', erpSet, 'filepath', outDir);
 
 logStep('erp_dataset', 'OK', 'Created 0.1-20 Hz average-referenced ERP-analysis dataset', '', erpSet);
+
+if cfg.RunLineNoiseQC
+    try
+        [tmpLineNoiseTable, lineNoisePlotDir, lineNoiseQCSummaryStr] = localComputeLineNoiseQC( ...
+            EEG_erp, cfg, participantID, 'ERPanalysis_0p1to20Hz', ...
+            originalScalpLabels, flaggedBadScalpLabels, flaggedLineNoiseLabels, ...
+            outDir, lineNoisePlotDir);
+        lineNoiseQCTables{end+1} = tmpLineNoiseTable;
+        logStep('line_noise_qc', 'OK', ...
+            'Line-noise QC completed for ERPanalysis_0p1to20Hz', ...
+            lineNoiseQCSummaryStr, '');
+    catch ME
+        logStep('line_noise_qc', 'WARN', ...
+            'Line-noise QC failed for ERPanalysis_0p1to20Hz', ...
+            ME.message, '');
+    end
+
+    if ~isempty(lineNoiseQCTables)
+        lineNoiseQCTable = vertcat(lineNoiseQCTables{:});
+        writetable(lineNoiseQCTable, lineNoiseQCTableCsv);
+        lineNoiseQCSummary = localSummarizeLineNoiseQC(lineNoiseQCTable, participantID, cfg);
+        writetable(lineNoiseQCSummary, lineNoiseQCSummaryCsv);
+        logStep('line_noise_qc', 'OK', ...
+            'Saved line-noise QC table and summary', ...
+            sprintf('%d stage table(s)', numel(lineNoiseQCTables)), ...
+            lineNoiseQCTableCsv);
+        if numel(lineNoiseQCTables) == 3
+            lineNoiseQCStatus = 'OK';
+        else
+            lineNoiseQCStatus = 'PARTIAL';
+        end
+    else
+        logStep('line_noise_qc', 'WARN', ...
+            'No line-noise QC tables were produced', ...
+            'All line-noise QC stage calls failed or were skipped', '');
+        lineNoiseQCStatus = 'FAILED';
+    end
+end
 
 % ====================================================================
 % Stage 9: Transfer ICA and remove selected components
@@ -860,6 +989,86 @@ writetable(plotReport.plotFiles, plotReportCsv);
 logStep('roi_plotting', 'OK', 'Generated S1/S2 ROI plots', sprintf('%d plot rows', height(plotReport.plotFiles)), plotReportCsv);
 
 % ====================================================================
+% Stage 15: Extra final ERP and topography plots
+% ====================================================================
+
+fprintf('\n\n================ STAGE 15: EXTRA FINAL ERP AND TOPOGRAPHY PLOTS ================\n');
+
+extraPlotOutputs = struct();
+
+if ~cfg.RunExtraFinalPlots
+    logStep('extra_final_plots', 'SKIP', 'Extra final plotting disabled', '', '');
+elseif exist(fullfile(outDir, s1CleanSet), 'file') ~= 2 || exist(fullfile(outDir, s2CleanSet), 'file') ~= 2
+    warning('AR-clean S1/S2 datasets not found in %s; skipping extra final plots.', outDir);
+    logStep('extra_final_plots', 'SKIP', 'AR-clean S1/S2 datasets missing for extra final plots', '', '');
+else
+    extraPlotCommonArgs = { ...
+        'Visible', cfg.ExtraPlotVisible, ...
+        'SavePng', cfg.ExtraPlotSavePng, ...
+        'SaveFig', cfg.ExtraPlotSaveFig, ...
+        'SaveCsv', cfg.ExtraPlotSaveCsv};
+
+    if exist('CB_EEG_PlotCentralROI_TrialTraces_S1S2', 'file') == 2
+        try
+            extraPlotOutputs.centralTrialTraces = CB_EEG_PlotCentralROI_TrialTraces_S1S2( ...
+                participantID, outDir, ...
+                'S1SetName', s1CleanSet, ...
+                'S2SetName', s2CleanSet, ...
+                'CentralChannels', cfg.ExtraPlotCentralChannels, ...
+                extraPlotCommonArgs{:});
+            logStep('extra_final_plots', 'OK', 'Generated central ROI trial-trace plots', '', ...
+                localExtractPlotOutputPath(extraPlotOutputs.centralTrialTraces));
+        catch ME
+            extraPlotOutputs.centralTrialTraces = struct('status', 'failed', 'message', ME.message);
+            logStep('extra_final_plots', 'WARN', 'Central ROI trial-trace plotting failed', ME.message, '');
+        end
+    else
+        warning('CB_EEG_PlotCentralROI_TrialTraces_S1S2 was not found on the MATLAB path.');
+        logStep('extra_final_plots', 'WARN', 'Central ROI trial-trace function not found', '', '');
+    end
+
+    if exist('CB_EEG_PlotCentralROI_BSS_Overlay_S1S2', 'file') == 2
+        try
+            extraPlotOutputs.centralBSSOverlay = CB_EEG_PlotCentralROI_BSS_Overlay_S1S2( ...
+                participantID, outDir, ...
+                'S1SetName', s1CleanSet, ...
+                'S2SetName', s2CleanSet, ...
+                'CentralChannels', cfg.ExtraPlotCentralChannels, ...
+                extraPlotCommonArgs{:});
+            logStep('extra_final_plots', 'OK', 'Generated central ROI B/S/S overlay trial-trace plot', '', ...
+                localExtractPlotOutputPath(extraPlotOutputs.centralBSSOverlay));
+        catch ME
+            extraPlotOutputs.centralBSSOverlay = struct('status', 'failed', 'message', ME.message);
+            logStep('extra_final_plots', 'WARN', 'Central ROI B/S/S overlay plotting failed', ME.message, '');
+        end
+    else
+        warning('CB_EEG_PlotCentralROI_BSS_Overlay_S1S2 was not found on the MATLAB path.');
+        logStep('extra_final_plots', 'WARN', 'Central ROI B/S/S overlay function not found', '', '');
+    end
+
+    if exist('CB_EEG_PlotS2_VAN_LP_Topomaps', 'file') == 2
+        try
+            extraPlotOutputs.s2VanLpTopomaps = CB_EEG_PlotS2_VAN_LP_Topomaps( ...
+                participantID, outDir, ...
+                'S2SetName', s2CleanSet, ...
+                'ScalpChans', cfg.ScalpChans, ...
+                'VANWindowMs', cfg.ExtraPlotVANWindowMs, ...
+                'LPWindowMs', cfg.ExtraPlotLPWindowMs, ...
+                extraPlotCommonArgs{:}, ...
+                'Electrodes', 'on');
+            logStep('extra_final_plots', 'OK', 'Generated S2 VAN/LP topomaps', '', ...
+                localExtractPlotOutputPath(extraPlotOutputs.s2VanLpTopomaps));
+        catch ME
+            extraPlotOutputs.s2VanLpTopomaps = struct('status', 'failed', 'message', ME.message);
+            logStep('extra_final_plots', 'WARN', 'S2 VAN/LP topomap plotting failed', ME.message, '');
+        end
+    else
+        warning('CB_EEG_PlotS2_VAN_LP_Topomaps was not found on the MATLAB path.');
+        logStep('extra_final_plots', 'WARN', 'S2 VAN/LP topomap function not found', '', '');
+    end
+end
+
+% ====================================================================
 % Final report
 % ====================================================================
 
@@ -894,6 +1103,11 @@ report.nCorrelationFlaggedBadScalpChannels = numel(flaggedCorrelationLabels);
 report.badChannelCheckTableCsv = badChannelCheckTableCsv;
 report.badChannelCheckSummaryCsv = badChannelCheckSummaryCsv;
 report.badChannelsRemoved = false;
+report.lineNoiseQCTableCsv = lineNoiseQCTableCsv;
+report.lineNoiseQCSummaryCsv = lineNoiseQCSummaryCsv;
+report.lineNoiseQCPlotDir = lineNoisePlotDir;
+report.runLineNoiseQC = cfg.RunLineNoiseQC;
+report.lineNoiseQCStatus = lineNoiseQCStatus;
 report.nGoodScalpChannelsForICA = cfg.NScalpChans;
 report.icaPcaDimRequested = cfg.ICAPcaDim;
 report.icaPcaDimUsed = icaPcaDimUsed;
@@ -909,6 +1123,8 @@ report.s2CleanSet = s2CleanSet;
 report.countsBeforeAR = countsBefore;
 report.countsAfterAR = countsAfter;
 report.plotReport = plotReport;
+report.runExtraFinalPlots = cfg.RunExtraFinalPlots;
+report.extraFinalPlotOutputs = extraPlotOutputs;
 
 finalReportMat = fullfile(outDir, sprintf('%s_FinalPipelineReport.mat', participantID));
 save(finalReportMat, 'report');
@@ -1256,6 +1472,296 @@ elseif isempty(reasonParts)
 else
     reason = strjoin(reasonParts, "; ");
 end
+
+end
+
+
+function [stageTable, lineNoisePlotDir, summaryString] = localComputeLineNoiseQC( ...
+    EEG, cfg, participantID, stageName, originalScalpLabels, ...
+    flaggedBadScalpLabels, flaggedLineNoiseLabels, outDir, lineNoisePlotDir)
+
+originalScalpLabels = string(originalScalpLabels(:));
+flaggedBadScalpLabels = string(flaggedBadScalpLabels(:));
+flaggedLineNoiseLabels = string(flaggedLineNoiseLabels(:));
+
+nScalp = numel(originalScalpLabels);
+scalpIdx = localFindExistingChannelsByLabels(EEG, originalScalpLabels);
+stageNote = localGetLineNoiseStageNote(stageName, cfg);
+decisionTime = string(datestr(now));
+
+neighLo = cfg.LineNoiseNeighbourHz(1);
+neighHi = cfg.LineNoiseNeighbourHz(2);
+exclLo = cfg.LineNoiseExcludeHz(1);
+exclHi = cfg.LineNoiseExcludeHz(2);
+neighbourBandStr = sprintf('%.0f-%.0f; %.0f-%.0f', neighLo, exclLo, exclHi, neighHi);
+
+participantCol = repmat(string(participantID), nScalp, 1);
+stageCol = repmat(string(stageName), nScalp, 1);
+origIdxCol = (1:nScalp)';
+labelCol = originalScalpLabels;
+badCheckerCol = ismember(originalScalpLabels, flaggedBadScalpLabels);
+lineNoiseFlagCol = ismember(originalScalpLabels, flaggedLineNoiseLabels);
+lineFreqCol = repmat(cfg.LineNoiseFreqHz, nScalp, 1);
+powerAtLineCol = nan(nScalp, 1);
+neighbourBandCol = repmat(string(neighbourBandStr), nScalp, 1);
+neighbourMedCol = nan(nScalp, 1);
+ratioCol = nan(nScalp, 1);
+ratioDbCol = nan(nScalp, 1);
+stageNoteCol = repmat(string(stageNote), nScalp, 1);
+decisionCol = repmat(decisionTime, nScalp, 1);
+
+psdMatrix = [];
+freqs = [];
+
+for i = 1:nScalp
+    chIdx = scalpIdx(i);
+    x = double(EEG.data(chIdx, :));
+    x = x(:);
+    [psd, f] = pwelch(x, [], [], [], EEG.srate);
+    psd = psd(:);
+    f = f(:);
+
+    if isempty(freqs)
+        freqs = f;
+        psdMatrix = nan(numel(f), nScalp);
+    end
+
+    psdMatrix(:, i) = psd;
+
+    [~, idxLine] = min(abs(f - cfg.LineNoiseFreqHz));
+    neighbourIdx = (f >= neighLo & f < exclLo) | (f > exclHi & f <= neighHi);
+
+    powerAtLineCol(i) = psd(idxLine);
+    if any(neighbourIdx)
+        neighbourMedCol(i) = median(psd(neighbourIdx), 'omitnan');
+    else
+        neighbourMedCol(i) = NaN;
+    end
+
+    if neighbourMedCol(i) > 0 && isfinite(neighbourMedCol(i))
+        ratioCol(i) = powerAtLineCol(i) / neighbourMedCol(i);
+        if ratioCol(i) > 0
+            ratioDbCol(i) = 10 * log10(ratioCol(i));
+        end
+    end
+end
+
+stageTable = table( ...
+    participantCol, stageCol, origIdxCol, labelCol, badCheckerCol, lineNoiseFlagCol, ...
+    lineFreqCol, powerAtLineCol, neighbourBandCol, neighbourMedCol, ratioCol, ratioDbCol, ...
+    stageNoteCol, decisionCol, ...
+    'VariableNames', { ...
+        'ParticipantID', ...
+        'Stage', ...
+        'OriginalScalpIndex', ...
+        'Label', ...
+        'IsFlaggedByBadChannelChecker', ...
+        'IsFlaggedByLineNoiseCriterion', ...
+        'LineNoiseFreqHz', ...
+        'PowerAtLineNoiseHz', ...
+        'NeighbourBandHz', ...
+        'NeighbourMedianPower', ...
+        'LineNoiseRatio', ...
+        'LineNoiseRatioDb', ...
+        'StageNote', ...
+        'DecisionTime'});
+
+summaryString = localLineNoiseQCStageSummaryString(stageTable);
+
+fprintf('\nLine-noise QC: %s\n', stageName);
+fprintf('  Median %g Hz ratio, all scalp channels: %.2f dB\n', ...
+    cfg.LineNoiseFreqHz, median(stageTable.LineNoiseRatioDb, 'omitnan'));
+if any(isfinite(stageTable.LineNoiseRatioDb))
+    [maxDbAll, maxIdxAll] = max(stageTable.LineNoiseRatioDb, [], 'omitnan');
+    fprintf('  Worst scalp channel: %s, %.2f dB\n', stageTable.Label(maxIdxAll), maxDbAll);
+else
+    fprintf('  Worst scalp channel: (none)\n');
+end
+
+flaggedRows = stageTable(stageTable.IsFlaggedByLineNoiseCriterion, :);
+if isempty(flaggedRows)
+    fprintf('  Worst flagged line-noise channel: (none)\n');
+else
+    [maxDbFlag, maxIdxFlag] = max(flaggedRows.LineNoiseRatioDb, [], 'omitnan');
+    fprintf('  Worst flagged line-noise channel: %s, %.2f dB\n', ...
+        flaggedRows.Label(maxIdxFlag), maxDbFlag);
+end
+fprintf('  Note: %s\n', stageNote);
+
+if cfg.LineNoiseQCPlot
+    try
+        if isempty(lineNoisePlotDir)
+            lineNoisePlotDir = fullfile(outDir, sprintf('%s_LineNoiseQC_Plots', participantID));
+        end
+        if ~exist(lineNoisePlotDir, 'dir')
+            mkdir(lineNoisePlotDir);
+        end
+        localPlotLineNoiseQCStage(freqs, psdMatrix, stageTable, cfg, participantID, stageName, lineNoisePlotDir);
+    catch ME
+        warning('Line-noise QC plot failed for stage %s: %s', stageName, ME.message);
+    end
+end
+
+end
+
+
+function summaryString = localLineNoiseQCStageSummaryString(stageTable)
+
+medianDb = median(stageTable.LineNoiseRatioDb, 'omitnan');
+if any(isfinite(stageTable.LineNoiseRatioDb))
+    [maxDb, maxIdx] = max(stageTable.LineNoiseRatioDb, [], 'omitnan');
+    worstLabel = stageTable.Label(maxIdx);
+    summaryString = sprintf('median=%.2f dB; worst=%s %.2f dB', medianDb, worstLabel, maxDb);
+else
+    summaryString = 'no valid line-noise ratios';
+end
+
+end
+
+
+function summaryTable = localSummarizeLineNoiseQC(lineNoiseQCTable, participantID, cfg)
+
+stages = unique(lineNoiseQCTable.Stage, 'stable');
+nStages = numel(stages);
+summaryTable = table();
+
+for s = 1:nStages
+    stageName = stages(s);
+    stageRows = lineNoiseQCTable(lineNoiseQCTable.Stage == stageName, :);
+    flaggedLineRows = stageRows(stageRows.IsFlaggedByLineNoiseCriterion, :);
+
+    row = table( ...
+        string(participantID), ...
+        stageName, ...
+        cfg.LineNoiseFreqHz, ...
+        height(stageRows), ...
+        sum(stageRows.IsFlaggedByBadChannelChecker), ...
+        sum(stageRows.IsFlaggedByLineNoiseCriterion), ...
+        median(stageRows.LineNoiseRatioDb, 'omitnan'), ...
+        max(stageRows.LineNoiseRatioDb, [], 'omitnan'), ...
+        string(localWorstLineNoiseChannelLabel(stageRows)), ...
+        localWorstLineNoiseChannelDb(stageRows), ...
+        localFlaggedLineNoiseMedianDb(flaggedLineRows), ...
+        localFlaggedLineNoiseMaxDb(flaggedLineRows), ...
+        string(localWorstLineNoiseChannelLabel(flaggedLineRows)), ...
+        localWorstLineNoiseChannelDb(flaggedLineRows), ...
+        string(datestr(now)), ...
+        'VariableNames', { ...
+            'ParticipantID', ...
+            'Stage', ...
+            'LineNoiseFreqHz', ...
+            'NScalpChannelsAnalysed', ...
+            'NChannelsFlaggedByBadChannelChecker', ...
+            'NChannelsFlaggedByLineNoiseCriterion', ...
+            'MedianLineNoiseRatioDb_AllScalp', ...
+            'MaxLineNoiseRatioDb_AllScalp', ...
+            'WorstChannel_AllScalp', ...
+            'WorstChannelLineNoiseRatioDb_AllScalp', ...
+            'MedianLineNoiseRatioDb_FlaggedLineNoiseChannels', ...
+            'MaxLineNoiseRatioDb_FlaggedLineNoiseChannels', ...
+            'WorstFlaggedLineNoiseChannel', ...
+            'WorstFlaggedLineNoiseRatioDb', ...
+            'DecisionTime'});
+
+    summaryTable = [summaryTable; row]; %#ok<AGROW>
+end
+
+end
+
+
+function worstLabel = localWorstLineNoiseChannelLabel(stageRows)
+
+if isempty(stageRows) || ~any(isfinite(stageRows.LineNoiseRatioDb))
+    worstLabel = '';
+    return;
+end
+[~, idx] = max(stageRows.LineNoiseRatioDb, [], 'omitnan');
+worstLabel = char(stageRows.Label(idx));
+
+end
+
+
+function worstDb = localWorstLineNoiseChannelDb(stageRows)
+
+if isempty(stageRows) || ~any(isfinite(stageRows.LineNoiseRatioDb))
+    worstDb = NaN;
+    return;
+end
+worstDb = max(stageRows.LineNoiseRatioDb, [], 'omitnan');
+
+end
+
+
+function medDb = localFlaggedLineNoiseMedianDb(flaggedLineRows)
+
+if isempty(flaggedLineRows) || ~any(isfinite(flaggedLineRows.LineNoiseRatioDb))
+    medDb = NaN;
+else
+    medDb = median(flaggedLineRows.LineNoiseRatioDb, 'omitnan');
+end
+
+end
+
+
+function maxDb = localFlaggedLineNoiseMaxDb(flaggedLineRows)
+
+if isempty(flaggedLineRows) || ~any(isfinite(flaggedLineRows.LineNoiseRatioDb))
+    maxDb = NaN;
+else
+    maxDb = max(flaggedLineRows.LineNoiseRatioDb, [], 'omitnan');
+end
+
+end
+
+
+function stageNote = localGetLineNoiseStageNote(stageName, cfg)
+
+switch stageName
+    case 'Downsampled_512Hz'
+        stageNote = sprintf('Broadband/downsampled data at %.0f Hz before stage-specific low-pass', cfg.TargetSrate);
+    case 'ICAtraining_1to30Hz'
+        stageNote = sprintf('%g Hz expected to be attenuated by the %.0f Hz low-pass', ...
+            cfg.LineNoiseFreqHz, cfg.ICAFilterHz(2));
+    case 'ERPanalysis_0p1to20Hz'
+        stageNote = sprintf('%g Hz expected to be strongly attenuated by the %.0f Hz low-pass', ...
+            cfg.LineNoiseFreqHz, cfg.ERPFilterHz(2));
+    otherwise
+        stageNote = 'Line-noise QC stage';
+end
+
+end
+
+
+function localPlotLineNoiseQCStage(freqs, psdMatrix, stageTable, cfg, participantID, stageName, lineNoisePlotDir)
+
+medianAll = median(psdMatrix, 2, 'omitnan');
+flagMask = stageTable.IsFlaggedByLineNoiseCriterion;
+if any(flagMask)
+    medianFlagged = median(psdMatrix(:, flagMask), 2, 'omitnan');
+else
+    medianFlagged = [];
+end
+
+fig = figure('Visible', 'off');
+plot(freqs, 10 * log10(medianAll), 'LineWidth', 1.5);
+hold on;
+if ~isempty(medianFlagged)
+    plot(freqs, 10 * log10(medianFlagged), 'LineWidth', 1.2, 'LineStyle', '--');
+    legend({'Median all scalp', 'Median flagged line-noise'}, 'Location', 'best');
+else
+    legend({'Median all scalp'}, 'Location', 'best');
+end
+xline(cfg.LineNoiseFreqHz, 'r--', sprintf('%g Hz', cfg.LineNoiseFreqHz));
+xlim([1 60]);
+xlabel('Frequency (Hz)');
+ylabel('Power (dB)');
+title(sprintf('%s Line-noise QC: %s', participantID, stageName));
+grid on;
+hold off;
+
+pngFile = fullfile(lineNoisePlotDir, sprintf('%s_LineNoiseQC_%s.png', participantID, stageName));
+exportgraphics(fig, pngFile, 'Resolution', 150);
+close(fig);
 
 end
 
@@ -2157,6 +2663,23 @@ if isempty(tokens)
 end
 
 participantIDs = cellfun(@(s) char(strtrim(s)), tokens, 'UniformOutput', false);
+
+end
+
+
+function pathOut = localExtractPlotOutputPath(plotOutput)
+
+pathOut = '';
+if ~isstruct(plotOutput)
+    return;
+end
+if isfield(plotOutput, 'figurePng') && ~isempty(plotOutput.figurePng)
+    pathOut = char(string(plotOutput.figurePng));
+elseif isfield(plotOutput, 'pngFile') && ~isempty(plotOutput.pngFile)
+    pathOut = char(string(plotOutput.pngFile));
+elseif isfield(plotOutput, 'plotDir') && ~isempty(plotOutput.plotDir)
+    pathOut = char(string(plotOutput.plotDir));
+end
 
 end
 
