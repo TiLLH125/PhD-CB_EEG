@@ -6,20 +6,19 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 % Pipeline:
 %   1. Import raw BioSemi BDF
 %   2. Downsample to 512 Hz
-%   3. Detect bad scalp channels with EEGLAB Clean RawData (channel criteria only)
-%   4. Create ICA-training copy: 1-30 Hz + average reference (bad channels removed)
-%   5. Run Picard ICA on remaining good scalp channels
+%   3. QC-check scalp channels with EEGLAB Clean RawData (channel criteria only; flags only)
+%   4. Create ICA-training copy: 1-30 Hz + average reference (full scalp montage)
+%   5. Run Picard ICA on all scalp channels
 %   6. Run ICLabel
 %   7. Automatically reject ICLabel Muscle/Eye components (threshold 0.90 default)
-%   8. Create ERP-analysis copy: 0.1-20 Hz + average reference (bad channels removed)
+%   8. Create ERP-analysis copy: 0.1-20 Hz + average reference (full scalp montage)
 %   9. Transfer ICA weights to ERP-analysis copy and remove selected components
-%  10. Interpolate removed bad scalp channels back (spherical) before epoching
-%  11. Match EEG triggers to behavioural FullRun CSV
-%  12. Add synthetic S1/S2 outcome-specific event codes
-%  13. Create S1-locked and S2-locked epochs
-%  14. Apply S1 baseline to both S1 and S2 epochs
-%  15. Run joint automated artefact rejection
-%  16. Plot S1/S2 Blind/Sensing/Seeing ROI ERPs
+%  10. Match EEG triggers to behavioural FullRun CSV
+%  11. Add synthetic S1/S2 outcome-specific event codes
+%  12. Create S1-locked and S2-locked epochs
+%  13. Apply S1 baseline to both S1 and S2 epochs
+%  14. Run joint automated artefact rejection
+%  15. Plot S1/S2 Blind/Sensing/Seeing ROI ERPs
 %
 % Main assumptions:
 %   - BioSemi file has 72 channels total
@@ -39,11 +38,12 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %       'FullRunCsv', 'CB_4xGratings_MAV01_FullRun_20260616_160252.csv');
 %
 % Notes:
-%   - Before ICA, bad scalp channels are screened with EEGLAB Clean RawData
+%   - Before ICA, scalp channels are QC-checked with EEGLAB Clean RawData
 %     channel defaults: flatline > 5 s, line noise > 4 SD, correlation < 0.80.
-%     Only scalp channels are screened; ASR burst/window rejection is disabled.
-%     Bad channels are removed before ICA and interpolated back after ICA
-%     component removal (spherical interpolation).
+%     Only scalp channels are screened on a temporary copy; ASR burst/window
+%     rejection is disabled. Potentially bad channels are flagged to CSV for
+%     manual review. No channels are removed or interpolated; ICA and ERP
+%     preprocessing retain the full scalp montage.
 %   - By default, automatically rejects ICLabel Muscle/Eye components with
 %     probability >= 0.90. Enable manual review with 'ManualICAReject', true.
 %     Change threshold with 'AutoICARejectThreshold', 0.90.
@@ -122,14 +122,11 @@ addParameter(p, 'ICAType', 'picard', isText);
 addParameter(p, 'ICAPcaDim', 63, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'ICAMaxIter', 500, @(x) isnumeric(x) && isscalar(x));
 
-% Bad scalp-channel detection using EEGLAB Clean RawData
-addParameter(p, 'AutoBadChannelReject', true, @(x) islogical(x) || isnumeric(x));
-addParameter(p, 'BadChannelFlatlineCriterion', 5, @(x) isnumeric(x) && isscalar(x) && x >= 0);
-addParameter(p, 'BadChannelLineNoiseCriterion', 4, @(x) isnumeric(x) && isscalar(x) && x >= 0);
-addParameter(p, 'BadChannelCorrelationCriterion', 0.80, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
-addParameter(p, 'ManualBadChannelReview', false, @(x) islogical(x) || isnumeric(x));
-addParameter(p, 'AdditionalBadChannels', [], @(x) isnumeric(x) || iscellstr(x) || isstring(x) || ischar(x));
-addParameter(p, 'InterpolateBadChannelsAfterICA', true, @(x) islogical(x) || isnumeric(x));
+% Bad scalp-channel QC checker using EEGLAB Clean RawData
+addParameter(p, 'RunBadChannelChecker', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'BadChannelCheckerFlatlineCriterion', 5, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+addParameter(p, 'BadChannelCheckerLineNoiseCriterion', 4, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+addParameter(p, 'BadChannelCheckerCorrelationCriterion', 0.80, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
 
 % Trial config
 addParameter(p, 'NTriggeredPractice', 25, @(x) isnumeric(x) && isscalar(x));
@@ -192,12 +189,10 @@ else
     cfg.AutoICARejectClasses = cellfun(@char, cfg.AutoICARejectClasses, 'UniformOutput', false);
 end
 
-cfg.AutoBadChannelReject = logical(cfg.AutoBadChannelReject);
-cfg.BadChannelFlatlineCriterion = double(cfg.BadChannelFlatlineCriterion);
-cfg.BadChannelLineNoiseCriterion = double(cfg.BadChannelLineNoiseCriterion);
-cfg.BadChannelCorrelationCriterion = double(cfg.BadChannelCorrelationCriterion);
-cfg.ManualBadChannelReview = logical(cfg.ManualBadChannelReview);
-cfg.InterpolateBadChannelsAfterICA = logical(cfg.InterpolateBadChannelsAfterICA);
+cfg.RunBadChannelChecker = logical(cfg.RunBadChannelChecker);
+cfg.BadChannelCheckerFlatlineCriterion = double(cfg.BadChannelCheckerFlatlineCriterion);
+cfg.BadChannelCheckerLineNoiseCriterion = double(cfg.BadChannelCheckerLineNoiseCriterion);
+cfg.BadChannelCheckerCorrelationCriterion = double(cfg.BadChannelCheckerCorrelationCriterion);
 
 cfg.VisiblePlots = logical(cfg.VisiblePlots);
 cfg.NegativeUp = logical(cfg.NegativeUp);
@@ -331,31 +326,21 @@ originalExternalLabels = string({originalExternalChanlocs.labels});
 originalExternalLabels = originalExternalLabels(:);
 
 % ====================================================================
-% Stage 3b: Bad scalp-channel detection with Clean RawData
+% Stage 3b: Bad scalp-channel QC check with Clean RawData
 % ====================================================================
 
-fprintf('\n\n================ STAGE 3b: BAD SCALP-CHANNEL DETECTION ================\n');
+fprintf('\n\n================ STAGE 3b: BAD SCALP-CHANNEL QC CHECK ================\n');
 
-if cfg.AutoBadChannelReject || cfg.InterpolateBadChannelsAfterICA
-    localValidateScalpChanlocs(originalScalpChanlocs);
-end
+[flaggedBadScalpLabels, flaggedBadScalpIndices, badChannelCheckTableCsv, badChannelCheckSummaryCsv] = ...
+    localCheckBadScalpChannelsCleanRawData(EEG_ds, cfg, participantID, originalScalpLabels, originalScalpChanlocs, outDir);
 
-[badScalpLabels, badScalpIndices, goodScalpLabels, goodScalpIndices, ...
-    autoBadScalpLabels, autoBadScalpIndices, providedBadScalpLabels, providedBadScalpIndices, ...
-    manualBadScalpLabels, manualBadScalpIndices, badChannelTableCsv, badChannelsRemovedCsv] = ...
-    localDetectBadScalpChannelsCleanRawData(EEG_ds, cfg, participantID, originalScalpLabels, outDir);
-
-logStep('bad_channel_detection', 'OK', 'Bad scalp-channel detection completed', ...
-    strjoin(badScalpLabels, ', '), badChannelTableCsv);
-
-if numel(goodScalpLabels) < 2
-    error('Fewer than 2 good scalp channels remain after bad-channel detection; cannot run ICA.');
-end
-
-if ~isempty(badScalpLabels) && ~cfg.InterpolateBadChannelsAfterICA
-    error(['Bad scalp channels were removed, but InterpolateBadChannelsAfterICA is false. ', ...
-        'This pipeline expects the original scalp montage to be restored before epoching. ', ...
-        'Enable InterpolateBadChannelsAfterICA or disable bad-channel removal.']);
+if cfg.RunBadChannelChecker
+    logStep('bad_channel_check', 'OK', ...
+        'Bad scalp-channel QC check completed; no channels removed', ...
+        strjoin(flaggedBadScalpLabels, ', '), badChannelCheckTableCsv);
+else
+    logStep('bad_channel_check', 'SKIP', ...
+        'Bad scalp-channel QC check disabled; no channels removed', '', badChannelCheckSummaryCsv);
 end
 
 % ====================================================================
@@ -365,10 +350,6 @@ end
 fprintf('\n\n================ STAGE 4: ICA-TRAINING DATASET ================\n');
 
 EEG_ica = EEG_ds;
-
-if ~isempty(badScalpLabels)
-    EEG_ica = localRemoveChannelsByLabels(EEG_ica, badScalpLabels);
-end
 
 EEG_ica = pop_eegfiltnew(EEG_ica, ...
     'locutoff', cfg.ICAFilterHz(1), ...
@@ -386,17 +367,12 @@ EEG_ica.setname = sprintf('%s_ds%d_bp%dto%d_avgref_ICAtraining', ...
 EEG_ica = localFixChanlocsForICLabel(EEG_ica);
 EEG_ica = eeg_checkset(EEG_ica);
 
-icaScalpChanIdx = localFindExistingChannelsByLabels(EEG_ica, goodScalpLabels);
+icaScalpChanIdx = cfg.ScalpChans;
 nIcaChansUsed = numel(icaScalpChanIdx);
-icaPcaDimUsed = min(cfg.ICAPcaDim, nIcaChansUsed - 1);
-if icaPcaDimUsed < 1
-    error('ICA PCA dimension must be at least 1; only %d good scalp channels remain.', nIcaChansUsed);
-end
-if icaPcaDimUsed < cfg.ICAPcaDim
-    fprintf('Adjusted ICA PCA dimension from %d to %d because %d good scalp channels remain after bad-channel removal.\n', ...
-        cfg.ICAPcaDim, icaPcaDimUsed, nIcaChansUsed);
-    logStep('ica_training_dataset', 'INFO', 'Adjusted ICA PCA dimension after bad-channel removal', ...
-        sprintf('%d -> %d', cfg.ICAPcaDim, icaPcaDimUsed), '');
+icaPcaDimUsed = cfg.ICAPcaDim;
+if icaPcaDimUsed > nIcaChansUsed - 1
+    error('ICAPcaDim=%d is too high for %d scalp channels after average reference.', ...
+        icaPcaDimUsed, nIcaChansUsed);
 end
 
 icaTrainingSet = sprintf('%s_ds%d_bp%dto%d_avgref_ICAtraining.set', ...
@@ -418,7 +394,7 @@ EEG_ica.icasphere = [];
 EEG_ica.icaweights = [];
 EEG_ica.icachansind = [];
 
-fprintf('Running %s ICA on %d good scalp channels with PCA %d...\n', ...
+fprintf('Running %s ICA on %d scalp channels with PCA %d...\n', ...
     cfg.ICAType, nIcaChansUsed, icaPcaDimUsed);
 
 tic;
@@ -573,10 +549,6 @@ fprintf('\n\n================ STAGE 8: ERP-ANALYSIS DATASET ================\n')
 
 EEG_erp = EEG_ds;
 
-if ~isempty(badScalpLabels)
-    EEG_erp = localRemoveChannelsByLabels(EEG_erp, badScalpLabels);
-end
-
 EEG_erp = pop_eegfiltnew(EEG_erp, ...
     'locutoff', cfg.ERPFilterHz(1), ...
     'hicutoff', cfg.ERPFilterHz(2), ...
@@ -624,31 +596,6 @@ if ~isempty(componentsToRemove)
     EEG_clean = pop_subcomp(EEG_erp, componentsToRemove, 0);
 else
     EEG_clean = EEG_erp;
-end
-
-if cfg.InterpolateBadChannelsAfterICA && ~isempty(badScalpLabels)
-    localValidateScalpChanlocs(originalScalpChanlocs);
-    EEG_clean = localInterpolateMissingScalpChannels(EEG_clean, ...
-        originalScalpChanlocs, originalScalpLabels, originalExternalLabels);
-    EEG_clean = eeg_checkset(EEG_clean);
-    logStep('bad_channel_interpolation', 'OK', ...
-        'Interpolated removed bad scalp channels after ICA cleaning', ...
-        strjoin(badScalpLabels, ', '), '');
-
-    externalIdxClean = localFindExistingChannelsByLabels(EEG_clean, originalExternalLabels);
-    EEG_clean = pop_reref(EEG_clean, [], 'exclude', externalIdxClean);
-    EEG_clean = eeg_checkset(EEG_clean);
-    logStep('post_interpolation_reref', 'OK', ...
-        'Re-applied average reference after bad-channel interpolation', ...
-        sprintf('Excluded %d external channels', numel(externalIdxClean)), '');
-else
-    if isempty(badScalpLabels)
-        fprintf('\nNo bad scalp-channel interpolation required (no bad channels removed).\n');
-        logStep('bad_channel_interpolation', 'SKIP', 'No bad channels removed; interpolation not needed', '', '');
-    else
-        fprintf('\nBad scalp-channel interpolation disabled by configuration.\n');
-        logStep('bad_channel_interpolation', 'SKIP', 'Interpolation disabled by configuration', '', '');
-    end
 end
 
 EEG_clean = localClearIcaFields(EEG_clean);
@@ -928,19 +875,16 @@ report.providedICAComponentsToRemove = providedComponents;
 report.manualICAComponentsToRemove = manualComponents;
 report.autoICASelectionTableCsv = autoSelectionCsv;
 report.icaComponentDecisionCsv = componentDecisionCsv;
-report.autoBadScalpChannels = cellstr(autoBadScalpLabels);
-report.providedBadScalpChannels = cellstr(providedBadScalpLabels);
-report.manualBadScalpChannels = cellstr(manualBadScalpLabels);
-report.badScalpChannels = cellstr(badScalpLabels);
-report.badScalpChannelIndices = badScalpIndices;
-report.nBadScalpChannels = numel(badScalpLabels);
-report.nGoodScalpChannelsForICA = numel(goodScalpLabels);
-report.badChannelDetectionTableCsv = badChannelTableCsv;
-report.badChannelsRemovedCsv = badChannelsRemovedCsv;
+report.flaggedBadScalpChannels = cellstr(flaggedBadScalpLabels);
+report.flaggedBadScalpChannelIndices = flaggedBadScalpIndices;
+report.nFlaggedBadScalpChannels = numel(flaggedBadScalpLabels);
+report.badChannelCheckTableCsv = badChannelCheckTableCsv;
+report.badChannelCheckSummaryCsv = badChannelCheckSummaryCsv;
+report.badChannelsRemoved = false;
+report.nGoodScalpChannelsForICA = cfg.NScalpChans;
 report.icaPcaDimRequested = cfg.ICAPcaDim;
 report.icaPcaDimUsed = icaPcaDimUsed;
 report.nIcaChannelsUsed = nIcaChansUsed;
-report.badChannelsInterpolatedAfterICA = cfg.InterpolateBadChannelsAfterICA && ~isempty(badScalpLabels);
 report.icaElapsedSec = icaElapsedSec;
 report.icaElapsedMin = icaElapsedSec/60;
 report.cleanContinuousSet = cleanSet;
@@ -1034,25 +978,20 @@ end
 % ========================================================================
 
 
-function [badScalpLabels, badScalpIndices, goodScalpLabels, goodScalpIndices, ...
-    autoBadScalpLabels, autoBadScalpIndices, providedBadScalpLabels, providedBadScalpIndices, ...
-    manualBadScalpLabels, manualBadScalpIndices, badChannelTableCsv, badChannelsRemovedCsv] = ...
-    localDetectBadScalpChannelsCleanRawData(EEG_ds, cfg, participantID, originalScalpLabels, outDir)
+function [flaggedBadScalpLabels, flaggedBadScalpIndices, badChannelCheckTableCsv, badChannelCheckSummaryCsv] = ...
+    localCheckBadScalpChannelsCleanRawData(EEG_ds, cfg, participantID, originalScalpLabels, originalScalpChanlocs, outDir)
 
 originalScalpLabels = string(originalScalpLabels(:));
 nScalp = numel(originalScalpLabels);
 
-autoBadScalpLabels = strings(0, 1);
-autoBadScalpIndices = [];
-manualBadScalpLabels = strings(0, 1);
-manualBadScalpIndices = [];
+flaggedBadScalpLabels = strings(0, 1);
+flaggedBadScalpIndices = [];
 
-[providedBadScalpLabels, providedBadScalpIndices] = localNormaliseBadChannelInput( ...
-    cfg.AdditionalBadChannels, originalScalpLabels);
+if cfg.RunBadChannelChecker
+    localValidateScalpChanlocs(originalScalpChanlocs);
 
-if cfg.AutoBadChannelReject
     if exist('pop_clean_rawdata', 'file') ~= 2
-        error('Clean RawData plugin function pop_clean_rawdata was not found. Install/enable EEGLAB Clean RawData before using AutoBadChannelReject.');
+        error('Clean RawData plugin function pop_clean_rawdata was not found. Install/enable EEGLAB Clean RawData before using RunBadChannelChecker.');
     end
 
     EEG_badcheck = pop_select(EEG_ds, 'channel', 1:cfg.NScalpChans);
@@ -1063,9 +1002,9 @@ if cfg.AutoBadChannelReject
     labelsBefore = labelsBefore(:);
 
     EEG_badcheck_clean = pop_clean_rawdata(EEG_badcheck, ...
-        'FlatlineCriterion', cfg.BadChannelFlatlineCriterion, ...
-        'LineNoiseCriterion', cfg.BadChannelLineNoiseCriterion, ...
-        'ChannelCriterion', cfg.BadChannelCorrelationCriterion, ...
+        'FlatlineCriterion', cfg.BadChannelCheckerFlatlineCriterion, ...
+        'LineNoiseCriterion', cfg.BadChannelCheckerLineNoiseCriterion, ...
+        'ChannelCriterion', cfg.BadChannelCheckerCorrelationCriterion, ...
         'Highpass', 'off', ...
         'BurstCriterion', 'off', ...
         'WindowCriterion', 'off', ...
@@ -1075,136 +1014,77 @@ if cfg.AutoBadChannelReject
     labelsAfter = string({EEG_badcheck_clean.chanlocs.labels});
     labelsAfter = labelsAfter(:);
 
-    autoBadScalpLabels = setdiff(labelsBefore, labelsAfter, 'stable');
-    autoBadScalpIndices = arrayfun(@(lab) find(strcmpi(originalScalpLabels, lab), 1, 'first'), autoBadScalpLabels);
+    flaggedBadScalpLabels = setdiff(labelsBefore, labelsAfter, 'stable');
+    flaggedBadScalpIndices = find(ismember(labelsBefore, flaggedBadScalpLabels))';
 else
-    fprintf('Automatic Clean RawData bad-channel detection disabled.\n');
-end
-
-if cfg.ManualBadChannelReview
-    fprintf('\nManual bad-channel review enabled.\n');
-    fprintf('Automatically detected bad scalp channels:\n');
-    disp(autoBadScalpLabels);
-
-    try
-        EEG_scroll = pop_select(EEG_ds, 'channel', 1:cfg.NScalpChans);
-        pop_eegplot(EEG_scroll, 1, 1, 1);
-    catch ME
-        warning('Could not open channel scroll plot for manual review: %s', ME.message);
-    end
-
-    extraInput = input('Enter any additional bad scalp channel labels or indices, or [] for none: ', 's');
-    if isempty(strtrim(extraInput))
-        extraValue = [];
-    else
-        extraValue = str2num(extraInput); %#ok<ST2NM>
-        if isempty(extraValue)
-            extraValue = strtrim(extraInput);
-        end
-    end
-    [manualBadScalpLabels, manualBadScalpIndices] = localNormaliseBadChannelInput(extraValue, originalScalpLabels);
-end
-
-badScalpLabels = unique([autoBadScalpLabels(:); providedBadScalpLabels(:); manualBadScalpLabels(:)], 'stable');
-badScalpIndices = zeros(1, numel(badScalpLabels));
-for i = 1:numel(badScalpLabels)
-    badScalpIndices(i) = find(strcmpi(originalScalpLabels, badScalpLabels(i)), 1, 'first');
-end
-
-goodScalpLabels = setdiff(originalScalpLabels, badScalpLabels, 'stable');
-goodScalpIndices = zeros(1, numel(goodScalpLabels));
-for i = 1:numel(goodScalpLabels)
-    goodScalpIndices(i) = find(strcmpi(originalScalpLabels, goodScalpLabels(i)), 1, 'first');
+    fprintf('Bad scalp-channel QC checker disabled.\n');
 end
 
 decisionTime = string(datestr(now));
-autoMask = ismember(originalScalpLabels, autoBadScalpLabels);
-providedMask = ismember(originalScalpLabels, providedBadScalpLabels);
-manualMask = ismember(originalScalpLabels, manualBadScalpLabels);
-finalMask = ismember(originalScalpLabels, badScalpLabels);
+flaggedMask = ismember(originalScalpLabels, flaggedBadScalpLabels);
 
 badChannelTable = table( ...
     repmat(string(participantID), nScalp, 1), ...
     (1:nScalp)', ...
     originalScalpLabels, ...
-    repmat(logical(cfg.AutoBadChannelReject), nScalp, 1), ...
-    autoMask, ...
-    providedMask, ...
-    manualMask, ...
-    finalMask, ...
-    repmat(cfg.BadChannelFlatlineCriterion, nScalp, 1), ...
-    repmat(cfg.BadChannelLineNoiseCriterion, nScalp, 1), ...
-    repmat(cfg.BadChannelCorrelationCriterion, nScalp, 1), ...
+    repmat(logical(cfg.RunBadChannelChecker), nScalp, 1), ...
+    flaggedMask, ...
+    repmat(cfg.BadChannelCheckerFlatlineCriterion, nScalp, 1), ...
+    repmat(cfg.BadChannelCheckerLineNoiseCriterion, nScalp, 1), ...
+    repmat(cfg.BadChannelCheckerCorrelationCriterion, nScalp, 1), ...
     repmat(decisionTime, nScalp, 1), ...
     'VariableNames', { ...
         'ParticipantID', ...
         'OriginalScalpIndex', ...
         'Label', ...
-        'AutoBadChannelReject', ...
-        'AutoDetectedBad', ...
-        'ProvidedBad', ...
-        'ManualBad', ...
-        'FinalBad', ...
-        'BadChannelFlatlineCriterion', ...
-        'BadChannelLineNoiseCriterion', ...
-        'BadChannelCorrelationCriterion', ...
+        'RunBadChannelChecker', ...
+        'FlaggedByCleanRawData', ...
+        'BadChannelCheckerFlatlineCriterion', ...
+        'BadChannelCheckerLineNoiseCriterion', ...
+        'BadChannelCheckerCorrelationCriterion', ...
         'DecisionTime'});
 
-badChannelTableCsv = fullfile(outDir, sprintf('%s_BadChannelDetectionTable.csv', participantID));
-writetable(badChannelTable, badChannelTableCsv);
+badChannelCheckTableCsv = fullfile(outDir, sprintf('%s_BadChannelCheckTable.csv', participantID));
+writetable(badChannelTable, badChannelCheckTableCsv);
 
 summaryTable = table( ...
     string(participantID), ...
-    string(mat2str(badScalpIndices)), ...
-    string(strjoin(badScalpLabels, ', ')), ...
-    string(strjoin(goodScalpLabels, ', ')), ...
-    numel(badScalpLabels), ...
-    numel(goodScalpLabels), ...
+    string(mat2str(flaggedBadScalpIndices)), ...
+    string(strjoin(flaggedBadScalpLabels, ', ')), ...
+    numel(flaggedBadScalpLabels), ...
+    nScalp, ...
+    logical(cfg.RunBadChannelChecker), ...
     decisionTime, ...
     'VariableNames', { ...
         'ParticipantID', ...
-        'BadScalpIndices', ...
-        'BadScalpLabels', ...
-        'GoodScalpLabels', ...
-        'NBadScalpChannels', ...
-        'NGoodScalpChannels', ...
+        'FlaggedBadScalpIndices', ...
+        'FlaggedBadScalpLabels', ...
+        'NFlaggedBadScalpChannels', ...
+        'NScalpChannelsChecked', ...
+        'RunBadChannelChecker', ...
         'DecisionTime'});
 
-badChannelsRemovedCsv = fullfile(outDir, sprintf('%s_BadChannelsRemoved.csv', participantID));
-writetable(summaryTable, badChannelsRemovedCsv);
+badChannelCheckSummaryCsv = fullfile(outDir, sprintf('%s_BadChannelCheckSummary.csv', participantID));
+writetable(summaryTable, badChannelCheckSummaryCsv);
 
-fprintf('\nAutomatic Clean RawData bad-channel detection enabled: %s\n', mat2str(cfg.AutoBadChannelReject));
-fprintf('FlatlineCriterion: %.1f s\n', cfg.BadChannelFlatlineCriterion);
-fprintf('LineNoiseCriterion: %.1f SD\n', cfg.BadChannelLineNoiseCriterion);
-fprintf('ChannelCriterion: %.2f\n', cfg.BadChannelCorrelationCriterion);
-fprintf('\nAutomatically detected bad scalp channels:\n');
-disp(autoBadScalpLabels);
-fprintf('\nProvided additional bad channels:\n');
-disp(providedBadScalpLabels);
-fprintf('\nManual additional bad channels:\n');
-disp(manualBadScalpLabels);
-fprintf('\nFinal bad scalp channels:\n');
-disp(badScalpLabels);
-fprintf('\nGood scalp channels retained for ICA: %d of %d\n', numel(goodScalpLabels), nScalp);
-
+fprintf('\nBad scalp-channel checker enabled: %s\n', mat2str(cfg.RunBadChannelChecker));
+if cfg.RunBadChannelChecker
+    fprintf('Clean RawData checker criteria:\n');
+    fprintf('  FlatlineCriterion: %.1f s\n', cfg.BadChannelCheckerFlatlineCriterion);
+    fprintf('  LineNoiseCriterion: %.1f SD\n', cfg.BadChannelCheckerLineNoiseCriterion);
+    fprintf('  ChannelCriterion: %.2f\n', cfg.BadChannelCheckerCorrelationCriterion);
+    if isempty(flaggedBadScalpLabels)
+        fprintf('\nPotentially bad scalp channels flagged for review:\n');
+        fprintf('  (none)\n');
+    else
+        fprintf('\nPotentially bad scalp channels flagged for review:\n');
+        fprintf('  %s\n', strjoin(flaggedBadScalpLabels, ', '));
+    end
+else
+    fprintf('Clean RawData checker was not run.\n');
 end
-
-
-function EEG = localRemoveChannelsByLabels(EEG, labelsToRemove)
-
-labelsToRemove = string(labelsToRemove(:));
-if isempty(labelsToRemove)
-    return;
-end
-
-allLabels = string({EEG.chanlocs.labels});
-keepIdx = find(~ismember(allLabels, labelsToRemove));
-if isempty(keepIdx)
-    error('All channels would be removed by localRemoveChannelsByLabels.');
-end
-
-EEG = pop_select(EEG, 'channel', keepIdx);
-EEG = eeg_checkset(EEG);
+fprintf('\nNo channels were removed by this stage.\n');
+fprintf('ICA will run on all %d scalp channels.\n', nScalp);
 
 end
 
@@ -1222,85 +1102,6 @@ for i = 1:numel(labels)
     end
     idx(i) = hit;
 end
-
-end
-
-
-function [labelsOut, indicesOut] = localNormaliseBadChannelInput(x, originalScalpLabels)
-
-originalScalpLabels = string(originalScalpLabels(:));
-labelsOut = strings(0, 1);
-indicesOut = [];
-
-if isempty(x)
-    return;
-end
-
-if isnumeric(x)
-    x = x(:)';
-    if any(~isfinite(x))
-        error('Bad channel numeric indices must be finite values.');
-    end
-    if any(x ~= round(x))
-        error('Bad channel numeric indices must be integers in 1:%d.', numel(originalScalpLabels));
-    end
-    x = unique(x, 'stable');
-    if any(x < 1) || any(x > numel(originalScalpLabels))
-        error('Bad channel numeric indices must be integers in 1:%d.', numel(originalScalpLabels));
-    end
-    indicesOut = x;
-    labelsOut = originalScalpLabels(indicesOut);
-    return;
-end
-
-tokens = strings(0, 1);
-
-if ischar(x) || (isstring(x) && isscalar(x))
-    tokens = localSplitBadChannelLabelTokens(x);
-elseif isstring(x)
-    tokens = string(x(:));
-elseif iscell(x)
-    for i = 1:numel(x)
-        item = x{i};
-        if ischar(item) || (isstring(item) && isscalar(item))
-            tokens = [tokens; localSplitBadChannelLabelTokens(item)]; %#ok<AGROW>
-        elseif isstring(item)
-            tokens = [tokens; string(item(:))];
-        else
-            error('Unsupported bad-channel label type in cell: %s', class(item));
-        end
-    end
-else
-    error('Unsupported bad-channel input type: %s', class(x));
-end
-
-tokens = strtrim(tokens);
-tokens = tokens(tokens ~= "");
-
-for i = 1:numel(tokens)
-    lab = tokens(i);
-    hit = find(strcmpi(originalScalpLabels, lab), 1, 'first');
-    if isempty(hit)
-        error('Bad channel label not found in scalp montage: %s', lab);
-    end
-    labelsOut(end+1) = originalScalpLabels(hit); %#ok<AGROW>
-    indicesOut(end+1) = hit; %#ok<AGROW>
-end
-
-[labelsOut, ia] = unique(labelsOut, 'stable');
-indicesOut = indicesOut(ia);
-
-end
-
-
-function tokens = localSplitBadChannelLabelTokens(x)
-
-text = char(string(x));
-text = strtrim(text);
-text = strrep(text, ',', ' ');
-parts = strsplit(text);
-parts = parts(~cellfun(@isempty, strtrim(parts)));
-tokens = string(strtrim(parts));
 
 end
 
@@ -1331,7 +1132,7 @@ end
 fracValid = nValid / nScalp;
 if fracValid < minFractionValid
     error(['Scalp channel locations appear missing or unusable (%d/%d channels with coordinates). ', ...
-        'Clean RawData correlation-based channel detection and spherical interpolation require ', ...
+        'Clean RawData correlation-based channel checking requires ', ...
         'valid scalp channel locations (X/Y/Z or theta/radius).'], nValid, nScalp);
 end
 
@@ -1359,102 +1160,6 @@ EEG.icasphere = [];
 EEG.icawinv = [];
 EEG.icachansind = [];
 EEG = eeg_checkset(EEG);
-
-end
-
-
-function EEG = localInterpolateMissingScalpChannels(EEG, originalScalpChanlocs, originalScalpLabels, originalExternalLabels)
-
-originalScalpLabels = string(originalScalpLabels(:));
-originalExternalLabels = string(originalExternalLabels(:));
-targetLabels = [originalScalpLabels; originalExternalLabels];
-
-EEG_parent = EEG;
-currentLabels = string({EEG.chanlocs.labels});
-
-presentScalpLabels = originalScalpLabels(ismember(originalScalpLabels, currentLabels));
-missingScalpLabels = setdiff(originalScalpLabels, presentScalpLabels, 'stable');
-if isempty(missingScalpLabels)
-    return;
-end
-
-try
-    currentScalpIdx = localFindExistingChannelsByLabels(EEG, presentScalpLabels);
-    currentExternalIdx = localFindExistingChannelsByLabels(EEG, originalExternalLabels);
-catch ME
-    error('Could not identify current scalp/external channels before interpolation: %s', ME.message);
-end
-
-if numel(currentExternalIdx) ~= numel(originalExternalLabels)
-    error('Failed to identify all original external channels before interpolation.');
-end
-
-EEG_scalp = pop_select(EEG, 'channel', currentScalpIdx);
-EEG_external = pop_select(EEG, 'channel', currentExternalIdx);
-EEG_scalp = eeg_checkset(EEG_scalp);
-EEG_external = eeg_checkset(EEG_external);
-
-if exist('pop_interp', 'file') == 2
-    EEG_scalp = pop_interp(EEG_scalp, originalScalpChanlocs, 'spherical');
-elseif exist('eeg_interp', 'file') == 2
-    EEG_scalp = eeg_interp(EEG_scalp, originalScalpChanlocs, 'spherical');
-else
-    error('Neither pop_interp nor eeg_interp was found for bad-channel interpolation.');
-end
-
-EEG_scalp = eeg_checkset(EEG_scalp);
-
-scalpLabelsAfterInterp = string({EEG_scalp.chanlocs.labels});
-[~, scalpOrder] = ismember(originalScalpLabels, scalpLabelsAfterInterp);
-if any(scalpOrder == 0)
-    error('Failed to restore all original scalp channel labels after interpolation.');
-end
-
-EEG_scalp = pop_select(EEG_scalp, 'channel', scalpOrder);
-EEG_scalp = eeg_checkset(EEG_scalp);
-
-EEG = EEG_scalp;
-EEG.data = [EEG_scalp.data; EEG_external.data];
-EEG.nbchan = EEG_scalp.nbchan + EEG_external.nbchan;
-EEG.chanlocs = [EEG_scalp.chanlocs EEG_external.chanlocs];
-
-EEG.srate = EEG_parent.srate;
-EEG.pnts = EEG_parent.pnts;
-EEG.times = EEG_parent.times;
-EEG.xmin = EEG_parent.xmin;
-EEG.xmax = EEG_parent.xmax;
-if isfield(EEG_parent, 'event')
-    EEG.event = EEG_parent.event;
-end
-if isfield(EEG_parent, 'urevent')
-    EEG.urevent = EEG_parent.urevent;
-end
-if isfield(EEG_parent, 'epoch')
-    EEG.epoch = EEG_parent.epoch;
-end
-if isfield(EEG_parent, 'trials')
-    EEG.trials = EEG_parent.trials;
-end
-if isfield(EEG_parent, 'setname')
-    EEG.setname = EEG_parent.setname;
-end
-
-EEG = eeg_checkset(EEG);
-
-finalLabels = string({EEG.chanlocs.labels});
-if ~isequal(finalLabels(:), targetLabels(:))
-    error('Failed to restore original scalp/external channel labels and order after interpolation.');
-end
-
-restoredScalpLabels = finalLabels(1:numel(originalScalpLabels));
-if ~isequal(restoredScalpLabels(:), originalScalpLabels(:))
-    error('Interpolated scalp channel labels/order do not match the original montage.');
-end
-
-restoredExternalLabels = finalLabels(numel(originalScalpLabels)+1:end);
-if ~isequal(restoredExternalLabels(:), originalExternalLabels(:))
-    error('External channel labels/order do not match the original montage after interpolation.');
-end
 
 end
 
