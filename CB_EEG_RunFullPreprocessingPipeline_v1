@@ -9,10 +9,10 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %   3. Create ICA-training copy: 1-30 Hz + average reference
 %   4. Run Picard ICA on scalp channels 1:64 with PCA rank 63
 %   5. Run ICLabel
-%   6. Manually enter ICA components to remove
+%   6. Automatically reject ICLabel Muscle/Eye components (threshold 0.90 default)
 %   7. Create ERP-analysis copy: 0.1-20 Hz + average reference
 %   8. Transfer ICA weights to ERP-analysis copy
-%   9. Remove manually selected ICA components
+%   9. Remove selected ICA components
 %   10. Match EEG triggers to behavioural FullRun CSV
 %   11. Add synthetic S1/S2 outcome-specific event codes
 %   12. Create S1-locked and S2-locked epochs
@@ -38,8 +38,9 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %       'FullRunCsv', 'CB_4xGratings_MAV01_FullRun_20260616_160252.csv');
 %
 % Notes:
-%   - This script pauses after ICLabel and asks you to manually enter ICs
-%     to remove.
+%   - By default, automatically rejects ICLabel Muscle/Eye components with
+%     probability >= 0.90. Enable manual review with 'ManualICAReject', true.
+%     Change threshold with 'AutoICARejectThreshold', 0.90.
 %   - Positive amplitudes are plotted above zero.
 %   - The script writes both a text diary log and a structured CSV log.
 
@@ -47,14 +48,45 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 % Parse inputs and config
 % ========================================================================
 
-if nargin < 1 || isempty(participantID)
-participantID = 'MAV01';
-end
-
 if nargin < 2 || isempty(dataPath)
 dataPath = 'C:\Users\hrl310\Documents\EEGData_HL';
 end
 
+if nargin < 1 || isempty(participantID)
+    idInput = input('Enter participant ID(s), separated by commas or spaces: ', 's');
+    participantIDs = localParseParticipantIDs(idInput);
+else
+    participantIDs = {char(participantID)};
+end
+
+if numel(participantIDs) > 1
+    if localHasManualFileOverride(varargin)
+        error(['Manual BdfFile, FullRunCsv, or FullRunPattern overrides are only supported ', ...
+               'for single-participant runs. Remove those overrides or run one participant at a time.']);
+    end
+
+    fprintf('\nParticipants queued:\n');
+    for qi = 1:numel(participantIDs)
+        fprintf('  %d. %s\n', qi, participantIDs{qi});
+    end
+    fprintf('\n');
+
+    for i = 1:numel(participantIDs)
+        fprintf('Starting participant %d of %d: %s\n', i, numel(participantIDs), participantIDs{i});
+
+        thisReport = CB_EEG_RunFullPreprocessingPipeline_v1(participantIDs{i}, dataPath, varargin{:});
+
+        if i == 1
+            reports = repmat(thisReport, 1, numel(participantIDs));
+        else
+            reports(i) = thisReport;
+        end
+    end
+    report = reports;
+    return;
+end
+
+participantID = participantIDs{1};
 participantID = char(participantID);
 dataPath = char(dataPath);
 
@@ -97,8 +129,11 @@ addParameter(p, 'S1BaselineMs', [-199 0], @(x) isnumeric(x) && numel(x)==2);
 addParameter(p, 'ArtifactAbsThresholdUv', 100, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'ArtifactPeakToPeakThresholdUv', 150, @(x) isnumeric(x) && isscalar(x));
 
-% Manual ICA
-addParameter(p, 'ManualICAReject', true, @(x) islogical(x) || isnumeric(x));
+% Manual / automatic ICA
+addParameter(p, 'AutoICAReject', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'AutoICARejectThreshold', 0.90, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
+addParameter(p, 'AutoICARejectClasses', {'Muscle','Eye'}, @(x) iscellstr(x) || isstring(x) || ischar(x));
+addParameter(p, 'ManualICAReject', false, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'ComponentsToRemove', [], @(x) isnumeric(x));
 
 % Plotting
@@ -131,6 +166,17 @@ cfg.NExternalChans = numel(cfg.ExternalChans);
 cfg.TotalExpectedChans = cfg.NScalpChans + cfg.NExternalChans;
 
 cfg.ManualICAReject = logical(cfg.ManualICAReject);
+cfg.AutoICAReject = logical(cfg.AutoICAReject);
+cfg.AutoICARejectThreshold = double(cfg.AutoICARejectThreshold);
+
+if ischar(cfg.AutoICARejectClasses)
+    cfg.AutoICARejectClasses = {cfg.AutoICARejectClasses};
+elseif isstring(cfg.AutoICARejectClasses)
+    cfg.AutoICARejectClasses = cellstr(cfg.AutoICARejectClasses);
+else
+    cfg.AutoICARejectClasses = cellfun(@char, cfg.AutoICARejectClasses, 'UniformOutput', false);
+end
+
 cfg.VisiblePlots = logical(cfg.VisiblePlots);
 cfg.NegativeUp = logical(cfg.NegativeUp);
 cfg.SaveFig = logical(cfg.SaveFig);
@@ -359,38 +405,44 @@ logStep('iclabel', 'OK', 'ICLabel completed', sprintf('%d ICs', height(T_ic)), i
 logStep('iclabel', 'OK', 'Saved ICLabel table', '', iclabelCsv);
 
 % ====================================================================
-% Stage 7: Manual ICA component selection
+% Stage 7: ICA component selection
 % ====================================================================
 
-fprintf('\n\n================ STAGE 7: MANUAL ICA REJECTION ================\n');
+fprintf('\n\n================ STAGE 7: ICA COMPONENT SELECTION ================\n');
 
-fprintf('\nOpening component viewer for ICs 1:35.\n');
-fprintf('Inspect maps, time courses, and ICLabel classifications.\n\n');
+autoComponents = [];
+autoSelectionTable = table();
+autoSelectionCsv = '';
 
-try
-    pop_selectcomps(EEG_ica, 1:min(35, size(EEG_ica.icaweights,1)));
-catch ME
-    warning('Could not open pop_selectcomps: %s', ME.message);
+if cfg.AutoICAReject
+    [autoComponents, autoSelectionTable] = localGetICLabelAutoRejectComponents( ...
+        EEG_ica, cfg.AutoICARejectClasses, cfg.AutoICARejectThreshold);
+    autoSelectionCsv = fullfile(outDir, sprintf('%s_AutoICASelectionTable.csv', participantID));
+    writetable(autoSelectionTable, autoSelectionCsv);
+    logStep('ica_component_selection', 'OK', 'Auto ICA selection table saved', mat2str(autoComponents), autoSelectionCsv);
 end
 
-componentsToRemove = cfg.ComponentsToRemove;
+providedComponents = cfg.ComponentsToRemove(:)';
+manualComponents = [];
 
 if cfg.ManualICAReject
-    fprintf('\nSuggested workflow:\n');
-    fprintf('  1. Inspect the component maps/window.\n');
-    fprintf('  2. Decide which ICs are ocular/muscle/artefact.\n');
-    fprintf('  3. Enter them below as a vector, e.g., [1 2 3 4].\n');
-    fprintf('  4. Enter [] if you want to remove none.\n\n');
+    fprintf('\nOpening component viewer for ICs 1:%d.\n', min(35, size(EEG_ica.icaweights,1)));
+    fprintf('Inspect maps, time courses, and ICLabel classifications.\n\n');
 
-    if isempty(componentsToRemove)
-        componentsToRemove = input('Enter ICs to remove, e.g. [1 2 3 4], or [] for none: ');
-    else
-        fprintf('Using provided ComponentsToRemove: ');
-        disp(componentsToRemove);
+    try
+        pop_selectcomps(EEG_ica, 1:min(35, size(EEG_ica.icaweights,1)));
+    catch ME
+        warning('Could not open pop_selectcomps: %s', ME.message);
     end
+
+    fprintf('\nAutomatically selected ICs:\n');
+    disp(autoComponents);
+
+    additionalManualComponents = input('Enter any additional ICs to remove, e.g. [1 2 3], or [] for none: ');
+    manualComponents = additionalManualComponents(:)';
 end
 
-componentsToRemove = unique(componentsToRemove(:))';
+componentsToRemove = unique([autoComponents(:); providedComponents(:); manualComponents(:)])';
 
 if any(componentsToRemove < 1) || any(componentsToRemove > size(EEG_ica.icaweights,1))
     error('ComponentsToRemove contains invalid component indices.');
@@ -398,17 +450,41 @@ end
 
 componentDecisionTable = table( ...
     string(participantID), ...
-    {componentsToRemove}, ...
+    logical(cfg.AutoICAReject), ...
+    cfg.AutoICARejectThreshold, ...
+    string(strjoin(string(cfg.AutoICARejectClasses), ', ')), ...
+    string(mat2str(autoComponents)), ...
+    string(mat2str(providedComponents)), ...
+    string(mat2str(manualComponents)), ...
+    string(mat2str(componentsToRemove)), ...
     string(datestr(now)), ...
-    'VariableNames', {'ParticipantID','ComponentsToRemove','DecisionTime'});
+    'VariableNames', { ...
+        'ParticipantID', ...
+        'AutoICAReject', ...
+        'AutoICARejectThreshold', ...
+        'AutoICARejectClasses', ...
+        'AutoComponents', ...
+        'ProvidedComponentsToRemove', ...
+        'ManualComponents', ...
+        'FinalComponentsToRemove', ...
+        'DecisionTime'});
 
-componentDecisionCsv = fullfile(outDir, sprintf('%s_ManualICAComponentsToRemove.csv', participantID));
+componentDecisionCsv = fullfile(outDir, sprintf('%s_ICAComponentsToRemove.csv', participantID));
 writetable(componentDecisionTable, componentDecisionCsv);
 
-fprintf('\nManual components selected for removal:\n');
+fprintf('\nAutomatic ICLabel rejection enabled: %s\n', mat2str(cfg.AutoICAReject));
+fprintf('Classes: %s\n', strjoin(cfg.AutoICARejectClasses, ', '));
+fprintf('Threshold: %.2f\n', cfg.AutoICARejectThreshold);
+fprintf('\nAutomatically selected ICs:\n');
+disp(autoComponents);
+fprintf('\nProvided ComponentsToRemove:\n');
+disp(providedComponents);
+fprintf('\nAdditional manual ICs:\n');
+disp(manualComponents);
+fprintf('\nFinal components selected for removal:\n');
 disp(componentsToRemove);
 
-logStep('manual_ica_rejection', 'OK', 'Manual ICs selected for removal', mat2str(componentsToRemove), componentDecisionCsv);
+logStep('ica_component_selection', 'OK', 'ICA components selected for removal', mat2str(componentsToRemove), componentDecisionCsv);
 
 % ====================================================================
 % Stage 8: Create ERP-analysis dataset
@@ -731,6 +807,11 @@ report.bdfPath = bdfPath;
 report.fullRunCsv = fullRunCsv;
 report.cfg = cfg;
 report.componentsToRemove = componentsToRemove;
+report.autoICAComponentsToRemove = autoComponents;
+report.providedICAComponentsToRemove = providedComponents;
+report.manualICAComponentsToRemove = manualComponents;
+report.autoICASelectionTableCsv = autoSelectionCsv;
+report.icaComponentDecisionCsv = componentDecisionCsv;
 report.icaElapsedSec = icaElapsedSec;
 report.icaElapsedMin = icaElapsedSec/60;
 report.cleanContinuousSet = cleanSet;
@@ -845,28 +926,106 @@ end
 function T_ic = localMakeICLabelTable(EEG)
 
 if ~isfield(EEG.etc, 'ic_classification') || ...
-~isfield(EEG.etc.ic_classification, 'ICLabel') || ...
-~isfield(EEG.etc.ic_classification.ICLabel, 'classifications')
-error('ICLabel classifications not found in EEG.etc.');
+        ~isfield(EEG.etc.ic_classification, 'ICLabel') || ...
+        ~isfield(EEG.etc.ic_classification.ICLabel, 'classifications') || ...
+        ~isfield(EEG.etc.ic_classification.ICLabel, 'classes')
+    error('ICLabel classifications not found in EEG.etc.');
 end
 
 classMat = EEG.etc.ic_classification.ICLabel.classifications;
-classNames = EEG.etc.ic_classification.ICLabel.classes;
+classNames = string(EEG.etc.ic_classification.ICLabel.classes);
+classNames = classNames(:);
 
 [bestProb, bestClassIdx] = max(classMat, [], 2);
 
+nIC = size(classMat, 1);
+
+IC = (1:nIC)';
+BestClass = string(classNames(bestClassIdx));
+BestClass = BestClass(:);
+BestPct = bestProb(:) * 100;
+
+BrainPct = localICLabelClassPct(classMat, classNames, 'Brain');
+MusclePct = localICLabelClassPct(classMat, classNames, 'Muscle');
+EyePct = localICLabelClassPct(classMat, classNames, 'Eye');
+HeartPct = localICLabelClassPct(classMat, classNames, 'Heart');
+LineNoisePct = localICLabelClassPct(classMat, classNames, 'Line Noise');
+ChannelNoisePct = localICLabelClassPct(classMat, classNames, 'Channel Noise');
+OtherPct = localICLabelClassPct(classMat, classNames, 'Other');
+
 T_ic = table( ...
-(1:size(classMat,1))', ...
-string(classNames(bestClassIdx))', ...
-bestProb * 100, ...
-classMat(:,1) * 100, ...
-classMat(:,2) * 100, ...
-classMat(:,3) * 100, ...
-classMat(:,4) * 100, ...
-classMat(:,5) * 100, ...
-classMat(:,6) * 100, ...
-classMat(:,7) * 100, ...
-'VariableNames', {'IC','BestClass','BestPct','BrainPct','MusclePct','EyePct','HeartPct','LineNoisePct','ChannelNoisePct','OtherPct'});
+    IC, ...
+    BestClass, ...
+    BestPct, ...
+    BrainPct, ...
+    MusclePct, ...
+    EyePct, ...
+    HeartPct, ...
+    LineNoisePct, ...
+    ChannelNoisePct, ...
+    OtherPct, ...
+    'VariableNames', {'IC','BestClass','BestPct','BrainPct','MusclePct','EyePct','HeartPct','LineNoisePct','ChannelNoisePct','OtherPct'});
+
+end
+
+
+function pctCol = localICLabelClassPct(classMat, classNames, classLabel)
+
+colIdx = find(strcmpi(classNames, classLabel), 1, 'first');
+if isempty(colIdx)
+    error('ICLabel class not found: %s', classLabel);
+end
+pctCol = classMat(:, colIdx) * 100;
+
+end
+
+
+function [autoComponents, autoSelectionTable] = localGetICLabelAutoRejectComponents(EEG, classesToReject, threshold)
+
+if ~isfield(EEG.etc, 'ic_classification') || ...
+        ~isfield(EEG.etc.ic_classification, 'ICLabel') || ...
+        ~isfield(EEG.etc.ic_classification.ICLabel, 'classifications') || ...
+        ~isfield(EEG.etc.ic_classification.ICLabel, 'classes')
+    error('ICLabel classifications not found in EEG.etc.');
+end
+
+classMat = EEG.etc.ic_classification.ICLabel.classifications;
+classNames = string(EEG.etc.ic_classification.ICLabel.classes);
+nIC = size(classMat, 1);
+
+rejectCols = zeros(1, numel(classesToReject));
+for c = 1:numel(classesToReject)
+    hit = find(strcmpi(classNames, classesToReject{c}), 1, 'first');
+    if isempty(hit)
+        error('ICLabel class not found: %s', classesToReject{c});
+    end
+    rejectCols(c) = hit;
+end
+
+rejectMask = false(nIC, 1);
+reasons = strings(nIC, 1);
+thrPct = threshold * 100;
+
+for i = 1:nIC
+    reasonParts = strings(0, 1);
+    for c = 1:numel(classesToReject)
+        prob = classMat(i, rejectCols(c));
+        if prob >= threshold
+            rejectMask(i) = true;
+            reasonParts(end+1) = sprintf('%s >= %.0f%%', classesToReject{c}, thrPct); %#ok<AGROW>
+        end
+    end
+    if rejectMask(i)
+        reasons(i) = strjoin(reasonParts, '; ');
+    else
+        reasons(i) = "";
+    end
+end
+
+autoComponents = find(rejectMask)';
+autoSelectionTable = localMakeICLabelTable(EEG);
+autoSelectionTable.AutoReject = rejectMask;
+autoSelectionTable.AutoRejectReason = reasons;
 
 end
 
@@ -1546,6 +1705,43 @@ end
 chanIdx(i) = hit;
 
 
+end
+
+end
+
+
+function participantIDs = localParseParticipantIDs(idInput)
+
+idInput = strtrim(char(idInput));
+if isempty(idInput)
+    error('No valid participant ID entered.');
+end
+
+idInput = strrep(idInput, ',', ' ');
+tokens = strsplit(strtrim(idInput));
+tokens = tokens(~cellfun(@isempty, strtrim(tokens)));
+
+if isempty(tokens)
+    error('No valid participant ID entered.');
+end
+
+participantIDs = cellfun(@(s) char(strtrim(s)), tokens, 'UniformOutput', false);
+
+end
+
+
+function tf = localHasManualFileOverride(args)
+
+tf = false;
+
+for k = 1:2:numel(args)
+    if k+1 <= numel(args) && (ischar(args{k}) || isstring(args{k}))
+        name = lower(char(args{k}));
+        if strcmp(name, 'bdffile') || strcmp(name, 'fullruncsv') || strcmp(name, 'fullrunpattern')
+            tf = true;
+            return;
+        end
+    end
 end
 
 end
