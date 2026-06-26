@@ -45,7 +45,10 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %     Only scalp channels are screened on a temporary copy; ASR burst/window
 %     rejection is disabled. Potentially bad channels are flagged to CSV for
 %     manual review. No channels are removed or interpolated; ICA and ERP
-%     preprocessing retain the full scalp montage.
+%     preprocessing retain the full scalp montage. Verbose Clean RawData
+%     progress is suppressed by default during diagnostic passes; use
+%     'SuppressCleanRawDataConsole', false for full console output. Captured
+%     verbose trace is saved when 'SaveCleanRawDataConsoleLog', true (default).
 %   - Optional read-only 50 Hz line-noise QC runs on downsampled, ICA-training,
 %     and ERP-analysis datasets. Results are saved to CSV and optional plots.
 %     This does not apply notch filtering or channel removal.
@@ -142,6 +145,9 @@ addParameter(p, 'BadChannelCheckerFlatlineCriterion', 5, @(x) isnumeric(x) && is
 addParameter(p, 'BadChannelCheckerLineNoiseCriterion', 4, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 addParameter(p, 'BadChannelCheckerCorrelationCriterion', 0.80, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
 
+addParameter(p, 'SuppressCleanRawDataConsole', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'SaveCleanRawDataConsoleLog', true, @(x) islogical(x) || isnumeric(x));
+
 % Channel QC persistence (read-only; reruns Clean RawData diagnostics after filtering)
 addParameter(p, 'RunChannelQCPersistence', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'ChannelQCPersistencePlot', true, @(x) islogical(x) || isnumeric(x));
@@ -229,6 +235,9 @@ cfg.BadChannelCheckerFlatlineCriterion = double(cfg.BadChannelCheckerFlatlineCri
 cfg.BadChannelCheckerLineNoiseCriterion = double(cfg.BadChannelCheckerLineNoiseCriterion);
 cfg.BadChannelCheckerCorrelationCriterion = double(cfg.BadChannelCheckerCorrelationCriterion);
 
+cfg.SuppressCleanRawDataConsole = logical(cfg.SuppressCleanRawDataConsole);
+cfg.SaveCleanRawDataConsoleLog = logical(cfg.SaveCleanRawDataConsoleLog);
+
 cfg.RunChannelQCPersistence = logical(cfg.RunChannelQCPersistence);
 cfg.ChannelQCPersistencePlot = logical(cfg.ChannelQCPersistencePlot);
 
@@ -294,6 +303,13 @@ channelQCPersistenceTableCsv = '';
 channelQCPersistenceSummaryCsv = '';
 channelQCPersistenceInterpretationCsv = '';
 channelQCPlotDir = '';
+
+cleanRawDataConsoleLogFile = '';
+if cfg.SaveCleanRawDataConsoleLog
+    cleanRawDataConsoleLogFile = fullfile(outDir, ...
+        sprintf('%s_CleanRawDataDiagnosticConsoleLog.txt', participantID));
+end
+cfg.CleanRawDataConsoleLogFile = cleanRawDataConsoleLogFile;
 
 logTxtFile = fullfile(outDir, sprintf('%s_PreprocessingLog_%s.txt', participantID, runStamp));
 logCsvFile = fullfile(outDir, sprintf('%s_PreprocessingLog_%s.csv', participantID, runStamp));
@@ -1155,6 +1171,7 @@ report.channelQCPersistenceTableCsv = channelQCPersistenceTableCsv;
 report.channelQCPersistenceSummaryCsv = channelQCPersistenceSummaryCsv;
 report.channelQCPersistenceInterpretationCsv = channelQCPersistenceInterpretationCsv;
 report.channelQCPersistencePlotDir = channelQCPlotDir;
+report.cleanRawDataConsoleLogFile = cleanRawDataConsoleLogFile;
 report.nGoodScalpChannelsForICA = cfg.NScalpChans;
 report.icaPcaDimRequested = cfg.ICAPcaDim;
 report.icaPcaDimUsed = icaPcaDimUsed;
@@ -1287,7 +1304,7 @@ if cfg.RunBadChannelChecker
     labelsBefore = string({EEG_badcheck.chanlocs.labels});
     labelsBefore = labelsBefore(:);
 
-    diag = localRunScalpChannelDiagnosticPasses(EEG_badcheck, cfg, labelsBefore, false);
+    diag = localRunScalpChannelDiagnosticPasses(EEG_badcheck, cfg, labelsBefore, false, '');
 
     flaggedBadScalpLabels = diag.combinedLabels;
     flaggedBadScalpIndices = diag.combinedIndices;
@@ -1429,7 +1446,8 @@ fprintf('ICA will run on all %d scalp channels.\n', nScalp);
 end
 
 
-function [flaggedLabels, flaggedIndices] = localRunCleanRawDataChannelCheck(EEG_badcheck, labelsBefore, varargin)
+function [flaggedLabels, flaggedIndices] = localRunCleanRawDataChannelCheck( ...
+    EEG_badcheck, labelsBefore, cfg, passLabel, varargin)
 
 labelsBefore = string(labelsBefore(:));
 cleanArgs = localNormaliseCleanRawDataArgs(varargin{:});
@@ -1437,7 +1455,15 @@ cleanArgs = localNormaliseCleanRawDataArgs(varargin{:});
 EEG_work = pop_select(EEG_badcheck, 'channel', 1:EEG_badcheck.nbchan);
 EEG_work = eeg_checkset(EEG_work);
 
-EEG_checked = pop_clean_rawdata(EEG_work, cleanArgs{:});
+fprintf('Running Clean RawData diagnostic pass: %s on temporary copy ... ', passLabel);
+
+if cfg.SuppressCleanRawDataConsole
+    cleanConsoleText = evalc('EEG_checked = pop_clean_rawdata(EEG_work, cleanArgs{:});');
+else
+    EEG_checked = pop_clean_rawdata(EEG_work, cleanArgs{:});
+    cleanConsoleText = '';
+end
+
 EEG_checked = eeg_checkset(EEG_checked);
 
 labelsAfter = string({EEG_checked.chanlocs.labels});
@@ -1445,6 +1471,51 @@ labelsAfter = labelsAfter(:);
 
 flaggedLabels = setdiff(labelsBefore, labelsAfter, 'stable');
 flaggedIndices = find(ismember(labelsBefore, flaggedLabels))';
+
+summarySuffix = sprintf('Flagged %d channel(s)', numel(flaggedLabels));
+if numel(flaggedLabels) > 0 && numel(flaggedLabels) <= 10
+    summarySuffix = sprintf('%s (%s)', summarySuffix, strjoin(flaggedLabels, ', '));
+end
+fprintf('done. %s.\n', summarySuffix);
+
+if cfg.SaveCleanRawDataConsoleLog && cfg.SuppressCleanRawDataConsole && ...
+        ~isempty(cfg.CleanRawDataConsoleLogFile)
+    localAppendCleanRawDataConsoleLog(cfg.CleanRawDataConsoleLogFile, passLabel, cleanConsoleText);
+end
+
+end
+
+
+function localAppendCleanRawDataConsoleLog(logFile, passLabel, capturedText)
+
+fid = fopen(logFile, 'a');
+if fid < 0
+    warning('Could not open Clean RawData console log for writing: %s', logFile);
+    return;
+end
+
+cleanupObj = onCleanup(@() fclose(fid)); %#ok<NASGU>
+
+fprintf(fid, '============================================================\n');
+fprintf(fid, 'Clean RawData diagnostic pass: %s\n', passLabel);
+fprintf(fid, 'Time: %s\n', datestr(now));
+fprintf(fid, '============================================================\n');
+fprintf(fid, '%s', capturedText);
+if ~isempty(capturedText) && capturedText(end) ~= newline
+    fprintf(fid, '\n');
+end
+fprintf(fid, '\n');
+
+end
+
+
+function passLabel = localCleanRawDataPassLabel(stageName, checkType)
+
+if nargin < 1 || isempty(stageName)
+    passLabel = checkType;
+else
+    passLabel = sprintf('%s %s', char(stageName), checkType);
+end
 
 end
 
@@ -1512,7 +1583,11 @@ end
 end
 
 
-function diag = localRunScalpChannelDiagnosticPasses(EEG_continuous, cfg, labelsBefore, printConsoleNote)
+function diag = localRunScalpChannelDiagnosticPasses(EEG_continuous, cfg, labelsBefore, printConsoleNote, stageName)
+
+if nargin < 5
+    stageName = '';
+end
 
 labelsBefore = string(labelsBefore(:));
 nScalp = numel(labelsBefore);
@@ -1536,8 +1611,9 @@ EEG_scalp = localFixChanlocsForICLabel(EEG_scalp);
 EEG_scalp = eeg_checkset(EEG_scalp);
 
 try
+    passLabel = localCleanRawDataPassLabel(stageName, 'flatline check');
     [diag.flatlineLabels, diag.flatlineIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_scalp, labelsBefore, ...
+        EEG_scalp, labelsBefore, cfg, passLabel, ...
         'FlatlineCriterion', cfg.BadChannelCheckerFlatlineCriterion, ...
         'LineNoiseCriterion', 'off', ...
         'ChannelCriterion', 'off', ...
@@ -1548,8 +1624,9 @@ catch ME
 end
 
 try
+    passLabel = localCleanRawDataPassLabel(stageName, 'line-noise check');
     [diag.lineNoiseLabels, diag.lineNoiseIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_scalp, labelsBefore, ...
+        EEG_scalp, labelsBefore, cfg, passLabel, ...
         'FlatlineCriterion', 'off', ...
         'LineNoiseCriterion', cfg.BadChannelCheckerLineNoiseCriterion, ...
         'ChannelCriterion', 'off', ...
@@ -1560,8 +1637,9 @@ catch ME
 end
 
 try
+    passLabel = localCleanRawDataPassLabel(stageName, 'correlation check');
     [diag.correlationLabels, diag.correlationIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_scalp, labelsBefore, ...
+        EEG_scalp, labelsBefore, cfg, passLabel, ...
         'FlatlineCriterion', 'off', ...
         'LineNoiseCriterion', 'off', ...
         'ChannelCriterion', cfg.BadChannelCheckerCorrelationCriterion, ...
@@ -1572,8 +1650,9 @@ catch ME
 end
 
 try
+    passLabel = localCleanRawDataPassLabel(stageName, 'combined channel check');
     [diag.combinedLabels, diag.combinedIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_scalp, labelsBefore, ...
+        EEG_scalp, labelsBefore, cfg, passLabel, ...
         'FlatlineCriterion', cfg.BadChannelCheckerFlatlineCriterion, ...
         'LineNoiseCriterion', cfg.BadChannelCheckerLineNoiseCriterion, ...
         'ChannelCriterion', cfg.BadChannelCheckerCorrelationCriterion, ...
@@ -1643,7 +1722,7 @@ stageName = stageNames(s);
 EEG_stage = stageEEGs{s};
 
 try
-    diag = localRunScalpChannelDiagnosticPasses(EEG_stage, cfg, originalScalpLabels, s == 1);
+    diag = localRunScalpChannelDiagnosticPasses(EEG_stage, cfg, originalScalpLabels, s == 1, char(stageName));
 catch ME
     warning('Channel QC persistence diagnostic passes failed for %s: %s', stageName, ME.message);
     diag = localEmptyChannelDiagnosticResult(nScalp, originalScalpLabels);
@@ -1792,10 +1871,62 @@ end
 
 summaryString = strjoin(summaryParts, '; ');
 
-fprintf('\nChannel QC persistence complete.\n');
-fprintf('Table:\n%s\n', tableCsv);
-fprintf('Summary:\n%s\n', summaryCsv);
-fprintf('Interpretation:\n%s\n', interpretationCsv);
+localPrintChannelQCPersistenceSummary(summaryRows, tableCsv, summaryCsv, interpretationCsv);
+
+end
+
+
+function localPrintChannelQCPersistenceSummary(summaryRows, tableCsv, summaryCsv, interpretationCsv)
+
+stageOrder = ["Downsampled_512Hz", "ICAtraining_1to30Hz", "ERPanalysis_0p1to20Hz"];
+
+fprintf('\n================ CHANNEL QC PERSISTENCE SUMMARY ================\n\n');
+
+for s = 1:numel(stageOrder)
+    stageName = stageOrder(s);
+    rowIdx = find(strcmp(summaryRows.Stage, stageName), 1, 'first');
+
+    if isempty(rowIdx)
+        nFlatline = 0;
+        nLineNoise = 0;
+        nCorrelation = 0;
+    else
+        nFlatline = summaryRows.NFlaggedByFlatlineCriterion(rowIdx);
+        nLineNoise = summaryRows.NFlaggedByLineNoiseCriterion(rowIdx);
+        nCorrelation = summaryRows.NFlaggedByCorrelationCriterion(rowIdx);
+    end
+
+    fprintf('%s:\n', char(stageName));
+    fprintf('  %d flatline\n', nFlatline);
+    fprintf('  %d line-noise\n', nLineNoise);
+    fprintf('  %d correlation\n', nCorrelation);
+
+    if s < numel(stageOrder)
+        fprintf('\n');
+    end
+end
+
+erpRowIdx = find(strcmp(summaryRows.Stage, "ERPanalysis_0p1to20Hz"), 1, 'first');
+if isempty(erpRowIdx)
+    nFlatlinePersisted = 0;
+    nLineNoisePersisted = 0;
+    nCorrelationPersisted = 0;
+else
+    nFlatlinePersisted = summaryRows.NFlatlineFlagsPersisted(erpRowIdx);
+    nLineNoisePersisted = summaryRows.NLineNoiseFlagsPersisted(erpRowIdx);
+    nCorrelationPersisted = summaryRows.NCorrelationFlagsPersisted(erpRowIdx);
+end
+
+fprintf('\nPersistent original flags into final ERP-analysis stage:\n');
+fprintf('  Flatline: %d\n', nFlatlinePersisted);
+fprintf('  Line-noise: %d\n', nLineNoisePersisted);
+fprintf('  Correlation: %d\n', nCorrelationPersisted);
+
+fprintf('\nFull persistence details saved to:\n');
+fprintf('  %s\n', tableCsv);
+fprintf('  %s\n', summaryCsv);
+fprintf('  %s\n', interpretationCsv);
+fprintf('===============================================================\n');
 
 end
 
