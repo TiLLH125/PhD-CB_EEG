@@ -12,6 +12,7 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %   6. Run ICLabel
 %   7. Automatically reject ICLabel Muscle/Eye components (threshold 0.90 default)
 %   8. Create ERP-analysis copy: 0.1-20 Hz + average reference (full scalp montage)
+%   8b. Optional channel QC persistence on downsampled / ICA / ERP datasets (read-only)
 %   9. Transfer ICA weights to ERP-analysis copy and remove selected components
 %  10. Match EEG triggers to behavioural FullRun CSV
 %  11. Add synthetic S1/S2 outcome-specific event codes
@@ -48,9 +49,15 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v1(participantID, dataPath
 %   - Optional read-only 50 Hz line-noise QC runs on downsampled, ICA-training,
 %     and ERP-analysis datasets. Results are saved to CSV and optional plots.
 %     This does not apply notch filtering or channel removal.
+%   - Optional read-only channel QC persistence reruns Clean RawData diagnostic
+%     checks on temporary scalp copies after downsampling, ICA-training, and
+%     ERP-analysis filtering. Compares against Stage 3b initial flags to show
+%     which warnings persist. Complements line-noise PSD QC; no channels removed.
 %   - Optional Stage 16 extra plots (central ROI trial traces, B/S/S overlay,
 %     S2 VAN/LP topomaps) run on AR-clean S1/S2 datasets when plot functions
-%     are on the MATLAB path. Disable with 'RunExtraFinalPlots', false.
+%     are on the MATLAB path. Figures are shown by default; use
+%     'ExtraPlotVisible', false for silent/batch runs. Disable entirely with
+%     'RunExtraFinalPlots', false.
 %   - By default, automatically rejects ICLabel Muscle/Eye components with
 %     probability >= 0.90. Enable manual review with 'ManualICAReject', true.
 %     Change threshold with 'AutoICARejectThreshold', 0.90.
@@ -135,6 +142,10 @@ addParameter(p, 'BadChannelCheckerFlatlineCriterion', 5, @(x) isnumeric(x) && is
 addParameter(p, 'BadChannelCheckerLineNoiseCriterion', 4, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 addParameter(p, 'BadChannelCheckerCorrelationCriterion', 0.80, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
 
+% Channel QC persistence (read-only; reruns Clean RawData diagnostics after filtering)
+addParameter(p, 'RunChannelQCPersistence', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ChannelQCPersistencePlot', true, @(x) islogical(x) || isnumeric(x));
+
 % Line-noise QC (read-only measurement; no filtering)
 addParameter(p, 'RunLineNoiseQC', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'LineNoiseFreqHz', 50, @(x) isnumeric(x) && isscalar(x) && x > 0);
@@ -171,7 +182,7 @@ addParameter(p, 'SaveCsv', true, @(x) islogical(x) || isnumeric(x));
 
 % Extra final ERP / topomap plotting (after ROI plots; optional)
 addParameter(p, 'RunExtraFinalPlots', true, @(x) islogical(x) || isnumeric(x));
-addParameter(p, 'ExtraPlotVisible', false, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ExtraPlotVisible', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'ExtraPlotSavePng', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'ExtraPlotSaveFig', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'ExtraPlotSaveCsv', true, @(x) islogical(x) || isnumeric(x));
@@ -217,6 +228,9 @@ cfg.RunBadChannelChecker = logical(cfg.RunBadChannelChecker);
 cfg.BadChannelCheckerFlatlineCriterion = double(cfg.BadChannelCheckerFlatlineCriterion);
 cfg.BadChannelCheckerLineNoiseCriterion = double(cfg.BadChannelCheckerLineNoiseCriterion);
 cfg.BadChannelCheckerCorrelationCriterion = double(cfg.BadChannelCheckerCorrelationCriterion);
+
+cfg.RunChannelQCPersistence = logical(cfg.RunChannelQCPersistence);
+cfg.ChannelQCPersistencePlot = logical(cfg.ChannelQCPersistencePlot);
 
 cfg.RunLineNoiseQC = logical(cfg.RunLineNoiseQC);
 cfg.LineNoiseFreqHz = double(cfg.LineNoiseFreqHz);
@@ -275,6 +289,11 @@ if cfg.RunLineNoiseQC
     lineNoiseQCTableCsv = fullfile(outDir, sprintf('%s_LineNoiseQC_Table.csv', participantID));
     lineNoiseQCSummaryCsv = fullfile(outDir, sprintf('%s_LineNoiseQC_Summary.csv', participantID));
 end
+
+channelQCPersistenceTableCsv = '';
+channelQCPersistenceSummaryCsv = '';
+channelQCPersistenceInterpretationCsv = '';
+channelQCPlotDir = '';
 
 logTxtFile = fullfile(outDir, sprintf('%s_PreprocessingLog_%s.txt', participantID, runStamp));
 logCsvFile = fullfile(outDir, sprintf('%s_PreprocessingLog_%s.csv', participantID, runStamp));
@@ -390,7 +409,7 @@ fprintf('\n\n================ STAGE 3b: BAD SCALP-CHANNEL QC CHECK =============
     flaggedFlatlineLabels, flaggedFlatlineIndices, ...
     flaggedLineNoiseLabels, flaggedLineNoiseIndices, ...
     flaggedCorrelationLabels, flaggedCorrelationIndices, ...
-    badChannelCheckTableCsv, badChannelCheckSummaryCsv] = ...
+    badChannelCheckTableCsv, badChannelCheckSummaryCsv, badChannelTable] = ...
     localCheckBadScalpChannelsCleanRawData(EEG_ds, cfg, participantID, originalScalpLabels, originalScalpChanlocs, outDir);
 
 if cfg.RunBadChannelChecker
@@ -698,6 +717,29 @@ if cfg.RunLineNoiseQC
             'No line-noise QC tables were produced', ...
             'All line-noise QC stage calls failed or were skipped', '');
         lineNoiseQCStatus = 'FAILED';
+    end
+end
+
+% ====================================================================
+% Stage 8b: Channel QC persistence
+% ====================================================================
+
+fprintf('\n\n================ STAGE 8b: CHANNEL QC PERSISTENCE ================\n');
+
+if ~cfg.RunChannelQCPersistence
+    logStep('channel_qc_persistence', 'SKIP', ...
+        'Channel QC persistence check disabled', '', '');
+else
+    try
+        [channelQCPersistenceTableCsv, channelQCPersistenceSummaryCsv, ...
+            channelQCPersistenceInterpretationCsv, channelQCPlotDir, chQcSummaryStr] = ...
+            localRunChannelQCPersistence(cfg, participantID, outDir, badChannelTable, ...
+            originalScalpLabels, EEG_ds, EEG_ica, EEG_erp);
+        logStep('channel_qc_persistence', 'OK', ...
+            'Channel QC persistence check completed', chQcSummaryStr, channelQCPersistenceSummaryCsv);
+    catch ME
+        logStep('channel_qc_persistence', 'WARN', ...
+            'Channel QC persistence check failed', ME.message, '');
     end
 end
 
@@ -1108,6 +1150,11 @@ report.lineNoiseQCSummaryCsv = lineNoiseQCSummaryCsv;
 report.lineNoiseQCPlotDir = lineNoisePlotDir;
 report.runLineNoiseQC = cfg.RunLineNoiseQC;
 report.lineNoiseQCStatus = lineNoiseQCStatus;
+report.runChannelQCPersistence = cfg.RunChannelQCPersistence;
+report.channelQCPersistenceTableCsv = channelQCPersistenceTableCsv;
+report.channelQCPersistenceSummaryCsv = channelQCPersistenceSummaryCsv;
+report.channelQCPersistenceInterpretationCsv = channelQCPersistenceInterpretationCsv;
+report.channelQCPersistencePlotDir = channelQCPlotDir;
 report.nGoodScalpChannelsForICA = cfg.NScalpChans;
 report.icaPcaDimRequested = cfg.ICAPcaDim;
 report.icaPcaDimUsed = icaPcaDimUsed;
@@ -1211,7 +1258,7 @@ function [flaggedBadScalpLabels, flaggedBadScalpIndices, ...
     flaggedFlatlineLabels, flaggedFlatlineIndices, ...
     flaggedLineNoiseLabels, flaggedLineNoiseIndices, ...
     flaggedCorrelationLabels, flaggedCorrelationIndices, ...
-    badChannelCheckTableCsv, badChannelCheckSummaryCsv] = ...
+    badChannelCheckTableCsv, badChannelCheckSummaryCsv, badChannelTable] = ...
     localCheckBadScalpChannelsCleanRawData(EEG_ds, cfg, participantID, originalScalpLabels, originalScalpChanlocs, outDir)
 
 originalScalpLabels = string(originalScalpLabels(:));
@@ -1225,12 +1272,6 @@ flaggedLineNoiseLabels = strings(0, 1);
 flaggedLineNoiseIndices = [];
 flaggedCorrelationLabels = strings(0, 1);
 flaggedCorrelationIndices = [];
-
-commonOffArgs = { ...
-    'Highpass', 'off', ...
-    'BurstCriterion', 'off', ...
-    'WindowCriterion', 'off', ...
-    'BurstRejection', 'off'};
 
 if cfg.RunBadChannelChecker
     localValidateScalpChanlocs(originalScalpChanlocs);
@@ -1246,43 +1287,38 @@ if cfg.RunBadChannelChecker
     labelsBefore = string({EEG_badcheck.chanlocs.labels});
     labelsBefore = labelsBefore(:);
 
-    [flaggedBadScalpLabels, flaggedBadScalpIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_badcheck, labelsBefore, ...
-        'FlatlineCriterion', cfg.BadChannelCheckerFlatlineCriterion, ...
-        'LineNoiseCriterion', cfg.BadChannelCheckerLineNoiseCriterion, ...
-        'ChannelCriterion', cfg.BadChannelCheckerCorrelationCriterion, ...
-        commonOffArgs{:});
+    diag = localRunScalpChannelDiagnosticPasses(EEG_badcheck, cfg, labelsBefore, false);
 
-    [flaggedFlatlineLabels, flaggedFlatlineIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_badcheck, labelsBefore, ...
-        'FlatlineCriterion', cfg.BadChannelCheckerFlatlineCriterion, ...
-        'LineNoiseCriterion', 'off', ...
-        'ChannelCriterion', 'off', ...
-        commonOffArgs{:});
+    flaggedBadScalpLabels = diag.combinedLabels;
+    flaggedBadScalpIndices = diag.combinedIndices;
+    flaggedFlatlineLabels = diag.flatlineLabels;
+    flaggedFlatlineIndices = diag.flatlineIndices;
+    flaggedLineNoiseLabels = diag.lineNoiseLabels;
+    flaggedLineNoiseIndices = diag.lineNoiseIndices;
+    flaggedCorrelationLabels = diag.correlationLabels;
+    flaggedCorrelationIndices = diag.correlationIndices;
 
-    [flaggedLineNoiseLabels, flaggedLineNoiseIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_badcheck, labelsBefore, ...
-        'FlatlineCriterion', 'off', ...
-        'LineNoiseCriterion', cfg.BadChannelCheckerLineNoiseCriterion, ...
-        'ChannelCriterion', 'off', ...
-        commonOffArgs{:});
-
-    [flaggedCorrelationLabels, flaggedCorrelationIndices] = localRunCleanRawDataChannelCheck( ...
-        EEG_badcheck, labelsBefore, ...
-        'FlatlineCriterion', 'off', ...
-        'LineNoiseCriterion', 'off', ...
-        'ChannelCriterion', cfg.BadChannelCheckerCorrelationCriterion, ...
-        commonOffArgs{:});
+    combinedMask = diag.combinedMask;
+    flatlineMask = diag.flatlineMask;
+    lineNoiseMask = diag.lineNoiseMask;
+    correlationMask = diag.correlationMask;
 else
     fprintf('Bad scalp-channel QC checker disabled.\n');
 end
 
 decisionTime = string(datestr(now));
 
-combinedMask = ismember(originalScalpLabels, flaggedBadScalpLabels);
-flatlineMask = ismember(originalScalpLabels, flaggedFlatlineLabels);
-lineNoiseMask = ismember(originalScalpLabels, flaggedLineNoiseLabels);
-correlationMask = ismember(originalScalpLabels, flaggedCorrelationLabels);
+if cfg.RunBadChannelChecker
+    combinedMask = ismember(originalScalpLabels, flaggedBadScalpLabels);
+    flatlineMask = ismember(originalScalpLabels, flaggedFlatlineLabels);
+    lineNoiseMask = ismember(originalScalpLabels, flaggedLineNoiseLabels);
+    correlationMask = ismember(originalScalpLabels, flaggedCorrelationLabels);
+else
+    combinedMask = false(nScalp, 1);
+    flatlineMask = false(nScalp, 1);
+    lineNoiseMask = false(nScalp, 1);
+    correlationMask = false(nScalp, 1);
+end
 
 flagReasonCol = strings(nScalp, 1);
 for i = 1:nScalp
@@ -1471,6 +1507,513 @@ elseif isempty(reasonParts)
     reason = "Not flagged";
 else
     reason = strjoin(reasonParts, "; ");
+end
+
+end
+
+
+function diag = localRunScalpChannelDiagnosticPasses(EEG_continuous, cfg, labelsBefore, printConsoleNote)
+
+labelsBefore = string(labelsBefore(:));
+nScalp = numel(labelsBefore);
+
+diag = localEmptyChannelDiagnosticResult(nScalp, labelsBefore);
+
+commonOffArgs = { ...
+    'Highpass', 'off', ...
+    'BurstCriterion', 'off', ...
+    'WindowCriterion', 'off', ...
+    'BurstRejection', 'off'};
+
+if printConsoleNote
+    fprintf('\nRunning channel-quality persistence QC on temporary copies only.\n');
+    fprintf('Any "Removing channel(s)" messages below refer to temporary diagnostic copies, not the analysis dataset.\n');
+    fprintf('No channels will be removed or interpolated from the real EEG data.\n\n');
+end
+
+EEG_scalp = pop_select(EEG_continuous, 'channel', 1:cfg.NScalpChans);
+EEG_scalp = localFixChanlocsForICLabel(EEG_scalp);
+EEG_scalp = eeg_checkset(EEG_scalp);
+
+try
+    [diag.flatlineLabels, diag.flatlineIndices] = localRunCleanRawDataChannelCheck( ...
+        EEG_scalp, labelsBefore, ...
+        'FlatlineCriterion', cfg.BadChannelCheckerFlatlineCriterion, ...
+        'LineNoiseCriterion', 'off', ...
+        'ChannelCriterion', 'off', ...
+        commonOffArgs{:});
+    diag.flatlineMask = ismember(labelsBefore, diag.flatlineLabels);
+catch ME
+    warning('Flatline diagnostic pass failed: %s', ME.message);
+end
+
+try
+    [diag.lineNoiseLabels, diag.lineNoiseIndices] = localRunCleanRawDataChannelCheck( ...
+        EEG_scalp, labelsBefore, ...
+        'FlatlineCriterion', 'off', ...
+        'LineNoiseCriterion', cfg.BadChannelCheckerLineNoiseCriterion, ...
+        'ChannelCriterion', 'off', ...
+        commonOffArgs{:});
+    diag.lineNoiseMask = ismember(labelsBefore, diag.lineNoiseLabels);
+catch ME
+    warning('Line-noise diagnostic pass failed: %s', ME.message);
+end
+
+try
+    [diag.correlationLabels, diag.correlationIndices] = localRunCleanRawDataChannelCheck( ...
+        EEG_scalp, labelsBefore, ...
+        'FlatlineCriterion', 'off', ...
+        'LineNoiseCriterion', 'off', ...
+        'ChannelCriterion', cfg.BadChannelCheckerCorrelationCriterion, ...
+        commonOffArgs{:});
+    diag.correlationMask = ismember(labelsBefore, diag.correlationLabels);
+catch ME
+    warning('Correlation diagnostic pass failed: %s', ME.message);
+end
+
+try
+    [diag.combinedLabels, diag.combinedIndices] = localRunCleanRawDataChannelCheck( ...
+        EEG_scalp, labelsBefore, ...
+        'FlatlineCriterion', cfg.BadChannelCheckerFlatlineCriterion, ...
+        'LineNoiseCriterion', cfg.BadChannelCheckerLineNoiseCriterion, ...
+        'ChannelCriterion', cfg.BadChannelCheckerCorrelationCriterion, ...
+        commonOffArgs{:});
+    diag.combinedMask = ismember(labelsBefore, diag.combinedLabels);
+catch ME
+    warning('Combined Clean RawData diagnostic pass failed: %s', ME.message);
+end
+
+end
+
+
+function diag = localEmptyChannelDiagnosticResult(nScalp, labelsBefore) %#ok<INUSD>
+
+diag = struct();
+diag.flatlineMask = false(nScalp, 1);
+diag.lineNoiseMask = false(nScalp, 1);
+diag.correlationMask = false(nScalp, 1);
+diag.combinedMask = false(nScalp, 1);
+diag.flatlineLabels = strings(0, 1);
+diag.flatlineIndices = [];
+diag.lineNoiseLabels = strings(0, 1);
+diag.lineNoiseIndices = [];
+diag.correlationLabels = strings(0, 1);
+diag.correlationIndices = [];
+diag.combinedLabels = strings(0, 1);
+diag.combinedIndices = [];
+
+end
+
+
+function [tableCsv, summaryCsv, interpretationCsv, plotDir, summaryString] = ...
+    localRunChannelQCPersistence(cfg, participantID, outDir, badChannelTable, ...
+    originalScalpLabels, EEG_ds, EEG_ica, EEG_erp)
+
+originalScalpLabels = string(originalScalpLabels(:));
+nScalp = numel(originalScalpLabels);
+participantID = char(participantID);
+
+nbchanDs = EEG_ds.nbchan;
+nbchanIca = EEG_ica.nbchan;
+nbchanErp = EEG_erp.nbchan;
+
+if exist('pop_clean_rawdata', 'file') ~= 2
+    error(['Clean RawData plugin function pop_clean_rawdata was not found. ', ...
+        'Install/enable EEGLAB Clean RawData before using RunChannelQCPersistence.']);
+end
+
+stageNames = ["Downsampled_512Hz", "ICAtraining_1to30Hz", "ERPanalysis_0p1to20Hz"];
+stageEEGs = {EEG_ds, EEG_ica, EEG_erp};
+
+initCombined = logical(badChannelTable.FlaggedByCleanRawData);
+initFlatline = logical(badChannelTable.FlaggedByFlatlineCriterion);
+initLineNoise = logical(badChannelTable.FlaggedByLineNoiseCriterion);
+initCorrelation = logical(badChannelTable.FlaggedByCorrelationCriterion);
+initFlagReason = string(badChannelTable.FlagReason);
+
+decisionTime = string(datestr(now));
+allRows = table();
+summaryRows = table();
+summaryParts = strings(0, 1);
+stageReasons = strings(nScalp, numel(stageNames));
+
+for s = 1:numel(stageNames)
+
+stageName = stageNames(s);
+EEG_stage = stageEEGs{s};
+
+try
+    diag = localRunScalpChannelDiagnosticPasses(EEG_stage, cfg, originalScalpLabels, s == 1);
+catch ME
+    warning('Channel QC persistence diagnostic passes failed for %s: %s', stageName, ME.message);
+    diag = localEmptyChannelDiagnosticResult(nScalp, originalScalpLabels);
+end
+
+flagReasonCol = strings(nScalp, 1);
+for i = 1:nScalp
+    flagReasonCol(i) = localBuildBadChannelFlagReason( ...
+        diag.combinedMask(i), diag.flatlineMask(i), ...
+        diag.lineNoiseMask(i), diag.correlationMask(i), true);
+end
+stageReasons(:, s) = flagReasonCol;
+
+anyCriterionMask = diag.flatlineMask | diag.lineNoiseMask | diag.correlationMask | diag.combinedMask;
+persistedAny = initCombined & anyCriterionMask;
+flatlinePersisted = initFlatline & diag.flatlineMask;
+lineNoisePersisted = initLineNoise & diag.lineNoiseMask;
+correlationPersisted = initCorrelation & diag.correlationMask;
+
+stageTable = table( ...
+    repmat(string(participantID), nScalp, 1), ...
+    repmat(stageName, nScalp, 1), ...
+    (1:nScalp)', ...
+    originalScalpLabels, ...
+    initCombined, ...
+    initFlatline, ...
+    initLineNoise, ...
+    initCorrelation, ...
+    initFlagReason, ...
+    diag.flatlineMask, ...
+    diag.lineNoiseMask, ...
+    diag.correlationMask, ...
+    diag.combinedMask, ...
+    flagReasonCol, ...
+    persistedAny, ...
+    flatlinePersisted, ...
+    lineNoisePersisted, ...
+    correlationPersisted, ...
+    repmat(decisionTime, nScalp, 1), ...
+    'VariableNames', { ...
+        'ParticipantID', ...
+        'Stage', ...
+        'OriginalScalpIndex', ...
+        'Label', ...
+        'InitiallyFlaggedByBadChannelChecker', ...
+        'InitiallyFlaggedByFlatlineCriterion', ...
+        'InitiallyFlaggedByLineNoiseCriterion', ...
+        'InitiallyFlaggedByCorrelationCriterion', ...
+        'InitialFlagReason', ...
+        'FlaggedByFlatlineCriterion', ...
+        'FlaggedByLineNoiseCriterion', ...
+        'FlaggedByCorrelationCriterion', ...
+        'FlaggedByCombinedCleanRawData', ...
+        'FlagReason', ...
+        'PersistedFromInitialChecker', ...
+        'FlatlinePersistedFromInitial', ...
+        'LineNoisePersistedFromInitial', ...
+        'CorrelationPersistedFromInitial', ...
+        'DecisionTime'});
+
+allRows = [allRows; stageTable]; %#ok<AGROW>
+
+summaryRows = [summaryRows; table( ...
+    string(participantID), ...
+    stageName, ...
+    nScalp, ...
+    sum(initCombined), ...
+    sum(initFlatline), ...
+    sum(initLineNoise), ...
+    sum(initCorrelation), ...
+    sum(diag.flatlineMask), ...
+    sum(diag.lineNoiseMask), ...
+    sum(diag.correlationMask), ...
+    sum(diag.combinedMask), ...
+    sum(persistedAny), ...
+    sum(flatlinePersisted), ...
+    sum(lineNoisePersisted), ...
+    sum(correlationPersisted), ...
+    string(localLabelsFromMask(originalScalpLabels, diag.flatlineMask)), ...
+    string(localLabelsFromMask(originalScalpLabels, diag.lineNoiseMask)), ...
+    string(localLabelsFromMask(originalScalpLabels, diag.correlationMask)), ...
+    string(localLabelsFromMask(originalScalpLabels, diag.combinedMask)), ...
+    string(localLabelsFromMask(originalScalpLabels, persistedAny)), ...
+    string(localLabelsFromMask(originalScalpLabels, flatlinePersisted)), ...
+    string(localLabelsFromMask(originalScalpLabels, lineNoisePersisted)), ...
+    string(localLabelsFromMask(originalScalpLabels, correlationPersisted)), ...
+    decisionTime, ...
+    'VariableNames', { ...
+        'ParticipantID', ...
+        'Stage', ...
+        'NScalpChannelsAnalysed', ...
+        'NInitiallyFlaggedByBadChannelChecker', ...
+        'NInitiallyFlatlineFlagged', ...
+        'NInitiallyLineNoiseFlagged', ...
+        'NInitiallyCorrelationFlagged', ...
+        'NFlaggedByFlatlineCriterion', ...
+        'NFlaggedByLineNoiseCriterion', ...
+        'NFlaggedByCorrelationCriterion', ...
+        'NFlaggedByCombinedCleanRawData', ...
+        'NInitialFlagsPersisted', ...
+        'NFlatlineFlagsPersisted', ...
+        'NLineNoiseFlagsPersisted', ...
+        'NCorrelationFlagsPersisted', ...
+        'FlaggedLabels_Flatline', ...
+        'FlaggedLabels_LineNoise', ...
+        'FlaggedLabels_Correlation', ...
+        'FlaggedLabels_Combined', ...
+        'PersistentLabels_Any', ...
+        'PersistentLabels_Flatline', ...
+        'PersistentLabels_LineNoise', ...
+        'PersistentLabels_Correlation', ...
+        'DecisionTime'})]; %#ok<AGROW>
+
+summaryParts(end+1) = sprintf('%s: %d flatline, %d line-noise, %d correlation, %d persist', ...
+    stageName, sum(diag.flatlineMask), sum(diag.lineNoiseMask), ...
+    sum(diag.correlationMask), sum(persistedAny)); %#ok<AGROW>
+
+end
+
+if EEG_ds.nbchan ~= nbchanDs || EEG_ica.nbchan ~= nbchanIca || EEG_erp.nbchan ~= nbchanErp
+    error('Channel QC persistence modified source dataset channel counts.');
+end
+
+tableCsv = fullfile(outDir, sprintf('%s_ChannelQCPersistence_Table.csv', participantID));
+summaryCsv = fullfile(outDir, sprintf('%s_ChannelQCPersistence_Summary.csv', participantID));
+interpretationCsv = fullfile(outDir, sprintf('%s_ChannelQCPersistence_Interpretation.csv', participantID));
+plotDir = '';
+
+writetable(allRows, tableCsv);
+writetable(summaryRows, summaryCsv);
+
+interpretationTable = localBuildChannelQCPersistenceInterpretation( ...
+    participantID, badChannelTable, allRows, stageNames, stageReasons);
+writetable(interpretationTable, interpretationCsv);
+
+if cfg.ChannelQCPersistencePlot
+    plotDir = fullfile(outDir, [participantID '_ChannelQCPersistence_Plots']);
+    try
+        localPlotChannelQCPersistenceHeatmap(allRows, badChannelTable, ...
+            originalScalpLabels, stageNames, participantID, plotDir);
+    catch ME
+        warning('Channel QC persistence heatmap failed: %s', ME.message);
+        plotDir = '';
+    end
+end
+
+summaryString = strjoin(summaryParts, '; ');
+
+fprintf('\nChannel QC persistence complete.\n');
+fprintf('Table:\n%s\n', tableCsv);
+fprintf('Summary:\n%s\n', summaryCsv);
+fprintf('Interpretation:\n%s\n', interpretationCsv);
+
+end
+
+
+function labelStr = localLabelsFromMask(labels, mask)
+
+labels = string(labels(:));
+mask = logical(mask(:));
+if ~any(mask)
+    labelStr = '';
+else
+    labelStr = char(strjoin(labels(mask), ', '));
+end
+
+end
+
+
+function interpretationTable = localBuildChannelQCPersistenceInterpretation( ...
+    participantID, badChannelTable, allRows, stageNames, stageReasons)
+
+originalScalpLabels = string(badChannelTable.Label);
+nScalp = numel(originalScalpLabels);
+
+initCombined = logical(badChannelTable.FlaggedByCleanRawData);
+initFlatline = logical(badChannelTable.FlaggedByFlatlineCriterion);
+initLineNoise = logical(badChannelTable.FlaggedByLineNoiseCriterion);
+initCorrelation = logical(badChannelTable.FlaggedByCorrelationCriterion);
+initFlagReason = string(badChannelTable.FlagReason);
+
+everFlagged = initCombined | initFlatline | initLineNoise | initCorrelation;
+for s = 1:numel(stageNames)
+    stageRows = allRows(strcmp(allRows.Stage, stageNames(s)), :);
+    everFlagged = everFlagged | stageRows.FlaggedByFlatlineCriterion | ...
+        stageRows.FlaggedByLineNoiseCriterion | stageRows.FlaggedByCorrelationCriterion | ...
+        stageRows.FlaggedByCombinedCleanRawData;
+end
+
+chanIdx = find(everFlagged);
+if isempty(chanIdx)
+    interpretationTable = table();
+    return;
+end
+
+interpParticipant = strings(numel(chanIdx), 1);
+interpIndex = zeros(numel(chanIdx), 1);
+interpLabel = strings(numel(chanIdx), 1);
+interpInitialReason = strings(numel(chanIdx), 1);
+interpDownsampledReason = strings(numel(chanIdx), 1);
+interpIcaReason = strings(numel(chanIdx), 1);
+interpErpReason = strings(numel(chanIdx), 1);
+interpFinal = strings(numel(chanIdx), 1);
+
+erpRows = allRows(strcmp(allRows.Stage, "ERPanalysis_0p1to20Hz"), :);
+dsRows = allRows(strcmp(allRows.Stage, "Downsampled_512Hz"), :);
+icaRows = allRows(strcmp(allRows.Stage, "ICAtraining_1to30Hz"), :);
+
+for k = 1:numel(chanIdx)
+    i = chanIdx(k);
+    interpParticipant(k) = string(participantID);
+    interpIndex(k) = i;
+    interpLabel(k) = originalScalpLabels(i);
+    interpInitialReason(k) = initFlagReason(i);
+    interpDownsampledReason(k) = stageReasons(i, 1);
+    interpIcaReason(k) = stageReasons(i, 2);
+    interpErpReason(k) = stageReasons(i, 3);
+
+    interpFinal(k) = localBuildChannelQCInterpretationLabel( ...
+        initCombined(i), initFlatline(i), initLineNoise(i), initCorrelation(i), ...
+        dsRows.FlaggedByLineNoiseCriterion(i), ...
+        icaRows.FlaggedByLineNoiseCriterion(i), ...
+        erpRows.FlaggedByLineNoiseCriterion(i), ...
+        erpRows.FlaggedByFlatlineCriterion(i), ...
+        erpRows.FlaggedByLineNoiseCriterion(i), ...
+        erpRows.FlaggedByCorrelationCriterion(i), ...
+        erpRows.FlaggedByCombinedCleanRawData(i), ...
+        erpRows.FlatlinePersistedFromInitial(i), ...
+        erpRows.LineNoisePersistedFromInitial(i), ...
+        erpRows.CorrelationPersistedFromInitial(i), ...
+        dsRows.FlaggedByFlatlineCriterion(i) | dsRows.FlaggedByLineNoiseCriterion(i) | ...
+            dsRows.FlaggedByCorrelationCriterion(i) | dsRows.FlaggedByCombinedCleanRawData(i), ...
+        icaRows.FlaggedByFlatlineCriterion(i) | icaRows.FlaggedByLineNoiseCriterion(i) | ...
+            icaRows.FlaggedByCorrelationCriterion(i) | icaRows.FlaggedByCombinedCleanRawData(i), ...
+        erpRows.FlaggedByFlatlineCriterion(i) | erpRows.FlaggedByLineNoiseCriterion(i) | ...
+            erpRows.FlaggedByCorrelationCriterion(i) | erpRows.FlaggedByCombinedCleanRawData(i));
+end
+
+interpretationTable = table( ...
+    interpParticipant, ...
+    interpIndex, ...
+    interpLabel, ...
+    interpInitialReason, ...
+    interpDownsampledReason, ...
+    interpIcaReason, ...
+    interpErpReason, ...
+    interpFinal, ...
+    'VariableNames', { ...
+        'ParticipantID', ...
+        'OriginalScalpIndex', ...
+        'Label', ...
+        'InitialFlagReason', ...
+        'DownsampledFlagReason', ...
+        'ICAtrainingFlagReason', ...
+        'ERPanalysisFlagReason', ...
+        'FinalQCInterpretation'});
+
+end
+
+
+function label = localBuildChannelQCInterpretationLabel( ...
+    initCombined, initFlatline, initLineNoise, initCorrelation, ...
+    dsLineNoise, icaLineNoise, erpLineNoise, ...
+    erpFlatline, erpLineNoiseFlag, erpCorrelation, erpCombined, ...
+    erpFlatlinePersisted, erpLineNoisePersisted, erpCorrelationPersisted, ...
+    dsAnyFlag, icaAnyFlag, erpAnyFlag)
+
+erpAnyCriterion = erpFlatline || erpLineNoiseFlag || erpCorrelation || erpCombined;
+nPersistTypes = double(erpFlatlinePersisted) + double(erpLineNoisePersisted) + double(erpCorrelationPersisted);
+initiallyFlaggedAny = initCombined || initFlatline || initLineNoise || initCorrelation;
+lineNoiseOnlyBeforeFiltering = dsLineNoise && ~icaLineNoise && ~erpLineNoise;
+
+if nPersistTypes >= 2
+    label = "Persistent multi-criterion warning";
+elseif erpFlatlinePersisted
+    label = "Persistent flatline warning";
+elseif erpCorrelationPersisted
+    label = "Persistent low-correlation warning";
+elseif erpAnyCriterion
+    label = "Still flagged in ERP-analysis data";
+elseif lineNoiseOnlyBeforeFiltering
+    label = "Line-noise only before filtering";
+elseif initiallyFlaggedAny && ~dsAnyFlag && ~icaAnyFlag && ~erpAnyFlag
+    label = "Initial-only warning";
+else
+    label = "Not flagged at any stage";
+end
+
+end
+
+
+function localPlotChannelQCPersistenceHeatmap(allRows, badChannelTable, originalScalpLabels, stageNames, participantID, plotDir)
+
+if ~exist(plotDir, 'dir')
+    mkdir(plotDir);
+end
+
+originalScalpLabels = string(originalScalpLabels(:));
+nScalp = numel(originalScalpLabels);
+
+initAny = logical(badChannelTable.FlaggedByCleanRawData) | ...
+    logical(badChannelTable.FlaggedByFlatlineCriterion) | ...
+    logical(badChannelTable.FlaggedByLineNoiseCriterion) | ...
+    logical(badChannelTable.FlaggedByCorrelationCriterion);
+
+stageAny = false(nScalp, 1);
+for s = 1:numel(stageNames)
+    stageRows = allRows(strcmp(allRows.Stage, stageNames(s)), :);
+    stageAny = stageAny | stageRows.FlaggedByFlatlineCriterion | ...
+        stageRows.FlaggedByLineNoiseCriterion | stageRows.FlaggedByCorrelationCriterion;
+end
+
+chanIdx = find(initAny | stageAny);
+if isempty(chanIdx)
+    return;
+end
+
+colLabels = strings(0, 1);
+for s = 1:numel(stageNames)
+    shortStage = localChannelQCStageShortName(stageNames(s));
+    colLabels = [colLabels, ...
+        shortStage + " Flatline", ...
+        shortStage + " LineNoise", ...
+        shortStage + " Correlation"]; %#ok<AGROW>
+end
+
+heatMat = zeros(numel(chanIdx), numel(colLabels));
+rowLabels = strings(numel(chanIdx), 1);
+
+for r = 1:numel(chanIdx)
+    i = chanIdx(r);
+    rowLabels(r) = originalScalpLabels(i);
+    col = 1;
+    for s = 1:numel(stageNames)
+        stageRows = allRows(strcmp(allRows.Stage, stageNames(s)), :);
+        heatMat(r, col) = double(stageRows.FlaggedByFlatlineCriterion(i));
+        heatMat(r, col + 1) = double(stageRows.FlaggedByLineNoiseCriterion(i));
+        heatMat(r, col + 2) = double(stageRows.FlaggedByCorrelationCriterion(i));
+        col = col + 3;
+    end
+end
+
+fig = figure('Visible', 'off', 'Color', 'w', 'Position', [100 100 1200 max(400, 28 * numel(chanIdx))]);
+imagesc(heatMat);
+colormap(fig, [1 1 1; 0.85 0.33 0.10]);
+caxis([0 1]);
+set(gca, 'XTick', 1:numel(colLabels), 'XTickLabel', colLabels, ...
+    'XTickLabelRotation', 45, 'YTick', 1:numel(chanIdx), 'YTickLabel', rowLabels);
+title(sprintf('%s | Channel QC persistence heatmap', participantID), 'Interpreter', 'none');
+xlabel('Stage / criterion');
+ylabel('Channel');
+
+pngFile = fullfile(plotDir, sprintf('%s_ChannelQCPersistence_Heatmap.png', participantID));
+exportgraphics(fig, pngFile, 'Resolution', 150);
+close(fig);
+
+end
+
+
+function shortName = localChannelQCStageShortName(stageName)
+
+switch char(stageName)
+    case 'Downsampled_512Hz'
+        shortName = "Downsampled";
+    case 'ICAtraining_1to30Hz'
+        shortName = "ICA";
+    case 'ERPanalysis_0p1to20Hz'
+        shortName = "ERP";
+    otherwise
+        shortName = string(stageName);
 end
 
 end
