@@ -53,7 +53,7 @@ cfg.kbDev = -1;
 % ---- EEG serial triggers: main trials use base codes; Practice Blocks 1 & 2 use base + practiceCodeOffset ----
 % Behaviour-only testing: cfg.eeg.enable = false;
 % Lab EEG/trigger testing (current): cfg.eeg.enable = true; COM7 @ 115200
-cfg.eeg.enable            = false;
+cfg.eeg.enable            = true;
 cfg.eeg.requirePort       = true;    % if true, abort clearly if EEG serial port cannot open
 cfg.eeg.serialPort        = 'COM7';
 cfg.eeg.baudRate          = 115200;
@@ -198,7 +198,7 @@ cfg.calib.tracks(3).startFrames   = 41;
 % Trial counts — 600-trial full lab run (12 blocks × 50 trials)
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
-cfg.debug.quickRun = true;   % true = ultra-short formatting/test run; false = real/full run
+cfg.debug.quickRun = false;   % true = ultra-short formatting/test run; false = real/full run
 cfg.debug.quickRunFixedDurFrames = 20;
 
 cfg.nTotal = cfg.calib.maxTrials;
@@ -684,7 +684,9 @@ try
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS) — detection is defined as PAS > 1
-        Screen('DrawTexture', window, cfg.qTex.PAS);
+        drawPAS(window, windowRect, black, bg, cfg);
+        Screen('DrawingFinished', window);
+        
         vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
         [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, blockNum, vblTargetQ1);
         if cfg.eeg.markerPolicy.markMainTrials
@@ -1599,7 +1601,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
         'You will NOT receive feedback during the main run.\n\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
         'As before, please keep your eyes on the centre fixation cross during each trial, even when the circles appear.\n\n' ...
-        'Use the full 1 - 4 scale when appropriate in Quesiton 1.\n' ...
+        'Use the full 1 - 4 scale when appropriate in Question 1.\n' ...
         'Use 1 whenever you are guessing or unsure.\n' ...
         'Only choose 2 – 4 when you genuinely experienced a change.\n' ...
     ];
@@ -1640,7 +1642,7 @@ function showCalibrationIntroScreen(window, windowRect, bg, black, cfg)
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
 end
 
-function showMainTrialBeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+function showMainTrialBeginScreen(window, windowRect, bg, black, cfg) 
 
     showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'main_begin');
 end
@@ -1702,7 +1704,7 @@ function showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinis
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
 end
 
-function showBlockResumeScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+function showBlockResumeScreen(window, windowRect, bg, black, cfg) 
 
     showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'block_resume');
 end
@@ -2259,6 +2261,8 @@ end
 
 
 function drawPAS(window, windowRect, colour, bg, cfg)
+    Screen('TextFont', window, 'Arial');
+    Screen('TextStyle', window, 0);
     Screen('FillRect', window, bg);
     [~, yc] = RectCenter(windowRect);
     w = windowRect(3) - windowRect(1);
@@ -2293,6 +2297,8 @@ function drawPAS(window, windowRect, colour, bg, cfg)
     % Layout tuning
     yNum      = yc + round(h * qcfg.pasNumYOffsetFrac);
     yDescTop  = yNum + round(h * qcfg.pasDescTopGapFrac);
+    yNum      = round(yNum);
+    yDescTop  = round(yDescTop);
 
     numSize    = qcfg.pasNumberSize;
     textSize   = qcfg.pasDescSize;
@@ -2304,7 +2310,7 @@ function drawPAS(window, windowRect, colour, bg, cfg)
         % --- draw number (centred) ---
         Screen('TextSize', window, numSize);
         nb = Screen('TextBounds', window, nums{i});
-        xNum = xs(i) - (nb(3) - nb(1))/2;
+        xNum = round(xs(i) - (nb(3) - nb(1))/2);
         DrawFormattedText(window, nums{i}, xNum, yNum, colour);
 
         % --- draw description (centred, can wrap if you add '\n') ---
@@ -2314,7 +2320,7 @@ function drawPAS(window, windowRect, colour, bg, cfg)
         yLine = yDescTop;
         for L = 1:numel(lines)
             lb = Screen('TextBounds', window, lines{L});
-            xLine = xs(i) - (lb(3) - lb(1))/2;
+            xLine = round(xs(i) - (lb(3) - lb(1))/2);
             DrawFormattedText(window, lines{L}, xLine, yLine, colour);
             yLine = yLine + lineStep;
         end
@@ -2323,7 +2329,7 @@ function drawPAS(window, windowRect, colour, bg, cfg)
         Screen('TextSize', window, labelSize);
         lab = labels{i};
         bb = Screen('TextBounds', window, lab);
-        xLab = xs(i) - (bb(3) - bb(1))/2;
+        xLab = round(xs(i) - (bb(3) - bb(1))/2);
         yLab = yLine + labelGap;   % sits right under the description block
         DrawFormattedText(window, lab, xLab, yLab, colour);
     end
@@ -2968,7 +2974,8 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % ---- Questions ----
 
             % Q1 (PAS)
-            Screen('DrawTexture', window, cfg.qTex.PAS);
+            drawPAS(window, windowRect, black, bg, cfg);
+            Screen('DrawingFinished', window);
             vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
             [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', pracCfg.name, p, NaN, vblTargetQ1);
             if doPracticeTriggers
