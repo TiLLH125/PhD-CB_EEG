@@ -319,6 +319,7 @@ cfg.stim.contrast       = 0.8;
 cfg.stim.backgroundGrey = 0.5;
 cfg.stim.gaborSigmaFrac = 0.40;
 cfg.stim.allowedOri = 0:22.5:157.5;
+cfg.stim.changeAngleDeg = 45;   % orientation change magnitude in degrees; try 90, 45, 30, or 22.5
 
 % Fixation (visual-angle locked; converted to px at runtime)
 cfg.fix.sizeDeg      = 0.37;
@@ -476,6 +477,7 @@ try
     fprintf('Total change: %d\n', cfg.nChange);
     fprintf('Total no-change: %d\n', cfg.nCatch);
     fprintf('ISI_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.ISI_frames, cfg.ISI_frames * ifi * 1000, 1/ifi);
+    fprintf('Orientation change: %.1f deg\n', cfg.stim.changeAngleDeg);
     if cfg.debug.trialLog
         fprintf('Trial logging: ON\n\n');
     else
@@ -572,8 +574,8 @@ try
     % Record the full visible session: instructions, overview, practice, main trials, breaks, and end screen.
     tobii = startTobiiRecording(tobii, cfg, windowRect, ifi, timestamp);
     emitTobiiMessage('RUN_START', 'runStart', 'experiment', NaN, NaN, GetSecs, ...
-        sprintf('participantID=%s timestamp=%s screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d', ...
-        cfg.participantID, timestamp, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable)));
+        sprintf('participantID=%s timestamp=%s screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d changeAngleDeg=%.1f', ...
+        cfg.participantID, timestamp, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable), cfg.stim.changeAngleDeg));
 
     %% ------------------------- INSTRUCTIONS SCREEN -------------------------
 
@@ -696,14 +698,14 @@ try
         allowedOri = cfg.stim.allowedOri;
     
         if trial.isChange
-            oriS1 = makeOriS1_noPostChangeDup(trial.changeQuad, trial.changeStartOri, allowedOri);
+            oriS1 = makeOriS1_noPostChangeDup(trial.changeQuad, trial.changeStartOri, allowedOri, cfg.stim.changeAngleDeg);
         else
             oriS1 = allowedOri(randperm(numel(allowedOri), 4))';
         end
         
         oriS2 = oriS1;
         if trial.isChange
-            oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + 90, 180);
+            oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + cfg.stim.changeAngleDeg, 180);
         end
 
         blockNum = ceil(t / cfg.trialsPerBlock);
@@ -730,8 +732,8 @@ try
         end
         tTrialStart = tFixOn;
         emitTobiiMessage('TRIAL_META', 'trialMeta', 'main_trial', t, blockNum, tTrialStart, ...
-            sprintf('isChange=%d staircase=%s track=%s changeQuad=%d durFrames=%d frozen=%d', ...
-            trial.isChange, char(string(trial.staircase)), char(string(tracks(k).name)), trial.changeQuad, durFrames, double(tracks(k).frozen)));
+            sprintf('isChange=%d staircase=%s track=%s changeQuad=%d durFrames=%d frozen=%d changeAngleDeg=%.1f', ...
+            trial.isChange, char(string(trial.staircase)), char(string(tracks(k).name)), trial.changeQuad, durFrames, double(tracks(k).frozen), cfg.stim.changeAngleDeg));
 
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
@@ -907,6 +909,7 @@ try
 
         results(t).durFrames = durFrames;
         results(t).durSec = durFrames * ifi;
+        results(t).changeAngleDeg = cfg.stim.changeAngleDeg;
 
         results(t).trackName = tracks(k).name;
         results(t).trackTargetOutcome = tracks(k).targetOutcome;
@@ -1114,6 +1117,7 @@ try
     cal.psiParamsMAP   = psiParamsMAP;
     cal.psiParamsNames = {'alpha_det','beta_det','alpha_loc','beta_loc','lambda'};
     cal.questPlusCfg   = cfg.calib.questPlus;
+    cal.changeAngleDeg = cfg.stim.changeAngleDeg;
     cal.debugQuickRun  = cfg.debug.quickRun;
     cal.questTest100   = cfg.questTest100;
 
@@ -2735,6 +2739,7 @@ function r = emptyResultRow()
         'changeQuad', NaN, ...
         'durFrames', NaN, ...
         'durSec', NaN, ...
+        'changeAngleDeg', NaN, ...
         'trackName', '', ...
         'trackTargetOutcome', '', ...
         'trackTargetProb', NaN, ...
@@ -3424,7 +3429,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     
             % Build S1 orientations using the same rules as main task
             if trial.isChange
-                oriS1 = makeOriS1_noPostChangeDup(trial.changeQuad, trial.changeStartOri, allowedOri);
+                oriS1 = makeOriS1_noPostChangeDup(trial.changeQuad, trial.changeStartOri, allowedOri, cfg.stim.changeAngleDeg);
             else
                 % No-change: still avoid "all same" and keep it non-trivial
                 oriS1 = allowedOri(randperm(numel(allowedOri), 4))';
@@ -3433,9 +3438,8 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % Build S2
             oriS2 = oriS1;
             if trial.isChange
-                % IMPORTANT: with allowedOri = [0 45 90 135], keep rotation consistent with your design.
-                % If you still want a 90° rotation, use +90:
-                oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + 90, 180);
+                % Use the same configurable orientation-change magnitude as the main task.
+                oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + cfg.stim.changeAngleDeg, 180);
             end
     
             % ---- Timeline (same as main) ----
@@ -3763,7 +3767,11 @@ function trials = assignBalancedChangeStartOri(trials, allowedOri)
     end
 end
 
-function oriS1 = makeOriS1_noPostChangeDup(changeQuad, startOri, allowedOri)
+function oriS1 = makeOriS1_noPostChangeDup(changeQuad, startOri, allowedOri, changeAngleDeg)
+
+    if nargin < 4 || isempty(changeAngleDeg) || ~isfinite(changeAngleDeg)
+        changeAngleDeg = 90;
+    end
 
     allowedOri = allowedOri(:)';  % row vector
 
@@ -3776,7 +3784,7 @@ function oriS1 = makeOriS1_noPostChangeDup(changeQuad, startOri, allowedOri)
         startOri = allowedOri(idx);
     end
 
-    changedOri = mod(startOri + 90, 180);
+    changedOri = mod(startOri + changeAngleDeg, 180);
 
     % Exclude BOTH the start orientation and the post-change orientation
     tol = 1e-6;
