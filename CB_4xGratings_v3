@@ -1,17 +1,20 @@
 %% One-Shot Change Blindness (4 gratings) + Multinomial QUEST+ Calibration + PAS First in Q1
 % Stage 3 version with passive Tobii/Titta eye tracking integrated.
-% Original CB_4xGratings_v2 task logic is preserved; EEG is disabled by default for first Tobii integration testing.
+% Original CB_4xGratings_v2 task structure is preserved; this version keeps passive
+% Tobii recording and EEG triggers enabled by default, and updates the QUEST+
+% stimulus selector to use posterior-averaged predictive probabilities.
 % - 2x2 grid of gratings
 % - One-shot: Fix -> S1 -> ISI -> S2 -> Gap -> Q1(PAS) -> Q2(Localise) -> ITI
 % - Q1: PAS clarity (1-4) asked every trial. Detection defined as PAS > 1.
 % - Q2: 4AFC Localise (1-4) asked every trial (even if PAS = 1).
 % - Three interleaved QUEST+ tracks (mQUESTPlus) sharing one 5-parameter posterior
-%   over [alpha_det, beta_det, alpha_loc, beta_loc, lambda]; each track picks the
-%   stimulus duration whose predicted target probability under the posterior MAP is
-%   closest to its target:
-%       1 Blind       -> P(Blind)         ~= 0.725
-%       2 Sensing     -> P(detect)        ~= 0.50
-%       3 Seeing      -> P(loc | aware)   ~= 0.65
+%   over [alpha_det, beta_det, alpha_loc, beta_loc, lambda]. Track selection now uses
+%   posterior-weighted predictive probabilities rather than a single MAP parameter row:
+%       1 Blind       -> P(Blind)   ~= 0.70
+%       2 Sensing     -> P(Sensing) ~= 0.35
+%       3 Seeing      -> P(Seeing)  ~= 0.55
+% - The FullRun CSV includes QUEST diagnostic columns for the selected stimulus on
+%   each trial: predicted Blind/Sensing/Seeing/Aware probabilities and posterior entropy.
 
 
 
@@ -55,7 +58,7 @@ cfg.kbDev = -1;
 % Behaviour-only testing: cfg.eeg.enable = false;
 % Lab EEG/trigger testing (current): cfg.eeg.enable = true; COM7 @ 115200
 cfg.eeg.enable            = true;
-cfg.eeg.requirePort       = false;   % first Stage 3 Tobii integration run: EEG disabled
+cfg.eeg.requirePort       = false;   % keep run going if the COM port is unavailable during testing
 cfg.eeg.serialPort        = 'COM7';
 cfg.eeg.baudRate          = 115200;
 cfg.eeg.warnOnSendError   = true;
@@ -115,8 +118,8 @@ cfg.tobii.saveGazeCSV             = true;
 cfg.tobii.deleteIntermediateTSV   = true;
 cfg.tobii.warnOnMessageError       = false;
 
-% Because CB_4xGratings_v3 calls PsychDefaultSetup(2), PTB colours are 0-1.
-% These colours are for Titta setup/calibration/validation screens.
+% Because CB_4xGratings_v3 calls PsychDefaultSetup(2), the main CB task uses 0-1 PTB colours.
+% Titta's setup/calibration/validation UI behaves correctly on this system with 0-255 colours.
 cfg.tobii.ui.bgColor              = 127;
 cfg.tobii.ui.textColor            = 0;
 cfg.tobii.ui.fixBackColor         = 0;
@@ -196,33 +199,49 @@ cfg.calib.convergenceMinTrials = 40;   % minimum updates per track before freeze
 cfg.calib.convergenceWindow    = 12;   % recent xCurrent values inspected for stability
 cfg.calib.convergenceTolFrames = 1;    % max range in that window for freeze
 
-cfg.calib.questPlus.alphaDetRange = [-20 -15 -10 -6 -3 1 4 8 11 15 19 22 26 29 33 36 40];
-cfg.calib.questPlus.betaDetRange  = [0.00934 0.0136 0.0198 0.0289 0.0421 0.0614 0.0895];
-cfg.calib.questPlus.alphaLocRange = [1 7 13 18 24 30 36 42 48 53 59 65 71 77 83 88 94 100];
-cfg.calib.questPlus.betaLocRange  = [0.00146 0.00246 0.00413 0.00693 0.0116 0.0195 0.0328 0.0551];
+% QUEST+ diagnostic model revision, July 2026:
+% - remove negative detection thresholds to avoid floor-collapse solutions
+% - include steeper slopes because useful transitions appear to occur over few frames
+% - target Blind/Sensing/Seeing directly rather than targeting detection threshold or
+%   conditional localisation alone
+cfg.calib.questPlus.alphaDetRange = [1 2 3 4 5 6 8 10 12 16 20 25 32 40];
+cfg.calib.questPlus.betaDetRange  = [0.05 0.08 0.12 0.18 0.25 0.35 0.50 0.75 1.00];
+cfg.calib.questPlus.alphaLocRange = [2 3 4 5 6 8 10 12 16 20 25 32 40 55 70];
+cfg.calib.questPlus.betaLocRange  = [0.03 0.05 0.08 0.12 0.18 0.25 0.35 0.50 0.75];
 cfg.calib.questPlus.lambdaRange   = [0 0.01 0.02 0.04 0.05];
 cfg.calib.questPlus.gammaLoc      = 0.25;                  % 4-AFC guess rate
 
 cfg.calib.tracks(1).name          = 'Blind';
 cfg.calib.tracks(1).targetOutcome = 'Blind';
-cfg.calib.tracks(1).targetProb    = 0.725;     % aim for ~72.5% Blind (~27.5% detection)
+cfg.calib.tracks(1).targetProb    = 0.70;      % direct Blind target
 cfg.calib.tracks(1).startFrames   = 3;
 
 cfg.calib.tracks(2).name          = 'Sensing';
-cfg.calib.tracks(2).targetOutcome = 'PdetThreshold';   % target the 50% detection threshold
-cfg.calib.tracks(2).targetProb    = 0.50;
+cfg.calib.tracks(2).targetOutcome = 'Sensing';  % direct Sensing target
+cfg.calib.tracks(2).targetProb    = 0.35;
 cfg.calib.tracks(2).startFrames   = 6;
 
 cfg.calib.tracks(3).name          = 'Seeing';
-cfg.calib.tracks(3).targetOutcome = 'PlocGivenAware';  % P(loc correct | aware); MOCS-informed target
-cfg.calib.tracks(3).targetProb    = 0.65;
-cfg.calib.tracks(3).startFrames   = 35;
+cfg.calib.tracks(3).targetOutcome = 'Seeing';   % direct Seeing target
+cfg.calib.tracks(3).targetProb    = 0.55;
+cfg.calib.tracks(3).startFrames   = 25;
 
 % Trial counts — 600-trial full lab run (12 blocks × 50 trials)
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
 cfg.debug.quickRun = false;   % true = ultra-short formatting/test run; false = real/full run
 cfg.debug.quickRunFixedDurFrames = 20;
+
+% Optional 100-trial QUEST dress rehearsal. This is NOT the same as debug.quickRun:
+% QUEST remains active, EEG/Tobii remain active, and change/no-change balance is kept.
+% Set cfg.questTest100.enable = true for a 4 x 25 trial QUEST test run.
+cfg.questTest100 = struct();
+cfg.questTest100.enable = false;
+cfg.questTest100.maxTrials = 100;
+cfg.questTest100.trialsPerBlock = 25;
+cfg.questTest100.nBlocks = 4;
+cfg.questTest100.nChangePerBlock = 19;
+cfg.questTest100.nNoChangePerBlock = 6;
 
 cfg.nTotal = cfg.calib.maxTrials;
 
@@ -233,8 +252,21 @@ cfg.trialDial.applyPerBlock = true;
 cfg.trialDial.nChangePerBlock   = 38;
 cfg.trialDial.nNoChangePerBlock = 12;
 
+if cfg.questTest100.enable
+    fprintf('\n*** 100-TRIAL QUEST TEST ENABLED: QUEST ACTIVE, NOT DEBUG QUICK RUN ***\n');
+    cfg.calib.maxTrials = cfg.questTest100.maxTrials;
+    cfg.nTotal = cfg.calib.maxTrials;
+    cfg.trialsPerBlock = cfg.questTest100.trialsPerBlock;
+    cfg.nBlocks = cfg.questTest100.nBlocks;
+    cfg.trialDial.nChangePerBlock = cfg.questTest100.nChangePerBlock;
+    cfg.trialDial.nNoChangePerBlock = cfg.questTest100.nNoChangePerBlock;
+end
+
 % ---- DEBUG QUICK RUN (overrides counts above when enabled) ----
 if cfg.debug.quickRun
+    if isfield(cfg, 'questTest100') && isfield(cfg.questTest100, 'enable') && cfg.questTest100.enable
+        warning('Both cfg.debug.quickRun and cfg.questTest100.enable are true. DEBUG QUICK RUN will override the QUEST test configuration.');
+    end
     fprintf('\n*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
 
     cfg.practice1.nSTD = 10;  cfg.practice1.nEASY = 0;  cfg.practice1.nNCH = 0;
@@ -650,6 +682,16 @@ try
             firstTrackUsePrinted(k) = true;
         end
 
+        % QUEST+ diagnostics for the selected duration before this trial updates the posterior.
+        [selectedPBlind, selectedPSensing, selectedPSeeing, selectedPAware, posteriorEntropyBits] = ...
+            questPredictiveAtStim(durFrames, questData);
+        selectedPDetect = selectedPSensing + selectedPSeeing;
+        if selectedPAware > 0
+            selectedPLocGivenAware = selectedPSeeing / selectedPAware;
+        else
+            selectedPLocGivenAware = NaN;
+        end
+
         % Build S1
         allowedOri = cfg.stim.allowedOri;
     
@@ -866,6 +908,17 @@ try
         results(t).durFrames = durFrames;
         results(t).durSec = durFrames * ifi;
 
+        results(t).trackName = tracks(k).name;
+        results(t).trackTargetOutcome = tracks(k).targetOutcome;
+        results(t).trackTargetProb = tracks(k).targetProb;
+        results(t).selectedPBlind = selectedPBlind;
+        results(t).selectedPSensing = selectedPSensing;
+        results(t).selectedPSeeing = selectedPSeeing;
+        results(t).selectedPAware = selectedPAware;
+        results(t).selectedPDetect = selectedPDetect;
+        results(t).selectedPLocGivenAware = selectedPLocGivenAware;
+        results(t).posteriorEntropyBits = posteriorEntropyBits;
+
         results(t).oriS1 = sprintf('%.1f,%.1f,%.1f,%.1f', oriS1(1),oriS1(2),oriS1(3),oriS1(4));
         results(t).oriS2 = sprintf('%.1f,%.1f,%.1f,%.1f', oriS2(1),oriS2(2),oriS2(3),oriS2(4));
 
@@ -1014,6 +1067,11 @@ try
     T.qpLambda   = repmat(psiParamsMAP(5), height(T), 1);
 
     T.debugQuickRun = repmat(double(cfg.debug.quickRun), height(T), 1);
+    if isfield(cfg, 'questTest100') && isfield(cfg.questTest100, 'enable')
+        T.questTest100 = repmat(double(cfg.questTest100.enable), height(T), 1);
+    else
+        T.questTest100 = repmat(0, height(T), 1);
+    end
 
     writetable(T, outFile);
 
@@ -1057,6 +1115,7 @@ try
     cal.psiParamsNames = {'alpha_det','beta_det','alpha_loc','beta_loc','lambda'};
     cal.questPlusCfg   = cfg.calib.questPlus;
     cal.debugQuickRun  = cfg.debug.quickRun;
+    cal.questTest100   = cfg.questTest100;
 
     calFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FullRun_%s.mat', cfg.participantID, timestamp));
     save(calFile, 'cal', 'questData');
@@ -1984,36 +2043,98 @@ function probs = qpPF_blindSensingSeeing(stim, params)
 end
 
 function xNext = selectXForTrack(track, questData, cfg)
-    % Choose next x for this track: the duration in cfg.calib.questPlus.stimDomain
-    % whose predicted track-target probability (under MAP parameters of the shared
-    % posterior) is closest to track.targetProb.
-
-    [~, idxMAP] = max(questData.posterior);
-    paramsMAP = questData.psiParamsDomain(idxMAP, :);
+    % Choose next x for this track using posterior-averaged predictive probabilities.
+    % This is deliberately less brittle than choosing from the current posterior MAP row.
+    % Supported direct targets:
+    %   Blind       -> P(Blind)
+    %   Sensing     -> P(Sensing)
+    %   Seeing      -> P(Seeing)
+    % Backward-compatible targets are retained:
+    %   PdetThreshold  -> P(Sensing) + P(Seeing)
+    %   PlocGivenAware -> P(Seeing) / P(Aware), with an awareness floor
 
     stimDomain = cfg.calib.questPlus.stimDomain(:);
-    probs = qpPF_blindSensingSeeing(stimDomain, paramsMAP);
-    pBlind   = probs(:,1,1);
-    pSensing = probs(:,1,2);
-    pSeeing  = probs(:,1,3);
-    pAware   = pSensing + pSeeing;
+
+    [pBlind, pSensing, pSeeing, pAware] = questPredictiveOverStim(stimDomain, questData);
 
     switch track.targetOutcome
         case 'Blind'
             pPred = pBlind;
+
+        case 'Sensing'
+            pPred = pSensing;
+
+        case 'Seeing'
+            pPred = pSeeing;
+
         case 'PdetThreshold'
-            pPred = 1 - pBlind;
+            pPred = pSensing + pSeeing;
+
         case 'PlocGivenAware'
             pPred = pSeeing ./ max(pAware, 1e-6);
-            pPred(pAware < 1e-3) = NaN;
+            minAware = 0.50;
+            if isfield(cfg, 'calib') && isfield(cfg.calib, 'questPlus') && ...
+                    isfield(cfg.calib.questPlus, 'minAwareForLocTarget')
+                minAware = cfg.calib.questPlus.minAwareForLocTarget;
+            end
+            pPred(pAware < minAware) = NaN;
+
         otherwise
             error('selectXForTrack: unknown targetOutcome ''%s''.', track.targetOutcome);
     end
 
     score = abs(pPred - track.targetProb);
     score(isnan(score)) = Inf;
+
+    if all(isinf(score))
+        warning('selectXForTrack: all candidate scores are invalid for track %s. Falling back to current xCurrent.', track.name);
+        xNext = clamp(round(track.xCurrent), cfg.minDurFrames, cfg.maxDurFrames);
+        return;
+    end
+
     [~, iBest] = min(score);
     xNext = stimDomain(iBest);
+end
+
+function [pBlind, pSensing, pSeeing, pAware] = questPredictiveOverStim(stimDomain, questData)
+    % Posterior-weighted predictive outcome probabilities for each candidate stimulus.
+    stimDomain = stimDomain(:);
+
+    posterior = double(questData.posterior(:));
+    totalPost = sum(posterior);
+    if totalPost <= 0 || ~isfinite(totalPost)
+        posterior = ones(size(posterior)) ./ numel(posterior);
+    else
+        posterior = posterior ./ totalPost;
+    end
+
+    probs = qpPF_blindSensingSeeing(stimDomain, questData.psiParamsDomain);
+
+    pBlind   = probs(:,:,1) * posterior;
+    pSensing = probs(:,:,2) * posterior;
+    pSeeing  = probs(:,:,3) * posterior;
+    pAware   = pSensing + pSeeing;
+end
+
+function [pBlind, pSensing, pSeeing, pAware, entropyBits] = questPredictiveAtStim(stim, questData)
+    % Posterior-weighted predictive probabilities at one selected stimulus duration.
+    [pBlind, pSensing, pSeeing, pAware] = questPredictiveOverStim(stim, questData);
+
+    pBlind = pBlind(1);
+    pSensing = pSensing(1);
+    pSeeing = pSeeing(1);
+    pAware = pAware(1);
+
+    posterior = double(questData.posterior(:));
+    totalPost = sum(posterior);
+    if totalPost <= 0 || ~isfinite(totalPost)
+        posterior = ones(size(posterior)) ./ numel(posterior);
+    else
+        posterior = posterior ./ totalPost;
+    end
+
+    nz = posterior > 0 & isfinite(posterior);
+    entropyBits = -sum(posterior(nz) .* log2(posterior(nz)));
 end
 
 function k = trackIndexFromStaircase(s)
@@ -2614,6 +2735,16 @@ function r = emptyResultRow()
         'changeQuad', NaN, ...
         'durFrames', NaN, ...
         'durSec', NaN, ...
+        'trackName', '', ...
+        'trackTargetOutcome', '', ...
+        'trackTargetProb', NaN, ...
+        'selectedPBlind', NaN, ...
+        'selectedPSensing', NaN, ...
+        'selectedPSeeing', NaN, ...
+        'selectedPAware', NaN, ...
+        'selectedPDetect', NaN, ...
+        'selectedPLocGivenAware', NaN, ...
+        'posteriorEntropyBits', NaN, ...
         'oriS1', '', ...
         'oriS2', '', ...
         'tS1', NaN, ...
@@ -2933,6 +3064,9 @@ function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary.screenNumber = cfg.screenNumber;
     cfgSummary.debugWindow = cfg.debugWindow;
     cfgSummary.debugQuickRun = cfg.debug.quickRun;
+    if isfield(cfg, 'questTest100')
+        cfgSummary.questTest100 = cfg.questTest100;
+    end
     cfgSummary.eegEnable = cfg.eeg.enable;
     cfgSummary.nTotal = cfg.nTotal;
     cfgSummary.trialsPerBlock = cfg.trialsPerBlock;
