@@ -76,22 +76,14 @@ cfg.eeg.codes.gapOn      = 24;
 cfg.eeg.codes.q1On       = 31;
 cfg.eeg.codes.q2On       = 32;
 cfg.eeg.codes.trialEnd   = 12;
-cfg.eeg.codes.pasBase    = 40; % 40 + PAS digit
-cfg.eeg.codes.locBase    = 50; % 50 + localisation digit
-
-% Main-trial metadata trigger codes (main trials only; not mirrored to practice +100)
-cfg.eeg.codes.trackBlind       = 61;
-cfg.eeg.codes.trackSensing     = 62;
-cfg.eeg.codes.trackSeeing      = 63;
-cfg.eeg.codes.trackNotFrozen   = 64;
-cfg.eeg.codes.trackFrozen      = 65;
-cfg.eeg.codes.outcomeBlind     = 66;
-cfg.eeg.codes.outcomeSensing   = 67;
-cfg.eeg.codes.outcomeSeeing    = 68;
-cfg.eeg.codes.outcomeNoChange  = 69;
-cfg.eeg.codes.blockBase        = 70;   % 70 + blockNum -> 71-82 for 12 blocks
-cfg.eeg.codes.durationTensBase = 90;   % planned durFrames tens: 90 + floor(dur/10); not measured photodiode timing
-cfg.eeg.codes.durationOnesBase = 101;  % planned durFrames ones: 101 + mod(dur,10)
+cfg.eeg.codes.pasBase    = 40; % PAS response = 40 + PAS value (41-44)
+cfg.eeg.codes.locBase    = 50; % LOC response = 50 + location value (51-54)
+% Simplified v2-style EEG trigger suite (main trials):
+%   11 trial start/fixation, 21 S1, 22 ISI, 23 S2, 24 gap, 31 Q1 PAS, 32 Q2 loc,
+%   41-44 PAS response, 51-54 LOC response, 12 trial end/ITI.
+% Practice uses the same suite with practiceCodeOffset (+100 -> 111-154 family).
+% Block/track/duration/outcome metadata are saved to FullRun CSV, MAT, Tobii, and
+% triggerLog but are NOT sent as EEG trigger pulses.
 
 cfg.eeg.practiceCodeOffset = 100;   % practice triggers = main code + 100 (111-154 family)
 
@@ -319,7 +311,7 @@ cfg.stim.contrast       = 0.8;
 cfg.stim.backgroundGrey = 0.5;
 cfg.stim.gaborSigmaFrac = 0.40;
 cfg.stim.allowedOri = 0:22.5:157.5;
-cfg.stim.changeAngleDeg = 45;   % orientation change magnitude in degrees; try 90, 45, 30, or 22.5
+cfg.stim.changeAngleDeg = 67.5;   % orientation change magnitude in degrees; try 90, 45, 30, or 22.5
 
 % Fixation (visual-angle locked; converted to px at runtime)
 cfg.fix.sizeDeg      = 0.37;
@@ -719,16 +711,6 @@ try
         [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', 'main_trial', t, blockNum, vblTargetFixOn);
         if cfg.eeg.markerPolicy.markMainTrials
             emitTrigger('trialStart', 'main_trial', t, blockNum, cfg.eeg.codes.trialStart, 'FixOn', tFixOn);
-            emitTrigger('blockNumber', 'main_trial', t, blockNum, cfg.eeg.codes.blockBase + blockNum, 'FixOn', tFixOn);
-            trackMetaCodes = [cfg.eeg.codes.trackBlind, cfg.eeg.codes.trackSensing, cfg.eeg.codes.trackSeeing];
-            emitTrigger('questTrack', 'main_trial', t, blockNum, trackMetaCodes(k), 'FixOn', tFixOn);
-            if tracks(k).frozen
-                emitTrigger('trackFrozen', 'main_trial', t, blockNum, cfg.eeg.codes.trackFrozen, 'FixOn', tFixOn);
-            else
-                emitTrigger('trackFrozen', 'main_trial', t, blockNum, cfg.eeg.codes.trackNotFrozen, 'FixOn', tFixOn);
-            end
-            emitTrigger('durationTens', 'main_trial', t, blockNum, cfg.eeg.codes.durationTensBase + floor(durFrames / 10), 'FixOn', tFixOn);
-            emitTrigger('durationOnes', 'main_trial', t, blockNum, cfg.eeg.codes.durationOnesBase + mod(durFrames, 10), 'FixOn', tFixOn);
         end
         tTrialStart = tFixOn;
         emitTobiiMessage('TRIAL_META', 'trialMeta', 'main_trial', t, blockNum, tTrialStart, ...
@@ -831,19 +813,6 @@ try
             end
         else
             locCorrect = NaN; % no-change trials: not defined
-        end
-
-        if cfg.eeg.markerPolicy.markMainTrials
-            if ~trial.isChange
-                outcomeCode = cfg.eeg.codes.outcomeNoChange;
-            elseif hit == 0
-                outcomeCode = cfg.eeg.codes.outcomeBlind;
-            elseif locCorrect == 1
-                outcomeCode = cfg.eeg.codes.outcomeSeeing;
-            else
-                outcomeCode = cfg.eeg.codes.outcomeSensing;
-            end
-            emitTrigger('outcome', 'main_trial', t, blockNum, outcomeCode, 'Q2_Loc', tQ2);
         end
 
         tTrialEnd = resp2Time;
