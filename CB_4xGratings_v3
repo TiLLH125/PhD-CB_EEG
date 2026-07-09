@@ -63,9 +63,10 @@ cfg.eeg.serialPort        = 'COM7';
 cfg.eeg.baudRate          = 115200;
 cfg.eeg.warnOnSendError   = true;
 
-% blocking: short zero pulse after each non-zero code so ActiView/EEGLAB detect every transition
-cfg.eeg.resetMode         = 'blocking';  % options: 'none', 'blocking', 'deferred'
-cfg.eeg.pulseWidthSec     = 0.002;       % used when resetMode = 'blocking'
+% resetMode: 'trialEndOnly' = zero reset only after trialEnd; set to 'blocking' for per-trigger A/B comparison
+% emitTrigger reads cfg.eeg.resetMode (not cfg.trigger.resetMode)
+cfg.eeg.resetMode         = 'trialEndOnly';  % options: 'none', 'blocking', 'trialEndOnly', 'deferred'
+cfg.eeg.pulseWidthSec     = 0.002;         % used when resetMode = 'blocking' or 'trialEndOnly'
 
 cfg.eeg.codes = struct();
 cfg.eeg.codes.trialStart = 11;
@@ -74,18 +75,19 @@ cfg.eeg.codes.isiOn      = 22;
 cfg.eeg.codes.s2On       = 23;
 cfg.eeg.codes.gapOn      = 24;
 cfg.eeg.codes.q1On       = 31;
-cfg.eeg.codes.q2On       = 32;
-cfg.eeg.codes.trialEnd   = 12;
+cfg.eeg.codes.q2On       = 51;
+cfg.eeg.codes.trialEnd   = 71;
 cfg.eeg.codes.pasBase    = 40; % PAS response = 40 + PAS value (41-44)
-cfg.eeg.codes.locBase    = 50; % LOC response = 50 + location value (51-54)
-% Simplified v2-style EEG trigger suite (main trials):
-%   11 trial start/fixation, 21 S1, 22 ISI, 23 S2, 24 gap, 31 Q1 PAS, 32 Q2 loc,
-%   41-44 PAS response, 51-54 LOC response, 12 trial end/ITI.
-% Practice uses the same suite with practiceCodeOffset (+100 -> 111-154 family).
+cfg.eeg.codes.locBase    = 60; % LOC response = 60 + location value (61-64)
+% Ascending within-trial EEG trigger suite (main trials):
+%   11 trial start/fixation, 21 S1, 22 ISI, 23 S2, 24 gap, 31 Q1 PAS,
+%   41-44 PAS response, 51 Q2 loc, 61-64 LOC response, 71 trial end then reset to 0.
+% Practice uses the same suite with practiceCodeOffset (+100 -> 111-171 family):
+%   111 fix, 121 S1, 122 ISI, 123 S2, 124 gap, 131 Q1, 141-144 PAS, 151 Q2, 161-164 LOC, 171 trial end.
 % Block/track/duration/outcome metadata are saved to FullRun CSV, MAT, Tobii, and
 % triggerLog but are NOT sent as EEG trigger pulses.
 
-cfg.eeg.practiceCodeOffset = 100;   % practice triggers = main code + 100 (111-154 family)
+cfg.eeg.practiceCodeOffset = 100;   % practice triggers = main code + 100 (111-171 family)
 
 cfg.eeg.markerPolicy = struct();
 cfg.eeg.markerPolicy.markPracticeTrials  = true;
@@ -1219,15 +1221,20 @@ end
                 IOPort('Write', cfg.trigger.handle, uint8(code), 0);
                 didEnable = true;
 
-                if code ~= 0 && isfield(cfg, 'eeg') && isfield(cfg.eeg, 'resetMode') && ...
-                        strcmpi(cfg.eeg.resetMode, 'blocking')
+                if code ~= 0 && isfield(cfg, 'eeg') && isfield(cfg.eeg, 'resetMode')
                     pulseWidth = 0.002;
                     if isfield(cfg.eeg, 'pulseWidthSec') && isnumeric(cfg.eeg.pulseWidthSec) && ...
                             isfinite(cfg.eeg.pulseWidthSec) && cfg.eeg.pulseWidthSec > 0
                         pulseWidth = cfg.eeg.pulseWidthSec;
                     end
-                    WaitSecs(pulseWidth);
-                    IOPort('Write', cfg.trigger.handle, uint8(0), 0);
+
+                    doReset = strcmpi(cfg.eeg.resetMode, 'blocking') || ...
+                        (strcmpi(cfg.eeg.resetMode, 'trialEndOnly') && strcmpi(label, 'trialEnd'));
+
+                    if doReset
+                        WaitSecs(pulseWidth);
+                        IOPort('Write', cfg.trigger.handle, uint8(0), 0);
+                    end
                 end
             end
         catch ME
