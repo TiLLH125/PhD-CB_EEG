@@ -56,11 +56,12 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v2(participantID, dataPath
 %     checks on temporary scalp copies after downsampling, ICA-training, and
 %     ERP-analysis filtering. Compares against Stage 3b initial flags to show
 %     which warnings persist. Complements line-noise PSD QC; no channels removed.
-%   - Event matching is v3-aware: practice trials are validated from the +100
-%   trigger family (e.g., S1=121, S2=123, PAS=141-144, LOC=151-154), while
-%   main trials are matched to the FullRun CSV from the base family only
-%   (S1=21, S2=23, PAS=41-44, LOC=51-54). Practice trials are not skipped
-%   positionally anymore.
+%   - Event matching is v3-aware (ascending within-trial trigger codes):
+%     Main: 11->21->22->23->24->31->41-44->51->61-64->71; practice +100 (111->...->171).
+%     Practice validated from +100 family (S1=121, S2=123, PAS=141-144, Q2=151, LOC=161-164,
+%     trialEnd=171); main trials matched to FullRun CSV from base family only
+%     (S1=21, S2=23, PAS=41-44, Q2=51, LOC=61-64, trialEnd=71). Practice trials are not
+%     skipped positionally anymore.
 % - Optional Stage 16 extra plots (central ROI trial traces, B/S/S overlay,
 %     S2 VAN/LP topomaps) run on AR-clean S1/S2 datasets when plot functions
 %     are on the MATLAB path. Figures are shown by default; use
@@ -164,8 +165,9 @@ addParameter(p, 'LineNoiseNeighbourHz', [45 55], @(x) isnumeric(x) && numel(x) =
 addParameter(p, 'LineNoiseExcludeHz', [49 51], @(x) isnumeric(x) && numel(x) == 2 && x(1) < x(2));
 addParameter(p, 'LineNoiseQCPlot', true, @(x) islogical(x) || isnumeric(x));
 
-% Trial/event config for CB_4xGratings_v3
-% Main trials use the base trigger family; practice trials use base + PracticeTriggerOffset.
+% Trial/event config for CB_4xGratings_v3 (ascending within-trial trigger codes)
+% Main: 11->21->22->23->24->31->41-44->51->61-64->71; practice + PracticeTriggerOffset.
+% Behavioural metadata (block, track, duration, outcomeBin) comes from FullRun CSV only.
 % NTriggeredPractice is kept as a legacy alias only; it is no longer used to
 % positionally skip trials before behavioural matching.
 addParameter(p, 'NTriggeredPractice', 20, @(x) isnumeric(x) && isscalar(x));
@@ -179,7 +181,10 @@ addParameter(p, 'PracticeTriggerOffset', 100, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'MainS1Code', 21, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'MainS2Code', 23, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'MainPASBase', 40, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'MainLocBase', 50, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainQ1Code', 31, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainQ2Code', 51, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainLocBase', 60, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainTrialEndCode', 71, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'ValidatePracticeTriggers', true, @(x) islogical(x) || isnumeric(x));
 
 % Epoching/baseline
@@ -248,7 +253,10 @@ cfg.PracticeTriggerOffset = double(cfg.PracticeTriggerOffset);
 cfg.MainS1Code = double(cfg.MainS1Code);
 cfg.MainS2Code = double(cfg.MainS2Code);
 cfg.MainPASBase = double(cfg.MainPASBase);
+cfg.MainQ1Code = double(cfg.MainQ1Code);
+cfg.MainQ2Code = double(cfg.MainQ2Code);
 cfg.MainLocBase = double(cfg.MainLocBase);
+cfg.MainTrialEndCode = double(cfg.MainTrialEndCode);
 cfg.ValidatePracticeTriggers = logical(cfg.ValidatePracticeTriggers);
 
 expectedPracticeFromBlocks = cfg.ExpectedPracticeBlocks * cfg.ExpectedPracticeTrialsPerBlock;
@@ -893,6 +901,22 @@ practiceS1Code = cfg.MainS1Code + cfg.PracticeTriggerOffset;
 practiceS2Code = cfg.MainS2Code + cfg.PracticeTriggerOffset;
 practicePasCodes = mainPasCodes + cfg.PracticeTriggerOffset;
 practiceLocCodes = mainLocCodes + cfg.PracticeTriggerOffset;
+practiceQ1Code = cfg.MainQ1Code + cfg.PracticeTriggerOffset;
+practiceQ2Code = cfg.MainQ2Code + cfg.PracticeTriggerOffset;
+practiceTrialEndCode = cfg.MainTrialEndCode + cfg.PracticeTriggerOffset;
+
+bdfEventNums = arrayfun(@(e) localEventTypeToNumber(e.type), EEG_clean.event);
+bdfEventCodeInventoryCsv = fullfile(outDir, sprintf('%s_BdfEventCodeInventory.csv', participantID));
+localWriteBdfEventCodeInventory(bdfEventNums, bdfEventCodeInventoryCsv);
+localWarnLegacyTriggerCodes(bdfEventNums, cfg);
+
+fprintf('\nAscending v3 trigger scheme reference:\n');
+fprintf('  Main:    S1=%d S2=%d Q1=%d PAS=%s Q2=%d LOC=%s trialEnd=%d\n', ...
+    cfg.MainS1Code, cfg.MainS2Code, cfg.MainQ1Code, mat2str(mainPasCodes), ...
+    cfg.MainQ2Code, mat2str(mainLocCodes), cfg.MainTrialEndCode);
+fprintf('  Practice (+100): S1=%d S2=%d Q1=%d PAS=%s Q2=%d LOC=%s trialEnd=%d\n', ...
+    practiceS1Code, practiceS2Code, practiceQ1Code, mat2str(practicePasCodes), ...
+    practiceQ2Code, mat2str(practiceLocCodes), practiceTrialEndCode);
 
 % Practice trials are now identified by their own +100 trigger family.
 % They are validated separately and are NOT positionally skipped when matching
@@ -905,7 +929,11 @@ trialsPractice = localExtractTriggeredTrials(EEG_clean, ...
     'LocCodes', practiceLocCodes, ...
     'PASBase', cfg.MainPASBase + cfg.PracticeTriggerOffset, ...
     'LocBase', cfg.MainLocBase + cfg.PracticeTriggerOffset, ...
-    'RequireResponses', false);
+    'Q1Code', practiceQ1Code, ...
+    'Q2Code', practiceQ2Code, ...
+    'TrialEndCode', practiceTrialEndCode, ...
+    'RequireResponses', false, ...
+    'ValidateTrialMarkers', false);
 
 trialsMain = localExtractTriggeredTrials(EEG_clean, ...
     'FamilyName', 'main', ...
@@ -915,7 +943,11 @@ trialsMain = localExtractTriggeredTrials(EEG_clean, ...
     'LocCodes', mainLocCodes, ...
     'PASBase', cfg.MainPASBase, ...
     'LocBase', cfg.MainLocBase, ...
-    'RequireResponses', true);
+    'Q1Code', cfg.MainQ1Code, ...
+    'Q2Code', cfg.MainQ2Code, ...
+    'TrialEndCode', cfg.MainTrialEndCode, ...
+    'RequireResponses', true, ...
+    'ValidateTrialMarkers', true);
 
 nPracticeTriggered = numel(trialsPractice.s1EventIdx);
 nMainTriggered = numel(trialsMain.s1EventIdx);
@@ -1239,6 +1271,7 @@ report.nPracticeTriggered = nPracticeTriggered;
 report.nMainTriggered = nMainTriggered;
 report.practiceTriggerAuditCsv = practiceTriggerAuditCsv;
 report.mainTriggerAuditCsv = mainTriggerAuditCsv;
+report.bdfEventCodeInventoryCsv = bdfEventCodeInventoryCsv;
 report.cfg = cfg;
 report.componentsToRemove = componentsToRemove;
 report.autoICAComponentsToRemove = autoComponents;
@@ -2863,10 +2896,14 @@ addParameter(p, 'FamilyName', 'main', @(x) ischar(x) || isstring(x));
 addParameter(p, 'S1Code', 21, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'S2Code', 23, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'PASCodes', 41:44, @(x) isnumeric(x) && isvector(x));
-addParameter(p, 'LocCodes', 51:54, @(x) isnumeric(x) && isvector(x));
+addParameter(p, 'LocCodes', 61:64, @(x) isnumeric(x) && isvector(x));
 addParameter(p, 'PASBase', 40, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'LocBase', 50, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'LocBase', 60, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'Q1Code', NaN, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'Q2Code', NaN, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'TrialEndCode', NaN, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'RequireResponses', true, @(x) islogical(x) || isnumeric(x));
+addParameter(p, 'ValidateTrialMarkers', false, @(x) islogical(x) || isnumeric(x));
 parse(p, varargin{:});
 opt = p.Results;
 
@@ -2877,7 +2914,11 @@ pasCodes = double(opt.PASCodes(:)');
 locCodes = double(opt.LocCodes(:)');
 pasBase = double(opt.PASBase);
 locBase = double(opt.LocBase);
+q1Code = double(opt.Q1Code);
+q2Code = double(opt.Q2Code);
+trialEndCode = double(opt.TrialEndCode);
 requireResponses = logical(opt.RequireResponses);
+validateTrialMarkers = logical(opt.ValidateTrialMarkers);
 
 eventNums = arrayfun(@(e) localEventTypeToNumber(e.type), EEG.event);
 s1Idx = find(eventNums == s1Code);
@@ -2898,6 +2939,12 @@ trials.pasCode = nan(n,1);
 trials.pasResp = nan(n,1);
 trials.locCode = nan(n,1);
 trials.locResp = nan(n,1);
+trials.q2Code = nan(n,1);
+trials.q2EventIdx = nan(n,1);
+trials.q2Latency = nan(n,1);
+trials.trialEndCode = nan(n,1);
+trials.trialEndEventIdx = nan(n,1);
+trials.trialEndLatency = nan(n,1);
 
 for t = 1:n
     startIdx = s1Idx(t);
@@ -2914,6 +2961,15 @@ for t = 1:n
     s2Rel = find(segNums == s2Code, 1, 'first');
     pasRel = find(ismember(segNums, pasCodes), 1, 'first');
     locRel = find(ismember(segNums, locCodes), 1, 'first');
+    q2Rel = [];
+    trialEndRel = [];
+
+    if isfinite(q2Code)
+        q2Rel = find(segNums == q2Code, 1, 'first');
+    end
+    if isfinite(trialEndCode)
+        trialEndRel = find(segNums == trialEndCode, 1, 'first');
+    end
 
     trials.s1EventIdx(t) = startIdx;
     trials.s1Latency(t) = EEG.event(startIdx).latency;
@@ -2931,6 +2987,23 @@ for t = 1:n
     if ~isempty(locRel)
         trials.locCode(t) = segNums(locRel);
         trials.locResp(t) = segNums(locRel) - locBase;
+    end
+
+    if ~isempty(q2Rel)
+        trials.q2Code(t) = segNums(q2Rel);
+        trials.q2EventIdx(t) = segIdx(q2Rel);
+        trials.q2Latency(t) = EEG.event(segIdx(q2Rel)).latency;
+    end
+
+    if ~isempty(trialEndRel)
+        trials.trialEndCode(t) = segNums(trialEndRel);
+        trials.trialEndEventIdx(t) = segIdx(trialEndRel);
+        trials.trialEndLatency(t) = EEG.event(segIdx(trialEndRel)).latency;
+    end
+
+    if validateTrialMarkers && ~isempty(locRel) && ~isempty(trialEndRel) && trialEndRel <= locRel
+        error('%s trial %d: trialEnd code %d occurs before localisation response in ascending sequence.', ...
+            familyName, t, trialEndCode);
     end
 end
 
@@ -2965,6 +3038,22 @@ else
     end
 end
 
+if validateTrialMarkers && isfinite(q2Code)
+    missingQ2 = find(isnan(trials.q2EventIdx));
+    if ~isempty(missingQ2)
+        error('Some %s S1-defined trials are missing Q2 onset trigger %d. Missing trial rows: %s', ...
+            familyName, q2Code, mat2str(missingQ2(:)'));
+    end
+end
+
+if validateTrialMarkers && isfinite(trialEndCode)
+    missingTrialEnd = find(isnan(trials.trialEndEventIdx));
+    if ~isempty(missingTrialEnd)
+        error('Some %s S1-defined trials are missing trialEnd trigger %d. Missing trial rows: %s', ...
+            familyName, trialEndCode, mat2str(missingTrialEnd(:)'));
+    end
+end
+
 end
 
 function T = localMakeTriggeredTrialAuditTable(trials, familyName)
@@ -2975,9 +3064,10 @@ trialNum = (1:n)';
 if n == 0
     T = table( ...
         zeros(0,1), strings(0,1), zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), ...
-        zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), ...
+        zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), zeros(0,1), ...
+        zeros(0,1), zeros(0,1), ...
         'VariableNames', {'Trial','Family','S1EventIdx','S2EventIdx','S1Latency','S2Latency', ...
-        'PASCode','PASResp','LocCode','LocResp'});
+        'PASCode','PASResp','LocCode','LocResp','Q2Code','Q2Latency','TrialEndCode','TrialEndLatency'});
     return;
 end
 
@@ -2992,8 +3082,52 @@ T = table( ...
     trials.pasResp(:), ...
     trials.locCode(:), ...
     trials.locResp(:), ...
+    trials.q2Code(:), ...
+    trials.q2Latency(:), ...
+    trials.trialEndCode(:), ...
+    trials.trialEndLatency(:), ...
     'VariableNames', {'Trial','Family','S1EventIdx','S2EventIdx','S1Latency','S2Latency', ...
-    'PASCode','PASResp','LocCode','LocResp'});
+    'PASCode','PASResp','LocCode','LocResp','Q2Code','Q2Latency','TrialEndCode','TrialEndLatency'});
+
+end
+
+function localWriteBdfEventCodeInventory(eventNums, csvPath)
+
+eventNums = eventNums(isfinite(eventNums));
+[uCodes, ~, ic] = unique(eventNums);
+counts = accumarray(ic, 1);
+
+T = table(uCodes(:), counts(:), 'VariableNames', {'EventCode','Count'});
+T = sortrows(T, 'EventCode');
+writetable(T, csvPath);
+fprintf('Saved BDF event code inventory: %s\n', csvPath);
+
+end
+
+function localWarnLegacyTriggerCodes(eventNums, cfg)
+
+offset = cfg.PracticeTriggerOffset;
+legacyMain = [12, 32, 52:54];
+legacyPractice = [12, 32, 52:54] + offset;
+legacyMetadata = [65:69, 70:82, 90:109];
+
+present = unique(eventNums(isfinite(eventNums)));
+foundMain = intersect(present, legacyMain);
+foundPractice = intersect(present, legacyPractice);
+foundMetadata = intersect(present, legacyMetadata);
+
+if ~isempty(foundMain)
+    warning('BDF contains deprecated main-family trigger code(s) %s (old trialEnd/Q2/LOC mapping).', ...
+        mat2str(foundMain));
+end
+if ~isempty(foundPractice)
+    warning('BDF contains deprecated practice-family trigger code(s) %s (old trialEnd/Q2/LOC mapping).', ...
+        mat2str(foundPractice));
+end
+if ~isempty(foundMetadata)
+    warning('BDF contains legacy metadata trigger code(s) %s; these are not used in ascending v3.', ...
+        mat2str(foundMetadata));
+end
 
 end
 
