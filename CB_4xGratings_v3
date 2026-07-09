@@ -58,14 +58,14 @@ cfg.kbDev = -1;
 % Behaviour-only testing: cfg.eeg.enable = false;
 % Lab EEG/trigger testing (current): cfg.eeg.enable = true; COM7 @ 115200
 cfg.eeg.enable            = true;
-cfg.eeg.requirePort       = false;   % keep run going if the COM port is unavailable during testing
+cfg.eeg.requirePort       = true;   % abort if the COM port cannot be opened
 cfg.eeg.serialPort        = 'COM7';
 cfg.eeg.baudRate          = 115200;
 cfg.eeg.warnOnSendError   = true;
 
-% Important: avoid blocking reset by default
-cfg.eeg.resetMode         = 'none';  % options later: 'none', 'blocking', 'deferred'
-cfg.eeg.pulseWidthSec     = 0.005;   % only used if resetMode = 'blocking' later
+% blocking: short zero pulse after each non-zero code so ActiView/EEGLAB detect every transition
+cfg.eeg.resetMode         = 'blocking';  % options: 'none', 'blocking', 'deferred'
+cfg.eeg.pulseWidthSec     = 0.002;       % used when resetMode = 'blocking'
 
 cfg.eeg.codes = struct();
 cfg.eeg.codes.trialStart = 11;
@@ -261,17 +261,17 @@ if cfg.debug.quickRun
     end
     fprintf('\n*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
 
-    cfg.practice1.nSTD = 10;  cfg.practice1.nEASY = 0;  cfg.practice1.nNCH = 0;
+    cfg.practice1.nSTD = 3;  cfg.practice1.nEASY = 0;  cfg.practice1.nNCH = 0;
     cfg.practice1.nTrials = cfg.practice1.nSTD + cfg.practice1.nEASY + cfg.practice1.nNCH;
 
-    cfg.practice2.nSTD = 10;  cfg.practice2.nEASY = 0;  cfg.practice2.nNCH = 0;
+    cfg.practice2.nSTD = 3;  cfg.practice2.nEASY = 0;  cfg.practice2.nNCH = 0;
     cfg.practice2.nTrials = cfg.practice2.nSTD + cfg.practice2.nEASY + cfg.practice2.nNCH;
 
-    cfg.calib.maxTrials = 100;
+    cfg.calib.maxTrials = 20;
     cfg.nTotal = cfg.calib.maxTrials;
-    cfg.trialsPerBlock = 25;
-    cfg.nBlocks = 4;
-    cfg.trialDial.nChangePerBlock = 25;
+    cfg.trialsPerBlock = 10;
+    cfg.nBlocks = 2;
+    cfg.trialDial.nChangePerBlock = 10;
     cfg.trialDial.nNoChangePerBlock = 0;
     % QUEST+ still runs; estimates from quick-run are not meaningful
 end
@@ -1218,7 +1218,17 @@ end
             if isfield(cfg, 'trigger') && cfg.trigger.enabled && ~isempty(cfg.trigger.handle)
                 IOPort('Write', cfg.trigger.handle, uint8(code), 0);
                 didEnable = true;
-                % resetMode 'blocking' / zero reset deferred to a later phase
+
+                if code ~= 0 && isfield(cfg, 'eeg') && isfield(cfg.eeg, 'resetMode') && ...
+                        strcmpi(cfg.eeg.resetMode, 'blocking')
+                    pulseWidth = 0.002;
+                    if isfield(cfg.eeg, 'pulseWidthSec') && isnumeric(cfg.eeg.pulseWidthSec) && ...
+                            isfinite(cfg.eeg.pulseWidthSec) && cfg.eeg.pulseWidthSec > 0
+                        pulseWidth = cfg.eeg.pulseWidthSec;
+                    end
+                    WaitSecs(pulseWidth);
+                    IOPort('Write', cfg.trigger.handle, uint8(0), 0);
+                end
             end
         catch ME
             errMsg = mExceptionText(ME);
@@ -3086,9 +3096,9 @@ function trigger = initSerialTrigger(eegCfg)
     trigger = struct( ...
         'enabled', false, ...
         'handle', [], ...
-        'resetMode', 'none', ...
+        'resetMode', 'blocking', ...
         'warnOnSendError', true, ...
-        'pulseWidthSec', 0.005);
+        'pulseWidthSec', 0.002);
 
     if ~isfield(eegCfg, 'enable') || ~eegCfg.enable
         return;
