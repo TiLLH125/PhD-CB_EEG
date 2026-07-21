@@ -31,6 +31,7 @@ KbName('UnifyKeyNames');
 
 %% ------------------------- USER CONFIG -------------------------
 cfg = struct();
+cfg.outputPrefix = 'CB_4xGratings_v3_Orientation';
 
 cfg.participantID = input('Enter Participant ID (e.g., S001): ', 's');
 if isempty(cfg.participantID), cfg.participantID = 'UNKNOWN'; end
@@ -129,7 +130,6 @@ cfg.practice.enable = true;
 
 % Global practice settings
 cfg.practice.feedbackWaitForSpace = true;   % lock feedback until SPACE
-cfg.practice.maxRepeatsBlock1     = 2;      % for later (Phase D)
 cfg.practice.logToCommandWindow   = true;
 
 % ---------- Practice Block 1 (with feedback; wider range / anchoring) ----------
@@ -142,11 +142,6 @@ cfg.practice1.nSTD      = 4;    % standard change trials
 cfg.practice1.nNCH      = 3;    % no-change trials
 cfg.practice1.nEASY     = 3;    % obvious/easy change trials
 cfg.practice1.nTrials   = cfg.practice1.nSTD + cfg.practice1.nNCH + cfg.practice1.nEASY;
-
-% Durations (frames) by trial type
-cfg.practice1.durSTDFrames  = 30;   % standard / moderate
-cfg.practice1.durEASYFrames = 40;   % obvious / easy anchor
-cfg.practice1.durNCHFrames  = 40;   % no-change trial still has S1/S2 duration
 
 % Optional: restrict "easy" changes to stronger/more obvious starts later if needed
 cfg.practice1.easyUsesSameChangeRule = true;
@@ -167,26 +162,15 @@ cfg.practice2.nNCH      = 3;
 cfg.practice2.nEASY     = 3;
 cfg.practice2.nTrials   = cfg.practice2.nSTD + cfg.practice2.nNCH + cfg.practice2.nEASY;
 
-% Base durations (used when tiered assignment is disabled)
-cfg.practice2.durSTDFrames  = 10;
-cfg.practice2.durEASYFrames = 20;
-cfg.practice2.durNCHFrames  = 20;
-
-% Tiered duration spread for Block 2 (balanced: 8 short / 8 medium / 8 long)
-cfg.practice2.useTieredDurations = false;
-cfg.practice2.durShortFrames     = 10;
-cfg.practice2.durMediumFrames    = 20;
-cfg.practice2.durLongFrames      = 30;
-cfg.practice2.tierCounts.short   = 8;
-cfg.practice2.tierCounts.medium  = 8;
-cfg.practice2.tierCounts.long    = 8;
-
 cfg.practice2.easyUsesSameChangeRule = true;
 
 % Orientation-change magnitudes used in practice. Timing is fixed globally.
 cfg.practice2.magnitudeSTDDeg  = 45;
 cfg.practice2.magnitudeEASYDeg = 90;
 cfg.practice2.magnitudeNCHDeg  = 0;
+
+% Both practice blocks use the global fixed S1/ISI/S2/gap timing. Trial type
+% changes orientation magnitude only; practice-specific durations are not used.
 
 % ---------- Practice classification criteria ----------
 cfg.practice1Criteria.maxFARateNCH   = 0.60;
@@ -204,6 +188,10 @@ cfg.design.balanceChangeMagnitudes = true;
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
 cfg.debug.quickRun = false;   % true = ultra-short formatting/test run; false = real/full run
+cfg.debug.quickRunMagnitudesDeg  = [22.5 45 67.5 90];
+cfg.debug.quickRunChangeCounts   = [4 4 4 4];  % totals across the complete quick run
+cfg.debug.quickRunNoChangeTrials = 4;
+cfg.debug.quickRunTrialsPerBlock = 10;
 
 cfg.nTotal = cfg.calib.maxTrials;
 cfg.trialsPerBlock = 50;
@@ -217,33 +205,51 @@ cfg.trialDial.nNoChangePerBlock = 12;
 if cfg.debug.quickRun
     fprintf('\n*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
 
-    cfg.practice1.nSTD = 3;  cfg.practice1.nEASY = 0;  cfg.practice1.nNCH = 0;
+    cfg.practice1.nSTD = 1;  cfg.practice1.nEASY = 1;  cfg.practice1.nNCH = 1;
     cfg.practice1.nTrials = cfg.practice1.nSTD + cfg.practice1.nEASY + cfg.practice1.nNCH;
 
-    cfg.practice2.nSTD = 3;  cfg.practice2.nEASY = 0;  cfg.practice2.nNCH = 0;
+    cfg.practice2.nSTD = 1;  cfg.practice2.nEASY = 1;  cfg.practice2.nNCH = 1;
     cfg.practice2.nTrials = cfg.practice2.nSTD + cfg.practice2.nEASY + cfg.practice2.nNCH;
 
-    cfg.calib.maxTrials = 20;
-    cfg.nTotal = cfg.calib.maxTrials;
-    cfg.trialsPerBlock = 10;
-    cfg.nBlocks = 2;
-    cfg.trialDial.nChangePerBlock = 8;
-    cfg.trialDial.nNoChangePerBlock = 2;
+    [quickMags, quickCounts, quickNCH, quickTrialsPerBlock] = validateQuickRunProfile(cfg.debug);
+
+    cfg.design.changeMagnitudesDeg = quickMags;
+    cfg.design.changeCountsPerMagnitude = quickCounts;
+    cfg.nChange = sum(quickCounts);
+    cfg.nCatch = quickNCH;
+    cfg.nTotal = cfg.nChange + cfg.nCatch;
+    cfg.calib.maxTrials = cfg.nTotal;
+    cfg.trialsPerBlock = quickTrialsPerBlock;
+    cfg.nBlocks = cfg.nTotal / cfg.trialsPerBlock;
+    cfg.trialDial.nChangePerBlock = cfg.nChange / cfg.nBlocks;
+    cfg.trialDial.nNoChangePerBlock = cfg.nCatch / cfg.nBlocks;
+else
+    cfg.nChange = cfg.nBlocks * cfg.trialDial.nChangePerBlock;      % 456 in full run
+    cfg.nCatch  = cfg.nBlocks * cfg.trialDial.nNoChangePerBlock;    % 144 in full run
+
+    assert(mod(cfg.nChange, numel(cfg.design.changeMagnitudesDeg)) == 0, ...
+        'Full-run change trials must be divisible by the number of orientation magnitudes.');
+    cfg.design.changeCountsPerMagnitude = repmat( ...
+        cfg.nChange / numel(cfg.design.changeMagnitudesDeg), ...
+        1, numel(cfg.design.changeMagnitudesDeg));
 end
 
 cfg.trialDial.pChange = cfg.trialDial.nChangePerBlock / cfg.trialsPerBlock;
-
-cfg.nChange = cfg.nBlocks * cfg.trialDial.nChangePerBlock;      % 456 in full run
-cfg.nCatch  = cfg.nBlocks * cfg.trialDial.nNoChangePerBlock;    % 144 in full run
 
 assert(mod(cfg.nTotal, cfg.trialsPerBlock) == 0, ...
     'nTotal must be divisible by trialsPerBlock');
 assert(cfg.trialDial.nChangePerBlock + cfg.trialDial.nNoChangePerBlock == cfg.trialsPerBlock, ...
     'Per-block change + no-change counts must equal trialsPerBlock');
-assert(mod(cfg.nChange, numel(cfg.design.changeMagnitudesDeg)) == 0, ...
-    'Total change trials must be divisible by number of orientation magnitudes');
+assert(numel(cfg.design.changeMagnitudesDeg) == numel(cfg.design.changeCountsPerMagnitude), ...
+    'Magnitude and magnitude-count vectors must have the same length.');
+assert(sum(cfg.design.changeCountsPerMagnitude) == cfg.nChange, ...
+    'Magnitude-specific change counts must sum to nChange.');
 
-cfg.nChangePerMagnitude = cfg.nChange / numel(cfg.design.changeMagnitudesDeg);
+if all(cfg.design.changeCountsPerMagnitude == cfg.design.changeCountsPerMagnitude(1))
+    cfg.nChangePerMagnitude = cfg.design.changeCountsPerMagnitude(1);
+else
+    cfg.nChangePerMagnitude = NaN;  % legacy scalar is undefined for unequal magnitude counts
+end
 
 % Timing (seconds)
 cfg.fixJitterRangeSec = [1.00 1.50];  % fixation before S1
@@ -311,12 +317,13 @@ bg    = cfg.stim.backgroundGrey;   % <-- define BEFORE OpenWindow
 black = 0;
 
 window = [];
+cleanupObj = []; %#ok<NASGU> % remains empty only if OpenWindow fails before onCleanup is created
 
 %% ------------ FAILSAFE LOGGING ------------ %%
 outDir = fullfile(pwd, 'data');
 if ~exist(outDir,'dir'), mkdir(outDir); end
 timestamp = datestr(now,'yyyymmdd_HHMMSS');
-outFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FullRun_%s.csv', cfg.participantID, timestamp));
+outFile = fullfile(outDir, sprintf('%s_%s_FullRun_%s.csv', cfg.outputPrefix, cfg.participantID, timestamp));
 
 cfg.trigger = initSerialTrigger(cfg.eeg);
 
@@ -420,8 +427,8 @@ try
     fprintf('No-change/block: %d\n', cfg.trialDial.nNoChangePerBlock);
     fprintf('Total change: %d\n', cfg.nChange);
     fprintf('Total no-change: %d\n', cfg.nCatch);
-    fprintf('Change magnitudes: %s deg (%d change trials each in full run)\n', ...
-        mat2str(cfg.design.changeMagnitudesDeg), cfg.nChangePerMagnitude);
+    fprintf('Change magnitudes: %s deg\n', mat2str(cfg.design.changeMagnitudesDeg));
+    fprintf('Change counts by magnitude: %s\n', mat2str(cfg.design.changeCountsPerMagnitude));
     fprintf('S1_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.S1_frames, cfg.S1_frames * ifi * 1000, 1/ifi);
     fprintf('ISI_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.ISI_frames, cfg.ISI_frames * ifi * 1000, 1/ifi);
     fprintf('S2_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.S2_frames, cfg.S2_frames * ifi * 1000, 1/ifi);
@@ -448,9 +455,10 @@ try
 
     %% ------------------------- FIXED DESIGN SETUP -------------------------
     fprintf('Fixed design initialized: no QUEST+, no adaptive duration.\n');
-    fprintf('Main change trials per magnitude: %d\n', cfg.nChangePerMagnitude);
+    fprintf('Main change trial inventory:\n');
     for mm = 1:numel(cfg.design.changeMagnitudesDeg)
-        fprintf('  %.1f deg: %d change trials\n', cfg.design.changeMagnitudesDeg(mm), cfg.nChangePerMagnitude);
+        fprintf('  %.12g deg: %d change trials\n', ...
+            cfg.design.changeMagnitudesDeg(mm), cfg.design.changeCountsPerMagnitude(mm));
     end
     
 
@@ -486,8 +494,8 @@ try
     % Record the full visible session: instructions, overview, practice, main trials, breaks, and end screen.
     tobii = startTobiiRecording(tobii, cfg, windowRect, ifi, timestamp);
     emitTobiiMessage('RUN_START', 'runStart', 'experiment', NaN, NaN, GetSecs, ...
-        sprintf('participantID=%s timestamp=%s screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d magnitudesDeg=%s S1ms=%.0f ISIms=%.0f S2ms=%.0f gapMs=%.0f', ...
-        cfg.participantID, timestamp, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable), mat2str(cfg.design.changeMagnitudesDeg), cfg.S1_frames*ifi*1000, cfg.ISI_frames*ifi*1000, cfg.S2_frames*ifi*1000, cfg.gap_frames*ifi*1000));
+        sprintf('participantID=%s timestamp=%s screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d magnitudesDeg=%s magnitudeCounts=%s S1ms=%.0f ISIms=%.0f S2ms=%.0f gapMs=%.0f', ...
+        cfg.participantID, timestamp, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable), mat2str(cfg.design.changeMagnitudesDeg), mat2str(cfg.design.changeCountsPerMagnitude), cfg.S1_frames*ifi*1000, cfg.ISI_frames*ifi*1000, cfg.S2_frames*ifi*1000, cfg.gap_frames*ifi*1000));
 
     %% ------------------------- INSTRUCTIONS SCREEN -------------------------
 
@@ -514,6 +522,7 @@ try
             showPractice1BeginScreen(window, windowRect, bg, black, cfg);
             practice1Summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, ...
                 xCentre, yCentre, ifi, cfg, bg, black, cfg.practice1);
+            practice1Summary.classification = classifyPractice1(practice1Summary, cfg);
             printPracticeSummary(practice1Summary, 'Practice Block 1');
             practiceFlow.block1.summary = practice1Summary;
             practiceFlow.block1.result  = 'completed';
@@ -524,6 +533,7 @@ try
             showPractice2BeginScreen(window, windowRect, bg, black, cfg);
             practice2Summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, ...
                 xCentre, yCentre, ifi, cfg, bg, black, cfg.practice2);
+            practice2Summary.classification = 'not_applicable';
             printPracticeSummary(practice2Summary, 'Practice Block 2');
             practiceFlow.block2.summary = practice2Summary;
             practiceFlow.block2.result  = 'completed';
@@ -537,28 +547,60 @@ try
     
     % Block 1 summary
     practiceRow.b1_result            = string(practiceFlow.block1.result);
+    practiceRow.b1_classification    = getTextFieldOrDefault(practiceFlow.block1.summary, 'classification', 'not_run');
     practiceRow.b1_nTrials           = getFieldOrNaN(practiceFlow.block1.summary, 'nTrials');
+    practiceRow.b1_nSTD              = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD');
+    practiceRow.b1_nSTD_detect       = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD_detect');
+    practiceRow.b1_nSTD_see          = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD_see');
+    practiceRow.b1_stdDetect         = getFieldOrNaN(practiceFlow.block1.summary, 'stdDetectRate');
+    practiceRow.b1_stdSee            = getFieldOrNaN(practiceFlow.block1.summary, 'stdSeeRate');
+    practiceRow.b1_nNCH              = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH');
+    practiceRow.b1_nNCH_FA           = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH_FA');
+    practiceRow.b1_nNCH_CR           = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH_CR');
     practiceRow.b1_faRateNCH         = getFieldOrNaN(practiceFlow.block1.summary, 'faRateNCH');
+    practiceRow.b1_crRateNCH         = getFieldOrNaN(practiceFlow.block1.summary, 'crRateNCH');
+    practiceRow.b1_nEASY             = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY');
+    practiceRow.b1_nEASY_detect      = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY_detect');
+    practiceRow.b1_nEASY_see         = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY_see');
     practiceRow.b1_easyDetect        = getFieldOrNaN(practiceFlow.block1.summary, 'easyDetectRate');
     practiceRow.b1_easySee           = getFieldOrNaN(practiceFlow.block1.summary, 'easySeeRate');
+    practiceRow.b1_nChange           = getFieldOrNaN(practiceFlow.block1.summary, 'nChange');
+    practiceRow.b1_nChange_detect    = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_detect');
+    practiceRow.b1_nChange_see       = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_see');
     practiceRow.b1_changeDetect      = getFieldOrNaN(practiceFlow.block1.summary, 'changeDetectRate');
     practiceRow.b1_changeSee         = getFieldOrNaN(practiceFlow.block1.summary, 'changeSeeRate');
     
     % Block 2 summary
     practiceRow.b2_result            = string(practiceFlow.block2.result);
+    practiceRow.b2_classification    = getTextFieldOrDefault(practiceFlow.block2.summary, 'classification', 'not_run');
     practiceRow.b2_nTrials           = getFieldOrNaN(practiceFlow.block2.summary, 'nTrials');
+    practiceRow.b2_nSTD              = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD');
+    practiceRow.b2_nSTD_detect       = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD_detect');
+    practiceRow.b2_nSTD_see          = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD_see');
+    practiceRow.b2_stdDetect         = getFieldOrNaN(practiceFlow.block2.summary, 'stdDetectRate');
+    practiceRow.b2_stdSee            = getFieldOrNaN(practiceFlow.block2.summary, 'stdSeeRate');
+    practiceRow.b2_nNCH              = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH');
+    practiceRow.b2_nNCH_FA           = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH_FA');
+    practiceRow.b2_nNCH_CR           = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH_CR');
     practiceRow.b2_faRateNCH         = getFieldOrNaN(practiceFlow.block2.summary, 'faRateNCH');
+    practiceRow.b2_crRateNCH         = getFieldOrNaN(practiceFlow.block2.summary, 'crRateNCH');
+    practiceRow.b2_nEASY             = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY');
+    practiceRow.b2_nEASY_detect      = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY_detect');
+    practiceRow.b2_nEASY_see         = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY_see');
     practiceRow.b2_easyDetect        = getFieldOrNaN(practiceFlow.block2.summary, 'easyDetectRate');
     practiceRow.b2_easySee           = getFieldOrNaN(practiceFlow.block2.summary, 'easySeeRate');
+    practiceRow.b2_nChange           = getFieldOrNaN(practiceFlow.block2.summary, 'nChange');
+    practiceRow.b2_nChange_detect    = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_detect');
+    practiceRow.b2_nChange_see       = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_see');
     practiceRow.b2_changeDetect      = getFieldOrNaN(practiceFlow.block2.summary, 'changeDetectRate');
     practiceRow.b2_changeSee         = getFieldOrNaN(practiceFlow.block2.summary, 'changeSeeRate');
     
     practiceTable = struct2table(practiceRow);
     
-    practiceFileCSV = fullfile(outDir, sprintf('CB_4xGratings_%s_PracticeFlow_%s.csv', cfg.participantID, timestamp));
+    practiceFileCSV = fullfile(outDir, sprintf('%s_%s_PracticeFlow_%s.csv', cfg.outputPrefix, cfg.participantID, timestamp));
     writetable(practiceTable, practiceFileCSV);
     fprintf('Saved practice flow CSV: %s\n', practiceFileCSV);
-    practiceFileMAT = fullfile(outDir, sprintf('CB_4xGratings_%s_PracticeFlow_%s.mat', cfg.participantID, timestamp));
+    practiceFileMAT = fullfile(outDir, sprintf('%s_%s_PracticeFlow_%s.mat', cfg.outputPrefix, cfg.participantID, timestamp));
     save(practiceFileMAT, 'practiceFlow', 'practiceRow');
     fprintf('Saved practice flow MAT: %s\n', practiceFileMAT);
 
@@ -873,6 +915,7 @@ try
     fprintf('Run complete: fixed S1=%d frames, ISI=%d frames, S2=%d frames, gap=%d frames.\n', ...
         cfg.S1_frames, cfg.ISI_frames, cfg.S2_frames, cfg.gap_frames);
     fprintf('Orientation magnitudes used: %s deg.\n', mat2str(cfg.design.changeMagnitudesDeg));
+    fprintf('Change counts by magnitude: %s.\n', mat2str(cfg.design.changeCountsPerMagnitude));
 
 
     %% ------------------------- SAVE -------------------------
@@ -910,6 +953,7 @@ try
     T.fixedGapSec    = repmat(cfg.gap_frames * ifi, height(T), 1);
     T.designMagnitudesDeg = repmat(string(mat2str(cfg.design.changeMagnitudesDeg)), height(T), 1);
     T.changeTrialsPerMagnitude = repmat(cfg.nChangePerMagnitude, height(T), 1);
+    T.changeCountsPerMagnitude = repmat(string(mat2str(cfg.design.changeCountsPerMagnitude)), height(T), 1);
     T.noChangeTrials = repmat(cfg.nCatch, height(T), 1);
     T.debugQuickRun = repmat(double(cfg.debug.quickRun), height(T), 1);
     T.questTest100 = repmat(0, height(T), 1);
@@ -952,6 +996,7 @@ try
     cal.design         = cfg.design;
     cal.changeMagnitudesDeg = cfg.design.changeMagnitudesDeg;
     cal.nChangePerMagnitude = cfg.nChangePerMagnitude;
+    cal.changeCountsPerMagnitude = cfg.design.changeCountsPerMagnitude;
     cal.nChange        = cfg.nChange;
     cal.nCatch         = cfg.nCatch;
     cal.trialDial      = cfg.trialDial;
@@ -965,7 +1010,7 @@ try
     cal.gap_sec        = cfg.gap_frames * ifi;
     cal.debugQuickRun  = cfg.debug.quickRun;
 
-    calFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FullRun_%s.mat', cfg.participantID, timestamp));
+    calFile = fullfile(outDir, sprintf('%s_%s_FullRun_%s.mat', cfg.outputPrefix, cfg.participantID, timestamp));
     save(calFile, 'cal');
     fprintf('Saved full-run MAT: %s\n', calFile);
 
@@ -981,7 +1026,7 @@ try
         flipLogT.overHalfFrame = flipLogT.missed > 0.5 * ifi;
         flipLogT.overOneFrame = flipLogT.missed > ifi;
 
-        flipLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_FlipLog_%s.csv', cfg.participantID, timestamp));
+        flipLogFile = fullfile(outDir, sprintf('%s_%s_FlipLog_%s.csv', cfg.outputPrefix, cfg.participantID, timestamp));
         writetable(flipLogT, flipLogFile);
         fprintf('Saved flip log CSV: %s\n', flipLogFile);
 
@@ -1035,7 +1080,7 @@ try
             fprintf('  code=%3d  %-16s  count=%4d\n', codeGroup(ii), char(labelGroupC(ii)), codeCounts(ii));
         end
 
-        triggerLogFile = fullfile(outDir, sprintf('CB_4xGratings_%s_TriggerLog_%s.csv', cfg.participantID, timestamp));
+        triggerLogFile = fullfile(outDir, sprintf('%s_%s_TriggerLog_%s.csv', cfg.outputPrefix, cfg.participantID, timestamp));
         writetable(triggerLogT, triggerLogFile);
         fprintf('Saved trigger log CSV: %s\n', triggerLogFile);
     end
@@ -1045,28 +1090,46 @@ try
     tobii = stopAndSaveTobii(tobii, cfg, outDir, cfg.participantID, timestamp, 'complete');
 
 catch ME
+    isUserAbort = strcmp(ME.identifier, 'CB_4xGratings_v3_Orientation:UserAbort');
+
     try
-        emitTobiiMessage('RUN_ERROR', 'runError', 'experiment_error', NaN, NaN, GetSecs, 'status=error');
-        tobii = stopAndSaveTobii(tobii, cfg, outDir, cfg.participantID, timestamp, 'error');
+        if isUserAbort
+            emitTobiiMessage('RUN_ABORT', 'runAbort', 'experiment_abort', NaN, NaN, GetSecs, 'status=user_abort');
+            tobii = stopAndSaveTobii(tobii, cfg, outDir, cfg.participantID, timestamp, 'user_abort');
+        else
+            emitTobiiMessage('RUN_ERROR', 'runError', 'experiment_error', NaN, NaN, GetSecs, 'status=error');
+            tobii = stopAndSaveTobii(tobii, cfg, outDir, cfg.participantID, timestamp, 'error');
+        end
     catch
     end
 
-    try cleanup(window, cfg); catch, end
+    if ~isempty(cleanupObj)
+        clear cleanupObj
+    else
+        try cleanup(window, cfg); catch, end
+    end
+
+    lastCompleted = 0;
+    if exist('results','var')
+        last = find(~cellfun(@isempty,{results.participantID}), 1, 'last');
+        if ~isempty(last)
+            checkpointSave(results, last, outFile);
+            lastCompleted = last;
+        end
+    end
+
+    if isUserAbort
+        fprintf('\nExperiment stopped by user. Completed main trials checkpointed: %d.\n', lastCompleted);
+        return;
+    end
 
     rep = getReport(ME,'extended','hyperlinks','off');
-    fprintf(2, '\n\n===== CB_Gratings ERROR =====\n%s\n', rep);
+    fprintf(2, '\n\n===== %s ERROR =====\n%s\n', cfg.outputPrefix, rep);
 
-    fid = fopen(fullfile(pwd,'CB_last_error.txt'),'w');
+    fid = fopen(fullfile(pwd, sprintf('%s_last_error.txt', cfg.outputPrefix)), 'w');
     if fid > 0
         fprintf(fid, '%s\n', rep);
         fclose(fid);
-    end
-
-    if exist('results','var')
-    last = find(~cellfun(@isempty,{results.participantID}), 1, 'last');
-    if ~isempty(last)
-        checkpointSave(results, last, outFile);
-    end
     end
 
     rethrow(ME);
@@ -1528,7 +1591,7 @@ end
 function checkAbort(cfg)
     [pressed, firstPress] = KbQueueCheck(cfg.kbDev);
     if pressed && firstPress(cfg.keys.escape) > 0
-        error('Experiment terminated by user (ESC).');
+        error('CB_4xGratings_v3_Orientation:UserAbort', 'Experiment terminated by user (ESC).');
     end
 end
 
@@ -1787,7 +1850,9 @@ function printPracticeSummary(summary, label)
     end
 
     % Helper for pretty printing NaN-safe values
-    fprintf('FA(NCH)=%s | CR(NCH)=%s | EasyDetect=%s | EasySee=%s | ChangeDetect=%s | ChangeSee=%s\n', ...
+    fprintf('StdDetect=%s | StdSee=%s | FA(NCH)=%s | CR(NCH)=%s | EasyDetect=%s | EasySee=%s | ChangeDetect=%s | ChangeSee=%s\n', ...
+        fmtRate(getFieldOrNaN(summary,'stdDetectRate')), ...
+        fmtRate(getFieldOrNaN(summary,'stdSeeRate')), ...
         fmtRate(getFieldOrNaN(summary,'faRateNCH')), ...
         fmtRate(getFieldOrNaN(summary,'crRateNCH')), ...
         fmtRate(getFieldOrNaN(summary,'easyDetectRate')), ...
@@ -1808,6 +1873,14 @@ function v = getFieldOrNaN(s, fieldName)
         end
     else
         v = NaN;
+    end
+end
+
+function v = getTextFieldOrDefault(s, fieldName, defaultValue)
+    if isstruct(s) && isfield(s, fieldName) && ~isempty(s.(fieldName))
+        v = string(s.(fieldName));
+    else
+        v = string(defaultValue);
     end
 end
 
@@ -1835,7 +1908,7 @@ function [key, secs] = waitForKeyQueue(validKeys, escapeKey, maxSecs, cfg)
 
         if pressed
             if firstPress(escapeKey) > 0
-                error('Experiment terminated by user (ESC).');
+                error('CB_4xGratings_v3_Orientation:UserAbort', 'Experiment terminated by user (ESC).');
             end
 
             vkPress = firstPress(validKeys);
@@ -1864,7 +1937,11 @@ function label = orientationMagnitudeLabel(mag)
     if isnan(mag)
         label = 'NCH';
     else
-        label = sprintf('M%.1f', mag);
+        if abs(10 * mag - round(10 * mag)) < 1e-9
+            label = sprintf('M%.1f', mag);  % preserve existing labels for full-run magnitudes
+        else
+            label = sprintf('M%.12g', mag);
+        end
         label = strrep(label, '.', 'p');
     end
 end
@@ -1878,8 +1955,7 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
         'changeQuad', NaN, ...
         'changeStartOri', NaN, ...
         'changeMagnitudeDeg', NaN, ...
-        'staircase', 'P', ...
-        'durFrames', NaN);
+        'staircase', 'P');
 
     nTotal = pracCfg.nTrials;
     pTrials = repmat(trialTemplate, nTotal, 1);
@@ -1944,6 +2020,75 @@ function mag = getPracticeMagnitude(pracCfg, fieldName, fallback)
     end
 end
 
+function [mags, counts, nNoChange, trialsPerBlock] = validateQuickRunProfile(debugCfg)
+    requiredFields = {'quickRunMagnitudesDeg', 'quickRunChangeCounts', ...
+        'quickRunNoChangeTrials', 'quickRunTrialsPerBlock'};
+    for ii = 1:numel(requiredFields)
+        if ~isfield(debugCfg, requiredFields{ii})
+            error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+                'Missing cfg.debug.%s.', requiredFields{ii});
+        end
+    end
+
+    mags = debugCfg.quickRunMagnitudesDeg;
+    counts = debugCfg.quickRunChangeCounts;
+    nNoChange = debugCfg.quickRunNoChangeTrials;
+    trialsPerBlock = debugCfg.quickRunTrialsPerBlock;
+
+    if ~isnumeric(mags) || ~isreal(mags) || ~isvector(mags) || isempty(mags) || ...
+            any(~isfinite(mags)) || any(mags <= 0) || any(mags > 90)
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            'quickRunMagnitudesDeg must be a non-empty vector of finite values in (0, 90].');
+    end
+    mags = double(mags(:)');
+    if any(diff(sort(mags)) < 1e-9)
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            'quickRunMagnitudesDeg must contain unique values.');
+    end
+
+    if ~isnumeric(counts) || ~isreal(counts) || ~isvector(counts) || isempty(counts) || ...
+            any(~isfinite(counts)) || any(counts <= 0) || any(abs(counts - round(counts)) > 1e-9)
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            'quickRunChangeCounts must be a non-empty vector of positive integers.');
+    end
+    counts = double(round(counts(:)'));
+    if numel(mags) ~= numel(counts)
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            'quickRunMagnitudesDeg and quickRunChangeCounts must have the same length.');
+    end
+
+    if ~isnumeric(nNoChange) || ~isreal(nNoChange) || ~isscalar(nNoChange) || ...
+            ~isfinite(nNoChange) || nNoChange < 0 || abs(nNoChange - round(nNoChange)) > 1e-9
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            'quickRunNoChangeTrials must be a non-negative integer scalar.');
+    end
+    nNoChange = double(round(nNoChange));
+
+    if ~isnumeric(trialsPerBlock) || ~isreal(trialsPerBlock) || ~isscalar(trialsPerBlock) || ...
+            ~isfinite(trialsPerBlock) || trialsPerBlock <= 0 || ...
+            abs(trialsPerBlock - round(trialsPerBlock)) > 1e-9
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            'quickRunTrialsPerBlock must be a positive integer scalar.');
+    end
+    trialsPerBlock = double(round(trialsPerBlock));
+
+    nChange = sum(counts);
+    nTotal = nChange + nNoChange;
+    if mod(nTotal, trialsPerBlock) ~= 0
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            ['Quick-run total trials (%d) must be divisible by ' ...
+             'quickRunTrialsPerBlock (%d).'], nTotal, trialsPerBlock);
+    end
+
+    nBlocks = nTotal / trialsPerBlock;
+    if mod(nChange, nBlocks) ~= 0 || mod(nNoChange, nBlocks) ~= 0
+        error('CB_4xGratings_v3_Orientation:InvalidQuickRunProfile', ...
+            ['Quick-run change (%d) and no-change (%d) totals must each be ' ...
+             'divisible by the derived number of blocks (%d).'], ...
+            nChange, nNoChange, nBlocks);
+    end
+end
+
 function trials = buildTrialList(cfg)
 
     trialTemplate = struct( ...
@@ -1957,10 +2102,13 @@ function trials = buildTrialList(cfg)
     trials = repmat(trialTemplate, cfg.nTotal, 1);
 
     mags = cfg.design.changeMagnitudesDeg(:)';
-    nMags = numel(mags);
-    assert(mod(cfg.nChange, nMags) == 0, 'nChange must be divisible by number of magnitudes.');
+    magCounts = cfg.design.changeCountsPerMagnitude(:)';
+    assert(numel(mags) == numel(magCounts), ...
+        'buildTrialList: Magnitude and count vectors must have the same length.');
+    assert(sum(magCounts) == cfg.nChange, ...
+        'buildTrialList: Magnitude-specific counts must sum to nChange.');
 
-    magPool = repelem(mags, cfg.nChange / nMags);
+    magPool = repelem(mags, magCounts);
     magPool = magPool(randperm(numel(magPool)));
 
     if mod(cfg.nChange, 4) == 0
@@ -2743,7 +2891,7 @@ function tobii = stopAndSaveTobii(tobii, cfg, outDir, participantID, timestamp, 
         end
 
         dat = tobii.EThndl.collectSessionData();
-        dat.expt.scriptName    = 'CB_4xGratings_v3_Orientation';
+        dat.expt.scriptName    = cfg.outputPrefix;
         dat.expt.stage         = 'Stage3_fixedOrientation_passiveTobii';
         dat.expt.statusLabel   = statusLabel;
         dat.expt.participantID = participantID;
@@ -2751,7 +2899,7 @@ function tobii = stopAndSaveTobii(tobii, cfg, outDir, participantID, timestamp, 
         dat.expt.calVal        = tobii.calVal;
         dat.expt.configSummary = makeTobiiConfigSummary(cfg);
 
-        saveBase = fullfile(outDir, sprintf('CB_4xGratings_v3_Orientation_%s_Tobii_%s', participantID, timestamp));
+        saveBase = fullfile(outDir, sprintf('%s_%s_Tobii_%s', cfg.outputPrefix, participantID, timestamp));
         tobii.saveBase = saveBase;
 
         if cfg.tobii.saveMat
@@ -2790,6 +2938,8 @@ function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary.nBlocks = cfg.nBlocks;
     cfgSummary.changePerBlock = cfg.trialDial.nChangePerBlock;
     cfgSummary.noChangePerBlock = cfg.trialDial.nNoChangePerBlock;
+    cfgSummary.changeMagnitudesDeg = cfg.design.changeMagnitudesDeg;
+    cfgSummary.changeCountsPerMagnitude = cfg.design.changeCountsPerMagnitude;
     cfgSummary.S1_frames = cfg.S1_frames;
     cfgSummary.ISI_frames = cfg.ISI_frames;
     cfgSummary.S2_frames = cfg.S2_frames;
@@ -3005,7 +3155,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
 
     pracOff = cfg.eeg.practiceCodeOffset;
 
-    % --- Practice metrics counters (Phase C scaffold) ---
+    % --- Practice metrics counters ---
     m = struct();
     
     m.nTrials = numel(pTrials);
@@ -3018,9 +3168,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
 
         for p = 1:numel(pTrials)
             trial = pTrials(p);
-                checkAbort(cfg);
-    
-            durFrames = cfg.S1_frames;
+            checkAbort(cfg);
     
             % Build S1 orientations using the same rules as main task
             if trial.isChange
@@ -3160,6 +3308,72 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                     cfg.emitTrigger('pasResponse', pracCfg.name, p, NaN, cfg.eeg.codes.pasBase + pas + pracOff, 'Q3_PAS', tQ3);
                 end
             end
+
+            % ---- Practice metrics ----
+            if trial.isChange
+                m.nChange = m.nChange + 1;
+                if detected
+                    m.nChange_detect = m.nChange_detect + 1;
+                end
+                if detected && locCorrect == 1
+                    m.nChange_see = m.nChange_see + 1;
+                end
+            end
+
+            switch trial.trialType
+                case 'STD'
+                    m.nSTD = m.nSTD + 1;
+                    if detected
+                        m.nSTD_detect = m.nSTD_detect + 1;
+                    end
+                    if detected && locCorrect == 1
+                        m.nSTD_see = m.nSTD_see + 1;
+                    end
+
+                case 'NCH'
+                    m.nNCH = m.nNCH + 1;
+                    if detected
+                        m.nNCH_FA = m.nNCH_FA + 1;
+                    else
+                        m.nNCH_CR = m.nNCH_CR + 1;
+                    end
+
+                case 'EASY'
+                    m.nEASY = m.nEASY + 1;
+                    if detected
+                        m.nEASY_detect = m.nEASY_detect + 1;
+                    end
+                    if detected && locCorrect == 1
+                        m.nEASY_see = m.nEASY_see + 1;
+                    end
+            end
+
+            if cfg.practice.logToCommandWindow
+                if trial.isChange
+                    qStr = numToStrOrNA(trial.changeQuad);
+                    locStr = numToStrOrNA(locCorrect);
+                    if detected && locCorrect == 1
+                        outcomeStr = 'SEE';
+                    elseif detected
+                        outcomeStr = 'SENS';
+                    else
+                        outcomeStr = 'BLIND';
+                    end
+                else
+                    qStr = '-';
+                    locStr = '-';
+                    if detected
+                        outcomeStr = 'FA';
+                    else
+                        outcomeStr = 'CR';
+                    end
+                end
+
+                fprintf(['PRACTICE %-16s trl=%02d/%02d type=%-4s mag=%5.1f q=%s | ' ...
+                    'DET=%s LOC=%s PAS=%s | loc=%s | %s\n'], ...
+                    pracCfg.name, p, numel(pTrials), trial.trialType, trial.changeMagnitudeDeg, qStr, ...
+                    numToStrOrNA(detectResp), numToStrOrNA(resp2), numToStrOrNA(pas), locStr, outcomeStr);
+            end
     
             % ---- Feedback ----
             if pracCfg.feedback
@@ -3225,6 +3439,8 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
         summary.nTrials = m.nTrials;
         
         summary.nSTD = m.nSTD;
+        summary.nSTD_detect = m.nSTD_detect;
+        summary.nSTD_see = m.nSTD_see;
         summary.nNCH = m.nNCH;
         summary.nEASY = m.nEASY;
         
@@ -3238,6 +3454,9 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
         
         summary.nChange_detect = m.nChange_detect;
         summary.nChange_see    = m.nChange_see;
+
+        summary.stdDetectRate  = safeRate(m.nSTD_detect, m.nSTD);
+        summary.stdSeeRate     = safeRate(m.nSTD_see, m.nSTD);
         
         summary.faRateNCH      = safeRate(m.nNCH_FA, m.nNCH);
         summary.crRateNCH      = safeRate(m.nNCH_CR, m.nNCH);
@@ -3247,8 +3466,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
         
         summary.changeDetectRate = safeRate(m.nChange_detect, m.nChange);
         summary.changeSeeRate    = safeRate(m.nChange_see, m.nChange);
-        
-        summary.classification = 'unclassified';  % next phase
 
     end
 
