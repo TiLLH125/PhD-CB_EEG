@@ -1,9 +1,9 @@
-%% One-Shot Change Blindness (4 gratings) + Fixed Orientation Magnitudes + Detection First
+%% One-Shot Change Blindness (4 gratings) + Fixed Orientation Magnitudes + PAS First
 % Stage 3 variant derived from CB_4xGratings_v3 with passive Tobii/Titta eye tracking
 % and EEG triggers retained.
 % - 2x2 grid of Gabors/gratings
 % - Fixed timing: Fix -> S1(600 ms) -> ISI(200 ms) -> S2(600 ms) -> Gap(200 ms)
-% - Questions: Q1 Detection (Y/N) -> Q2 Localisation (4AFC) -> Q3 PAS clarity (1-4)
+% - Questions: Q1 PAS clarity (1-4) -> Q2 Detection (Yes/No) -> Q3 Localisation (4AFC)
 % - No QUEST+: orientation-change magnitude is fixed by trial.
 % - Main run: 600 trials, 456 change trials balanced across 22.5, 45, 67.5, and 90 deg
 %   (114 change trials per magnitude) plus 144 no-change catch trials.
@@ -32,6 +32,9 @@ KbName('UnifyKeyNames');
 %% ------------------------- USER CONFIG -------------------------
 cfg = struct();
 cfg.outputPrefix = 'CB_4xGratings_v3_Orientation';
+cfg.questionOrder = 'PAS>Detection>Localisation';
+cfg.detectionKeyMapping = 'green:a=yes;red:f=no';
+cfg.eegQuestionTriggerScheme = 'Q1_PAS_30-34;Q2_Detection_40-42;Q3_Localisation_50-54';
 
 cfg.participantID = input('Enter Participant ID (e.g., S001): ', 's');
 if isempty(cfg.participantID), cfg.participantID = 'UNKNOWN'; end
@@ -67,21 +70,21 @@ cfg.eeg.codes.s1On       = 21;
 cfg.eeg.codes.isiOn      = 22;
 cfg.eeg.codes.s2On       = 23;
 cfg.eeg.codes.gapOn      = 24;
-cfg.eeg.codes.q1On       = 30; % Q1 detection onset
-cfg.eeg.codes.detectNo   = 31; % Q1 detection response: no
-cfg.eeg.codes.detectYes  = 32; % Q1 detection response: yes
-cfg.eeg.codes.q2On       = 40; % Q2 localisation onset
-cfg.eeg.codes.locBase    = 40; % LOC response = 40 + quadrant value (41-44)
-cfg.eeg.codes.q3On       = 50; % Q3 PAS onset
-cfg.eeg.codes.pasBase    = 50; % PAS response = 50 + PAS value (51-54)
+cfg.eeg.codes.q1On       = 30; % Q1 PAS onset
+cfg.eeg.codes.pasBase    = 30; % PAS response = 30 + PAS value (31-34)
+cfg.eeg.codes.q2On       = 40; % Q2 detection onset
+cfg.eeg.codes.detectNo   = 41; % Q2 detection response: no
+cfg.eeg.codes.detectYes  = 42; % Q2 detection response: yes
+cfg.eeg.codes.q3On       = 50; % Q3 localisation onset
+cfg.eeg.codes.locBase    = 50; % LOC response = 50 + quadrant value (51-54)
 cfg.eeg.codes.trialEnd   = 60;
 % Ascending within-trial EEG trigger suite (main trials):
 %   11 trial start/fixation, 21 S1, 22 ISI, 23 S2, 24 gap,
-%   30 Q1 detection, 31 no / 32 yes, 40 Q2 loc, 41-44 LOC response,
-%   50 Q3 PAS, 51-54 PAS response, 60 trial end then reset to 0.
+%   30 Q1 PAS, 31-34 PAS response, 40 Q2 detection, 41 no / 42 yes,
+%   50 Q3 localisation, 51-54 LOC response, 60 trial end then reset to 0.
 % Practice uses the same suite with practiceCodeOffset (+100 -> 111-160 family):
-%   111 fix, 121 S1, 122 ISI, 123 S2, 124 gap, 130 Q1, 131/132 detection,
-%   140 Q2, 141-144 LOC, 150 Q3, 151-154 PAS, 160 trial end.
+%   111 fix, 121 S1, 122 ISI, 123 S2, 124 gap, 130 Q1 PAS, 131-134 PAS,
+%   140 Q2 detection, 141/142 detection, 150 Q3 LOC, 151-154 LOC, 160 trial end.
 % Fixed timing, change magnitude, detection, localisation, PAS, and outcome metadata
 % are saved to FullRun CSV, MAT, Tobii, and triggerLog but are NOT sent as EEG pulses.
 
@@ -285,11 +288,12 @@ end
 cfg.keys.escape = KbName('ESCAPE');
 cfg.keys.space  = KbName('space');
 
-% Q1 detection: y/n. Q2 loc: right hand (numpad 7/9/1/3). Q3 PAS: left hand (q/w/e/r).
+% Q1 PAS: left hand (q/w/e/r). Q2 detection: A=Yes/green, F=No/red.
+% Q3 localisation: right hand (numpad 7/9/1/3).
 % If numpad keys fail at runtime, run KbName interactively (e.g. KbName('KP_7'))
 % to confirm correct names on this system - do not remap to top-row number keys.
-cfg.keys.detectPhysical = {'n','y'};
-cfg.keys.detectValues   = [0 1];
+cfg.keys.detectPhysical = {'a','f'};
+cfg.keys.detectValues   = [1 0];
 
 cfg.keys.quadPhysical = {'7','9','1','3'};
 cfg.keys.quadValues   = [1 2 3 4];
@@ -301,7 +305,7 @@ cfg.keys.detect = KbName(cfg.keys.detectPhysical);
 cfg.keys.quad   = KbName(cfg.keys.quadPhysical);
 cfg.keys.pas    = KbName(cfg.keys.pasPhysical);
 
-fprintf('DETECTION key mapping: n=No, y=Yes\n');
+fprintf('DETECTION key mapping: a=Yes (GREEN sticker), f=No (RED sticker)\n');
 fprintf('LOC key mapping: numpad7=1, numpad9=2, numpad1=3, numpad3=4\n');
 fprintf('PAS key mapping: q=1, w=2, e=3, r=4\n');
 fprintf('DETECTION KbName codes: %s\n', mat2str(cfg.keys.detect));
@@ -429,6 +433,9 @@ try
     fprintf('Total no-change: %d\n', cfg.nCatch);
     fprintf('Change magnitudes: %s deg\n', mat2str(cfg.design.changeMagnitudesDeg));
     fprintf('Change counts by magnitude: %s\n', mat2str(cfg.design.changeCountsPerMagnitude));
+    fprintf('Question order: %s\n', cfg.questionOrder);
+    fprintf('Detection buttons: %s\n', cfg.detectionKeyMapping);
+    fprintf('Question trigger scheme: %s\n', cfg.eegQuestionTriggerScheme);
     fprintf('S1_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.S1_frames, cfg.S1_frames * ifi * 1000, 1/ifi);
     fprintf('ISI_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.ISI_frames, cfg.ISI_frames * ifi * 1000, 1/ifi);
     fprintf('S2_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.S2_frames, cfg.S2_frames * ifi * 1000, 1/ifi);
@@ -494,8 +501,8 @@ try
     % Record the full visible session: instructions, overview, practice, main trials, breaks, and end screen.
     tobii = startTobiiRecording(tobii, cfg, windowRect, ifi, timestamp);
     emitTobiiMessage('RUN_START', 'runStart', 'experiment', NaN, NaN, GetSecs, ...
-        sprintf('participantID=%s timestamp=%s screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d magnitudesDeg=%s magnitudeCounts=%s S1ms=%.0f ISIms=%.0f S2ms=%.0f gapMs=%.0f', ...
-        cfg.participantID, timestamp, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable), mat2str(cfg.design.changeMagnitudesDeg), mat2str(cfg.design.changeCountsPerMagnitude), cfg.S1_frames*ifi*1000, cfg.ISI_frames*ifi*1000, cfg.S2_frames*ifi*1000, cfg.gap_frames*ifi*1000));
+        sprintf('participantID=%s timestamp=%s screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d magnitudesDeg=%s magnitudeCounts=%s questionOrder=%s detectionKeyMapping=%s eegQuestionTriggerScheme=%s S1ms=%.0f ISIms=%.0f S2ms=%.0f gapMs=%.0f', ...
+        cfg.participantID, timestamp, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable), mat2str(cfg.design.changeMagnitudesDeg), mat2str(cfg.design.changeCountsPerMagnitude), cfg.questionOrder, cfg.detectionKeyMapping, cfg.eegQuestionTriggerScheme, cfg.S1_frames*ifi*1000, cfg.ISI_frames*ifi*1000, cfg.S2_frames*ifi*1000, cfg.gap_frames*ifi*1000));
 
     %% ------------------------- INSTRUCTIONS SCREEN -------------------------
 
@@ -514,6 +521,9 @@ try
 
     %% ------------------------- PRACTICE FLOW (LINEAR) -----------------------------
     practiceFlow = struct();
+    practiceFlow.questionOrder = cfg.questionOrder;
+    practiceFlow.detectionKeyMapping = cfg.detectionKeyMapping;
+    practiceFlow.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
     practiceFlow.block1 = struct('summary', struct(), 'result', 'not_run');
     practiceFlow.block2 = struct('summary', struct(), 'result', 'not_run');
 
@@ -544,6 +554,9 @@ try
 
     practiceRow.participantID = string(cfg.participantID);
     practiceRow.timestamp     = string(timestamp);
+    practiceRow.questionOrder = string(cfg.questionOrder);
+    practiceRow.detectionKeyMapping = string(cfg.detectionKeyMapping);
+    practiceRow.eegQuestionTriggerScheme = string(cfg.eegQuestionTriggerScheme);
     
     % Block 1 summary
     practiceRow.b1_result            = string(practiceFlow.block1.result);
@@ -696,56 +709,74 @@ try
         end
 
         % ---------------- QUESTIONS ----------------
-        % Q1 (Detection Y/N)
+        % Q1 (PAS clarity)
+        Screen('DrawTexture', window, cfg.qTex.PAS);
+        Screen('DrawingFinished', window);
+        vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
+        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, blockNum, vblTargetQ1);
+        if cfg.eeg.markerPolicy.markMainTrials
+            emitTrigger('q1On', 'main_trial', t, blockNum, cfg.eeg.codes.q1On, 'Q1_PAS', tQ1);
+        end
+        [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
+        pasRT = pasTime - tQ1;
+        pas = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
+        emitTobiiMessage('PAS_RESP', 'Q1_PAS', 'main_trial', t, blockNum, pasTime, ...
+            sprintf('pas=%s keyCode=%s rtMs=%.3f', numToStrOrNA(pas), numToStrOrNA(pasKey), pasRT * 1000));
+        if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
+            if ~isnan(pas) && pas >= 1 && pas <= 4
+                emitTrigger('pasResponse', 'main_trial', t, blockNum, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tQ1);
+            end
+        end
+
+        % Q2 (Detection Yes/No)
         drawDetection(window, windowRect, black, bg, cfg);
         Screen('DrawingFinished', window);
-        
-        vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
-        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_Detect', 'main_trial', t, blockNum, vblTargetQ1);
+        vblTargetQ2 = GetSecs + 0.5 * ifi;
+        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Detect', 'main_trial', t, blockNum, vblTargetQ2);
         if cfg.eeg.markerPolicy.markMainTrials
-            emitTrigger('q1On', 'main_trial', t, blockNum, cfg.eeg.codes.q1On, 'Q1_Detect', tQ1);
+            emitTrigger('q2On', 'main_trial', t, blockNum, cfg.eeg.codes.q2On, 'Q2_Detect', tQ2);
         end
-        
+
         [detectKey, detectTime] = waitForKeyQueue(cfg.keys.detect, cfg.keys.escape, cfg.maxRespSec, cfg);
-        detectRT = detectTime - tQ1;
+        detectRT = detectTime - tQ2;
         detectResp = keyToMappedValue(detectKey, cfg.keys.detect, cfg.keys.detectValues);
-        emitTobiiMessage('DETECT_RESP', 'Q1_Detect', 'main_trial', t, blockNum, detectTime, ...
+        emitTobiiMessage('DETECT_RESP', 'Q2_Detect', 'main_trial', t, blockNum, detectTime, ...
             sprintf('detect=%s keyCode=%s rtMs=%.3f', numToStrOrNA(detectResp), numToStrOrNA(detectKey), detectRT * 1000));
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
             if ~isnan(detectResp)
                 if detectResp == 1
-                    emitTrigger('detectYes', 'main_trial', t, blockNum, cfg.eeg.codes.detectYes, 'Q1_Detect', tQ1);
+                    emitTrigger('detectYes', 'main_trial', t, blockNum, cfg.eeg.codes.detectYes, 'Q2_Detect', tQ2);
                 elseif detectResp == 0
-                    emitTrigger('detectNo', 'main_trial', t, blockNum, cfg.eeg.codes.detectNo, 'Q1_Detect', tQ1);
+                    emitTrigger('detectNo', 'main_trial', t, blockNum, cfg.eeg.codes.detectNo, 'Q2_Detect', tQ2);
                 end
             end
         end
         hit = double(~isnan(detectResp) && detectResp == 1);
 
-        % Q2 (Localise) - ALWAYS ask, even after a no response.
+        % Q3 (Localise) - ALWAYS ask, even after a no response.
         if hit == 0
             Screen('DrawTexture', window, cfg.qTex.Loc_detectNo);
         else
             Screen('DrawTexture', window, cfg.qTex.Loc_default);
         end
         Screen('DrawingFinished', window);
-        vblTargetQ2 = GetSecs + 0.5 * ifi;
-        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, blockNum, vblTargetQ2);
+        vblTargetQ3 = GetSecs + 0.5 * ifi;
+        [tQ3, ~, ~, missedQ3] = cfg.loggedFlip('Q3_Loc', 'main_trial', t, blockNum, vblTargetQ3);
         if cfg.eeg.markerPolicy.markMainTrials
-            emitTrigger('q2On', 'main_trial', t, blockNum, cfg.eeg.codes.q2On, 'Q2_Loc', tQ2);
+            emitTrigger('q3On', 'main_trial', t, blockNum, cfg.eeg.codes.q3On, 'Q3_Loc', tQ3);
         end
-        
+
         [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
-        locRT = resp2Time - tQ2;
+        locRT = resp2Time - tQ3;
         resp2 = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
-        emitTobiiMessage('LOC_RESP', 'Q2_Loc', 'main_trial', t, blockNum, resp2Time, ...
+        emitTobiiMessage('LOC_RESP', 'Q3_Loc', 'main_trial', t, blockNum, resp2Time, ...
             sprintf('loc=%s keyCode=%s rtMs=%.3f', numToStrOrNA(resp2), numToStrOrNA(resp2Key), locRT * 1000));
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
             if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
-                emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + resp2, 'Q2_Loc', tQ2);
+                emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + resp2, 'Q3_Loc', tQ3);
             end
         end
-        
+
         % Localisation correctness (only meaningful on change trials)
         if trial.isChange
             if isnan(resp2)
@@ -757,26 +788,7 @@ try
             locCorrect = NaN;
         end
 
-        % Q3 (PAS clarity)
-        Screen('DrawTexture', window, cfg.qTex.PAS);
-        Screen('DrawingFinished', window);
-        vblTargetQ3 = GetSecs + 0.5 * ifi;
-        [tQ3, ~, ~, missedQ3] = cfg.loggedFlip('Q3_PAS', 'main_trial', t, blockNum, vblTargetQ3);
-        if cfg.eeg.markerPolicy.markMainTrials
-            emitTrigger('q3On', 'main_trial', t, blockNum, cfg.eeg.codes.q3On, 'Q3_PAS', tQ3);
-        end
-        [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
-        pasRT = pasTime - tQ3;
-        pas = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
-        emitTobiiMessage('PAS_RESP', 'Q3_PAS', 'main_trial', t, blockNum, pasTime, ...
-            sprintf('pas=%s keyCode=%s rtMs=%.3f', numToStrOrNA(pas), numToStrOrNA(pasKey), pasRT * 1000));
-        if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
-            if ~isnan(pas) && pas >= 1 && pas <= 4
-                emitTrigger('pasResponse', 'main_trial', t, blockNum, cfg.eeg.codes.pasBase + pas, 'Q3_PAS', tQ3);
-            end
-        end
-
-        tTrialEnd = pasTime;
+        tTrialEnd = resp2Time;
         trialTotalSec = tTrialEnd - tTrialStart;
 
         % ITI
@@ -852,17 +864,26 @@ try
         results(t).missedISI = missedISI;
         results(t).missedS2  = missedS2;
         results(t).missedGap = missedGap;
+        % Positional fields follow Q1 PAS, Q2 detection, Q3 localisation.
         results(t).missedQ1  = missedQ1;
         results(t).missedQ2  = missedQ2;
         results(t).missedQ3  = missedQ3;
+        results(t).missedPAS = missedQ1;
+        results(t).missedDetect = missedQ2;
+        results(t).missedLoc = missedQ3;
         results(t).missedITI = missedITI;
         results(t).tQ1 = tQ1;
         results(t).tQ2 = tQ2;
         results(t).tQ3 = tQ3;
+        results(t).tPAS = tQ1;
+        results(t).tDetect = tQ2;
+        results(t).tLoc = tQ3;
 
         results(t).detectResp = detectResp;
         results(t).detectRT = detectRT;
+        % Legacy resp2 remains a localisation-response alias for compatibility.
         results(t).resp2 = resp2;
+        results(t).locResp = resp2;
         results(t).locRT = locRT;
 
         results(t).pas = pas;
@@ -901,7 +922,7 @@ try
         % End-of-block
         if mod(t, cfg.trialsPerBlock) == 0
 
-            checkpointSave(results, t, outFile);
+            checkpointSave(results, t, outFile, cfg);
 
             if t < cfg.nTotal
                 blockJustFinished = t / cfg.trialsPerBlock;
@@ -916,6 +937,7 @@ try
         cfg.S1_frames, cfg.ISI_frames, cfg.S2_frames, cfg.gap_frames);
     fprintf('Orientation magnitudes used: %s deg.\n', mat2str(cfg.design.changeMagnitudesDeg));
     fprintf('Change counts by magnitude: %s.\n', mat2str(cfg.design.changeCountsPerMagnitude));
+    fprintf('Question order: %s.\n', cfg.questionOrder);
 
 
     %% ------------------------- SAVE -------------------------
@@ -957,6 +979,9 @@ try
     T.noChangeTrials = repmat(cfg.nCatch, height(T), 1);
     T.debugQuickRun = repmat(double(cfg.debug.quickRun), height(T), 1);
     T.questTest100 = repmat(0, height(T), 1);
+    T.questionOrder = repmat(string(cfg.questionOrder), height(T), 1);
+    T.detectionKeyMapping = repmat(string(cfg.detectionKeyMapping), height(T), 1);
+    T.eegQuestionTriggerScheme = repmat(string(cfg.eegQuestionTriggerScheme), height(T), 1);
 
     writetable(T, outFile);
 
@@ -1009,6 +1034,9 @@ try
     cal.S2_sec         = cfg.S2_frames * ifi;
     cal.gap_sec        = cfg.gap_frames * ifi;
     cal.debugQuickRun  = cfg.debug.quickRun;
+    cal.questionOrder = cfg.questionOrder;
+    cal.detectionKeyMapping = cfg.detectionKeyMapping;
+    cal.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
 
     calFile = fullfile(outDir, sprintf('%s_%s_FullRun_%s.mat', cfg.outputPrefix, cfg.participantID, timestamp));
     save(calFile, 'cal');
@@ -1113,7 +1141,7 @@ catch ME
     if exist('results','var')
         last = find(~cellfun(@isempty,{results.participantID}), 1, 'last');
         if ~isempty(last)
-            checkpointSave(results, last, outFile);
+            checkpointSave(results, last, outFile, cfg);
             lastCompleted = last;
         end
     end
@@ -1278,26 +1306,25 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
 
     % ---- Instruction text (aligned with web task copy) ----
     titleFirstInstructions = 'Change Blindness Task Instruction';
-    % Split body so Question 1 / Question 2 headings can be drawn bold (TextStyle 1).
+    % Split body so each question heading can be drawn bold (TextStyle 1).
     instrBodyA = [ ...
         'In this task you will see four striped circles arranged in a 2 x 2 grid.\n' ...
         'Sometimes ONE of the circles will rotate and change orientation.\n' ...
         'Sometimes NO circles will rotate and change orientation.\n\n' ...
         'After each trial you will answer three questions:\n\n' ...
     ];
-    instrQ1Bold = 'Question 1: Did you detect a change?\n';
-    instrBodyB = [ ...
-        'Press N for no, or Y for yes.\n\n' ...
-    ];
-    instrQ2Bold = 'Question 2: Where was the change?\n';
-    instrBodyC = [ ...
-        'Press a number key:\n\n' ...
+    instrQ1Bold = 'Question 1: How clearly did you experience the change?\n';
+    instrBodyB = 'Use q/w/e/r for PAS ratings 1-4.\n\n';
+    instrQ2Bold = 'Question 2: Did you detect a change?\n';
+    instrBodyC = 'Press the GREEN button for Yes, or the RED button for No.\n\n';
+    instrQ3Bold = 'Question 3: Where was the change?\n';
+    instrBodyD = [ ...
+        'Press the labelled quadrant button:\n\n' ...
         '[1] Top Left    [2] Top Right    [3] Bottom Left    [4] Bottom Right\n\n' ...
-        'Question 3 asks how clear your experience of the change was. Use q/w/e/r for ratings 1-4.\n' ...
-        'You will always be asked all three questions, even if you said there was no change in Question 1.\n\n' ...
+        'You will always be asked all three questions, even if you press the RED button for No in Question 2.\n\n' ...
     ];
-    instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC };
-    instrSegBold = [ false, true, false, true, false ];
+    instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC, instrQ3Bold, instrBodyD };
+    instrSegBold = [ false, true, false, true, false, true, false ];
 
     % ---- Lockout settings ----
     tcfg = cfg.display.text;
@@ -1418,10 +1445,15 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
         '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
         'First, a fixation cross will appear in the centre. Next, you will see four circles, a brief blank screen, then the four circles again.\n' ...
         'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear.\nTry to avoid looking around at the individual circles during the brief sequence.\n\n' ...
-        'After the sequence, you will answer the same three questions described on the previous screen:\n\n' ...
+        'After the sequence, you will answer all three questions in this order:\n' ...
+        '1) PAS clarity, 2) detection using the GREEN/RED buttons, 3) localisation.\n' ...
+        'The diagram shows examples of the stimulus, PAS, and localisation screens.\n\n' ...
     ];
 
-    bottomText ='\nWe will begin with some practice trials so you can get comfortable with the task.\n';
+    bottomText = [ ...
+        '\nYou will always answer PAS, detection, and localisation, including after a RED/No response.\n' ...
+        'We will begin with some practice trials so you can get comfortable with the task.\n' ...
+    ];
 
     % ---- Draw with greyed prompt ----
     Screen('FillRect', window, bg);
@@ -1509,21 +1541,23 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     promptY  = windowRect(4) * tcfg.promptYFrac;
     titlePractice1 = 'Practice Information\n\n\n\n';
 
-    % --- Notice text (tight + readable); two headings in bold ---
+    % --- Notice text (tight + readable) ---
     practice1BodyA = [ ...
         'Before we begin the practice trials, please remember:\n\n'
     ];
-    practice1BoldQ1 = 'Question 1 is the yes/no detection question:\n\n';
+    practice1BoldOrder = 'Question order: PAS, detection, then localisation.\n\n';
     practice1BodyB = [ ...
-        'Press N if you did not detect a change, or Y if you did.\n' ...
-        'Question 3 is the 1-4 clarity/PAS rating, so use the whole range when it fits.\n\n\n' ...
+        'Question 1 is the 1-4 PAS clarity rating using q/w/e/r.\n' ...
+        'Question 2 is detection: GREEN means Yes and RED means No.\n' ...
+        'Question 3 is localisation using the labelled quadrant buttons.\n' ...
+        'Always answer all three questions, including after a RED/No response.\n\n\n' ...
     ];
     practice1BoldBlocks = 'You will be completing two practice blocks:\n\n';
     practice1BodyC = [ ...
         'In the first practice block the trials will include feedback.\n' ...
         'You can ask the researcher questions at any time during the practice trials.\n' ...
     ];
-    practice1Segs = { practice1BodyA, practice1BoldQ1, practice1BodyB, practice1BoldBlocks, practice1BodyC };
+    practice1Segs = { practice1BodyA, practice1BoldOrder, practice1BodyB, practice1BoldBlocks, practice1BodyC };
     practice1SegBold = [ false, true, false, true, false ];
     practiceBodyY = windowRect(4) * tcfg.practiceBodyY;
 
@@ -1608,7 +1642,8 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
         '\nNice work!\n\n' ...
         'You will now complete a second block of practice trials designed to feel more like the real task.\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
-        'Question 1 is yes/no detection. Question 3 is the 1-4 clarity/PAS scale.\n\n' ...
+        'Question 1 is PAS clarity using q/w/e/r. Question 2 is detection using GREEN for Yes and RED for No.\n' ...
+        'Question 3 is localisation using the labelled quadrant buttons. Always answer all three questions.\n\n' ...
     ];
     PracticeText2b = 'Feedback will be removed for this second block.\n';
 
@@ -1675,7 +1710,8 @@ function showMainExperimentIntroScreen(window, windowRect, bg, black, cfg)
         'You will NOT receive feedback during the main run.\n\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
         'As before, please keep your eyes on the centre fixation cross during each trial, even when the circles appear.\n\n' ...
-        'Question 1 is yes/no detection. Question 2 is localisation. Question 3 is the 1-4 clarity/PAS scale.\n' ...
+        'Question 1 is PAS clarity using q/w/e/r. Question 2 is detection using GREEN for Yes and RED for No.\n' ...
+        'Question 3 is localisation using the labelled quadrant buttons. Always answer all three questions.\n' ...
     ];
 
     % ---- PASS 1: greyed prompt ----
@@ -2320,7 +2356,7 @@ function drawDetection(window, windowRect, colour, bg, cfg)
     DrawFormattedText(window, 'Did you detect a change?', 'center', yc - round(h * 0.12), colour, qcfg.pasQuestionWrap);
 
     Screen('TextSize', window, qcfg.pasNumberSize);
-    DrawFormattedText(window, 'N = No        Y = Yes', 'center', yc + round(h * 0.06), colour, qcfg.pasQuestionWrap);
+    DrawFormattedText(window, 'GREEN button = Yes        RED button = No', 'center', yc + round(h * 0.06), colour, qcfg.pasQuestionWrap);
 end
 
 function drawPAS(window, windowRect, colour, bg, cfg)
@@ -2623,13 +2659,20 @@ function r = emptyResultRow()
         'missedQ1', NaN, ...
         'missedQ2', NaN, ...
         'missedQ3', NaN, ...
+        'missedPAS', NaN, ...
+        'missedDetect', NaN, ...
+        'missedLoc', NaN, ...
         'missedITI', NaN, ...
         'tQ1', NaN, ...
         'tQ2', NaN, ...
         'tQ3', NaN, ...
+        'tPAS', NaN, ...
+        'tDetect', NaN, ...
+        'tLoc', NaN, ...
         'detectResp', NaN, ...
         'detectRT', NaN, ...
         'resp2', NaN, ...
+        'locResp', NaN, ...
         'locRT', NaN, ...
         'pas', NaN, ...
         'pasRT', NaN, ...
@@ -2940,6 +2983,9 @@ function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary.noChangePerBlock = cfg.trialDial.nNoChangePerBlock;
     cfgSummary.changeMagnitudesDeg = cfg.design.changeMagnitudesDeg;
     cfgSummary.changeCountsPerMagnitude = cfg.design.changeCountsPerMagnitude;
+    cfgSummary.questionOrder = cfg.questionOrder;
+    cfgSummary.detectionKeyMapping = cfg.detectionKeyMapping;
+    cfgSummary.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
     cfgSummary.S1_frames = cfg.S1_frames;
     cfgSummary.ISI_frames = cfg.ISI_frames;
     cfgSummary.S2_frames = cfg.S2_frames;
@@ -3074,13 +3120,16 @@ function txt = mExceptionText(ME)
 end
 
 
-function checkpointSave(results, t, outFile)
+function checkpointSave(results, t, outFile, cfg)
     try
         r = results(1:t);
         r = r(~cellfun(@isempty,{r.participantID}));
         if isempty(r), return; end
 
         T = struct2table(r);
+        T.questionOrder = repmat(string(cfg.questionOrder), height(T), 1);
+        T.detectionKeyMapping = repmat(string(cfg.detectionKeyMapping), height(T), 1);
+        T.eegQuestionTriggerScheme = repmat(string(cfg.eegQuestionTriggerScheme), height(T), 1);
 
         % Write to temp CSV first, then replace
         [p,n,e] = fileparts(outFile);              % e should be '.csv'
@@ -3114,8 +3163,8 @@ function trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, ~)
         locStr = '-';
     end
 
-    if isnan(resp2), q2 = '-'; else, q2 = sprintf('%d', resp2); end
-    if isnan(pas), q3 = 'NaN'; else, q3 = sprintf('%d', pas); end
+    if isnan(resp2), locStrResp = '-'; else, locStrResp = sprintf('%d', resp2); end
+    if isnan(pas), pasStr = 'NaN'; else, pasStr = sprintf('%d', pas); end
 
     if trial.isChange
         if hit && ~isnan(locCorrect) && locCorrect == 1
@@ -3133,8 +3182,8 @@ function trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, ~)
         end
     end
 
-    fprintf('blk=%02d trl=%03d %s mag=%.1f q=%s dur=%02d | DET=%d LOC=%s PAS=%s | loc=%s | %s\n', ...
-        blockNum, t, tc, trial.changeMagnitudeDeg, qStr, durFrames, hit, q2, q3, locStr, outcomeStr);
+    fprintf('blk=%02d trl=%03d %s mag=%.1f q=%s dur=%02d | PAS=%s DET=%d LOC=%s | loc=%s | %s\n', ...
+        blockNum, t, tc, trial.changeMagnitudeDeg, qStr, durFrames, pasStr, hit, locStrResp, locStr, outcomeStr);
 end
 
 function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, xCentre, yCentre, ifi, cfg, bg, black, pracCfg)
@@ -3229,56 +3278,76 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     
             % ---- Questions ----
 
-            % Q1 (Detection Y/N)
-            drawDetection(window, windowRect, black, bg, cfg);
+            % Q1 (PAS)
+            Screen('DrawTexture', window, cfg.qTex.PAS);
             Screen('DrawingFinished', window);
             vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
-            [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_Detect', pracCfg.name, p, NaN, vblTargetQ1);
+            [tQ1, ~, ~, ~] = cfg.loggedFlip('Q1_PAS', pracCfg.name, p, NaN, vblTargetQ1);
             if doPracticeTriggers
-                cfg.emitTrigger('q1On', pracCfg.name, p, NaN, cfg.eeg.codes.q1On + pracOff, 'Q1_Detect', tQ1);
+                cfg.emitTrigger('q1On', pracCfg.name, p, NaN, cfg.eeg.codes.q1On + pracOff, 'Q1_PAS', tQ1);
+            end
+            [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
+            pas = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
+            if isfield(cfg, 'emitTobii')
+                cfg.emitTobii('PAS_RESP', 'Q1_PAS', pracCfg.name, p, NaN, pasTime, ...
+                    sprintf('pas=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(pas), numToStrOrNA(pasKey), (pasTime - tQ1) * 1000, trial.trialType));
+            end
+            if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
+                if ~isnan(pas) && pas >= 1 && pas <= 4
+                    cfg.emitTrigger('pasResponse', pracCfg.name, p, NaN, cfg.eeg.codes.pasBase + pas + pracOff, 'Q1_PAS', tQ1);
+                end
+            end
+
+            % Q2 (Detection Yes/No)
+            drawDetection(window, windowRect, black, bg, cfg);
+            Screen('DrawingFinished', window);
+            vblTargetQ2 = GetSecs + 0.5 * ifi;
+            [tQ2, ~, ~, ~] = cfg.loggedFlip('Q2_Detect', pracCfg.name, p, NaN, vblTargetQ2);
+            if doPracticeTriggers
+                cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On + pracOff, 'Q2_Detect', tQ2);
             end
             [detectKey, detectTime] = waitForKeyQueue(cfg.keys.detect, cfg.keys.escape, cfg.maxRespSec, cfg);
             detectResp = keyToMappedValue(detectKey, cfg.keys.detect, cfg.keys.detectValues);
-            detectRT = detectTime - tQ1;
+            detectRT = detectTime - tQ2;
             if isfield(cfg, 'emitTobii')
-                cfg.emitTobii('DETECT_RESP', 'Q1_Detect', pracCfg.name, p, NaN, detectTime, ...
+                cfg.emitTobii('DETECT_RESP', 'Q2_Detect', pracCfg.name, p, NaN, detectTime, ...
                     sprintf('detect=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(detectResp), numToStrOrNA(detectKey), detectRT * 1000, trial.trialType));
             end
             if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
                 if ~isnan(detectResp)
                     if detectResp == 1
-                        cfg.emitTrigger('detectYes', pracCfg.name, p, NaN, cfg.eeg.codes.detectYes + pracOff, 'Q1_Detect', tQ1);
+                        cfg.emitTrigger('detectYes', pracCfg.name, p, NaN, cfg.eeg.codes.detectYes + pracOff, 'Q2_Detect', tQ2);
                     elseif detectResp == 0
-                        cfg.emitTrigger('detectNo', pracCfg.name, p, NaN, cfg.eeg.codes.detectNo + pracOff, 'Q1_Detect', tQ1);
+                        cfg.emitTrigger('detectNo', pracCfg.name, p, NaN, cfg.eeg.codes.detectNo + pracOff, 'Q2_Detect', tQ2);
                     end
                 end
             end
             detected = double(~isnan(detectResp) && detectResp == 1);
-            
-            % Q2 (localisation, always asked)
+
+            % Q3 (localisation, always asked)
             if detected == 0
                 Screen('DrawTexture', window, cfg.qTex.Loc_detectNo);
             else
                 Screen('DrawTexture', window, cfg.qTex.Loc_default);
             end
             Screen('DrawingFinished', window);
-            vblTargetQ2 = GetSecs + 0.5 * ifi;
-            [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', pracCfg.name, p, NaN, vblTargetQ2);
+            vblTargetQ3 = GetSecs + 0.5 * ifi;
+            [tQ3, ~, ~, ~] = cfg.loggedFlip('Q3_Loc', pracCfg.name, p, NaN, vblTargetQ3);
             if doPracticeTriggers
-                cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On + pracOff, 'Q2_Loc', tQ2);
+                cfg.emitTrigger('q3On', pracCfg.name, p, NaN, cfg.eeg.codes.q3On + pracOff, 'Q3_Loc', tQ3);
             end
             [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
             resp2 = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
             if isfield(cfg, 'emitTobii')
-                cfg.emitTobii('LOC_RESP', 'Q2_Loc', pracCfg.name, p, NaN, resp2Time, ...
-                    sprintf('loc=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(resp2), numToStrOrNA(resp2Key), (resp2Time - tQ2) * 1000, trial.trialType));
+                cfg.emitTobii('LOC_RESP', 'Q3_Loc', pracCfg.name, p, NaN, resp2Time, ...
+                    sprintf('loc=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(resp2), numToStrOrNA(resp2Key), (resp2Time - tQ3) * 1000, trial.trialType));
             end
             if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
                 if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
-                    cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + resp2 + pracOff, 'Q2_Loc', tQ2);
+                    cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + resp2 + pracOff, 'Q3_Loc', tQ3);
                 end
             end
-            
+
             if trial.isChange
                 if isnan(resp2)
                     locCorrect = 0;
@@ -3287,26 +3356,6 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 end
             else
                 locCorrect = NaN;
-            end
-
-            % Q3 (PAS)
-            Screen('DrawTexture', window, cfg.qTex.PAS);
-            Screen('DrawingFinished', window);
-            vblTargetQ3 = GetSecs + 0.5 * ifi;
-            [tQ3, ~, ~, missedQ3] = cfg.loggedFlip('Q3_PAS', pracCfg.name, p, NaN, vblTargetQ3); %#ok<NASGU>
-            if doPracticeTriggers
-                cfg.emitTrigger('q3On', pracCfg.name, p, NaN, cfg.eeg.codes.q3On + pracOff, 'Q3_PAS', tQ3);
-            end
-            [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
-            pas = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
-            if isfield(cfg, 'emitTobii')
-                cfg.emitTobii('PAS_RESP', 'Q3_PAS', pracCfg.name, p, NaN, pasTime, ...
-                    sprintf('pas=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(pas), numToStrOrNA(pasKey), (pasTime - tQ3) * 1000, trial.trialType));
-            end
-            if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
-                if ~isnan(pas) && pas >= 1 && pas <= 4
-                    cfg.emitTrigger('pasResponse', pracCfg.name, p, NaN, cfg.eeg.codes.pasBase + pas + pracOff, 'Q3_PAS', tQ3);
-                end
             end
 
             % ---- Practice metrics ----
@@ -3370,9 +3419,9 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 end
 
                 fprintf(['PRACTICE %-16s trl=%02d/%02d type=%-4s mag=%5.1f q=%s | ' ...
-                    'DET=%s LOC=%s PAS=%s | loc=%s | %s\n'], ...
+                    'PAS=%s DET=%s LOC=%s | loc=%s | %s\n'], ...
                     pracCfg.name, p, numel(pTrials), trial.trialType, trial.changeMagnitudeDeg, qStr, ...
-                    numToStrOrNA(detectResp), numToStrOrNA(resp2), numToStrOrNA(pas), locStr, outcomeStr);
+                    numToStrOrNA(pas), numToStrOrNA(detectResp), numToStrOrNA(resp2), locStr, outcomeStr);
             end
     
             % ---- Feedback ----
