@@ -1,9 +1,9 @@
-%% One-Shot Change Blindness (4 gratings) + Fixed Orientation Magnitudes + PAS First
+%% One-Shot Change Blindness (4 gratings) + Fixed Orientation Magnitudes + PAS/LOC
 % Stage 3 variant derived from CB_4xGratings_v3 with passive Tobii/Titta eye tracking
 % and EEG triggers retained.
 % - 2x2 grid of Gabors/gratings
 % - Fixed timing: Fix -> S1(600 ms) -> ISI(200 ms) -> S2(600 ms) -> Gap(200 ms)
-% - Questions: Q1 PAS clarity (1-4) -> Q2 Detection (Yes/No) -> Q3 Localisation (4AFC)
+% - Questions: Q1 PAS clarity (1-4) -> Q2 forced localisation (4AFC)
 % - No QUEST+: orientation-change magnitude is fixed by trial.
 % - Main run: 600 trials, 456 change trials balanced across 22.5, 45, 67.5, and 90 deg
 %   (114 change trials per magnitude) plus 144 no-change catch trials.
@@ -32,11 +32,23 @@ KbName('UnifyKeyNames');
 %% ------------------------- USER CONFIG -------------------------
 cfg = struct();
 cfg.outputPrefix = 'CB_4xGratings_v3_Orientation';
-cfg.questionOrder = 'PAS>Detection>Localisation';
-cfg.detectionKeyMapping = 'green:a=yes;red:f=no';
-cfg.eegQuestionTriggerScheme = 'Q1_PAS_30-34;Q2_Detection_40-42;Q3_Localisation_50-54';
+cfg.protocolVersion = 'Orientation_PASLOC_v1';
+cfg.questionOrder = 'PAS>Localisation';
+cfg.awarenessRule = 'PAS1=no_awareness;PAS2-4=awareness';
+cfg.eegQuestionTriggerScheme = 'Q1_PAS_30-34;Q2_Localisation_50-54';
+cfg.runProfile = 'full';  % 'full', 'pilotBroad', or 'debugQuick'
+cfg.randomSeed = [];      % [] = shuffled seed; numeric scalar = reproducible seed
+cfg.debug.scheduleOnly = strcmp(getenv('CB_ORIENTATION_SCHEDULE_ONLY'), '1');
+if cfg.debug.scheduleOnly
+    profileOverride = getenv('CB_ORIENTATION_RUN_PROFILE');
+    if ~isempty(profileOverride), cfg.runProfile = profileOverride; end
+end
 
-cfg.participantID = input('Enter Participant ID (e.g., S001): ', 's');
+if cfg.debug.scheduleOnly
+    cfg.participantID = 'SCHEDULE_TEST';
+else
+    cfg.participantID = input('Enter Participant ID (e.g., S001): ', 's');
+end
 if isempty(cfg.participantID), cfg.participantID = 'UNKNOWN'; end
 
 cfg.debugWindow      = false;     % smaller window
@@ -72,20 +84,17 @@ cfg.eeg.codes.s2On       = 23;
 cfg.eeg.codes.gapOn      = 24;
 cfg.eeg.codes.q1On       = 30; % Q1 PAS onset
 cfg.eeg.codes.pasBase    = 30; % PAS response = 30 + PAS value (31-34)
-cfg.eeg.codes.q2On       = 40; % Q2 detection onset
-cfg.eeg.codes.detectNo   = 41; % Q2 detection response: no
-cfg.eeg.codes.detectYes  = 42; % Q2 detection response: yes
-cfg.eeg.codes.q3On       = 50; % Q3 localisation onset
+cfg.eeg.codes.q2On       = 50; % Q2 localisation onset; 40-42 are retired
 cfg.eeg.codes.locBase    = 50; % LOC response = 50 + quadrant value (51-54)
 cfg.eeg.codes.trialEnd   = 60;
 % Ascending within-trial EEG trigger suite (main trials):
 %   11 trial start/fixation, 21 S1, 22 ISI, 23 S2, 24 gap,
-%   30 Q1 PAS, 31-34 PAS response, 40 Q2 detection, 41 no / 42 yes,
-%   50 Q3 localisation, 51-54 LOC response, 60 trial end then reset to 0.
+%   30 Q1 PAS, 31-34 PAS response, 50 Q2 localisation,
+%   51-54 LOC response, 60 trial end then reset to 0.
 % Practice uses the same suite with practiceCodeOffset (+100 -> 111-160 family):
 %   111 fix, 121 S1, 122 ISI, 123 S2, 124 gap, 130 Q1 PAS, 131-134 PAS,
-%   140 Q2 detection, 141/142 detection, 150 Q3 LOC, 151-154 LOC, 160 trial end.
-% Fixed timing, change magnitude, detection, localisation, PAS, and outcome metadata
+%   150 Q2 LOC, 151-154 LOC, 160 trial end. Codes 140-142 are retired.
+% Fixed timing, change magnitude, localisation, PAS, and outcome metadata
 % are saved to FullRun CSV, MAT, Tobii, and triggerLog but are NOT sent as EEG pulses.
 
 cfg.eeg.practiceCodeOffset = 100;   % practice triggers = main code + 100 (111-160 family)
@@ -177,70 +186,73 @@ cfg.practice2.magnitudeNCHDeg  = 0;
 
 % ---------- Practice classification criteria ----------
 cfg.practice1Criteria.maxFARateNCH   = 0.60;
-cfg.practice1Criteria.minEasyDetect  = 0.60;
+cfg.practice1Criteria.minEasyAware   = 0.60;
 cfg.practice1Criteria.minEasySee     = 0.40;
 
-% ---- Fixed orientation-magnitude design ----
-cfg.calib.maxTrials = 600;             % retained name for output compatibility
-cfg.design = struct();
-cfg.design.changeMagnitudesDeg = [22.5 45 67.5 90];
-cfg.design.noChangeMagnitudeDeg = 0;
-cfg.design.balanceChangeMagnitudes = true;
+% ---- Fixed orientation-magnitude run profiles ----
+cfg.profiles = struct();
+cfg.profiles.full = struct( ...
+    'changeMagnitudesDeg', [22.5 45 67.5 90], ...
+    'changeCounts', [114 114 114 114], ...
+    'noChangeTrials', 144, ...
+    'trialsPerBlock', 50);
+cfg.profiles.pilotBroad = struct( ...
+    'changeMagnitudesDeg', [11.25 22.5 33.75 45 67.5 90], ...
+    'changeCounts', [30 30 30 30 30 30], ...
+    'noChangeTrials', 60, ...
+    'trialsPerBlock', 40);
 
-% Trial counts - 600-trial full lab run (12 blocks x 50 trials)
+% Custom debug profile; totals apply across the complete debug run.
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
-cfg.debug.quickRun = false;   % true = ultra-short formatting/test run; false = real/full run
 cfg.debug.quickRunMagnitudesDeg  = [22.5 45 67.5 90];
-cfg.debug.quickRunChangeCounts   = [4 4 4 4];  % totals across the complete quick run
+cfg.debug.quickRunChangeCounts   = [4 4 4 4];
 cfg.debug.quickRunNoChangeTrials = 4;
 cfg.debug.quickRunTrialsPerBlock = 10;
 
-cfg.nTotal = cfg.calib.maxTrials;
-cfg.trialsPerBlock = 50;
-cfg.nBlocks = cfg.nTotal / cfg.trialsPerBlock;
+cfg.design = struct();
+cfg.design.noChangeMagnitudeDeg = 0;
+cfg.design.balanceChangeMagnitudes = true;
 
-cfg.trialDial.applyPerBlock = true;
-cfg.trialDial.nChangePerBlock   = 38;
-cfg.trialDial.nNoChangePerBlock = 12;
-
-% ---- DEBUG QUICK RUN (overrides counts above when enabled) ----
-if cfg.debug.quickRun
-    fprintf('\n*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
-
-    cfg.practice1.nSTD = 1;  cfg.practice1.nEASY = 1;  cfg.practice1.nNCH = 1;
-    cfg.practice1.nTrials = cfg.practice1.nSTD + cfg.practice1.nEASY + cfg.practice1.nNCH;
-
-    cfg.practice2.nSTD = 1;  cfg.practice2.nEASY = 1;  cfg.practice2.nNCH = 1;
-    cfg.practice2.nTrials = cfg.practice2.nSTD + cfg.practice2.nEASY + cfg.practice2.nNCH;
-
-    [quickMags, quickCounts, quickNCH, quickTrialsPerBlock] = validateQuickRunProfile(cfg.debug);
-
-    cfg.design.changeMagnitudesDeg = quickMags;
-    cfg.design.changeCountsPerMagnitude = quickCounts;
-    cfg.nChange = sum(quickCounts);
-    cfg.nCatch = quickNCH;
-    cfg.nTotal = cfg.nChange + cfg.nCatch;
-    cfg.calib.maxTrials = cfg.nTotal;
-    cfg.trialsPerBlock = quickTrialsPerBlock;
-    cfg.nBlocks = cfg.nTotal / cfg.trialsPerBlock;
-    cfg.trialDial.nChangePerBlock = cfg.nChange / cfg.nBlocks;
-    cfg.trialDial.nNoChangePerBlock = cfg.nCatch / cfg.nBlocks;
-else
-    cfg.nChange = cfg.nBlocks * cfg.trialDial.nChangePerBlock;      % 456 in full run
-    cfg.nCatch  = cfg.nBlocks * cfg.trialDial.nNoChangePerBlock;    % 144 in full run
-
-    assert(mod(cfg.nChange, numel(cfg.design.changeMagnitudesDeg)) == 0, ...
-        'Full-run change trials must be divisible by the number of orientation magnitudes.');
-    cfg.design.changeCountsPerMagnitude = repmat( ...
-        cfg.nChange / numel(cfg.design.changeMagnitudesDeg), ...
-        1, numel(cfg.design.changeMagnitudesDeg));
+switch cfg.runProfile
+    case 'full'
+        activeProfile = cfg.profiles.full;
+    case 'pilotBroad'
+        activeProfile = cfg.profiles.pilotBroad;
+    case 'debugQuick'
+        fprintf('\n*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
+        cfg.practice1.nSTD = 1;  cfg.practice1.nEASY = 1;  cfg.practice1.nNCH = 1;
+        cfg.practice1.nTrials = cfg.practice1.nSTD + cfg.practice1.nEASY + cfg.practice1.nNCH;
+        cfg.practice2.nSTD = 1;  cfg.practice2.nEASY = 1;  cfg.practice2.nNCH = 1;
+        cfg.practice2.nTrials = cfg.practice2.nSTD + cfg.practice2.nEASY + cfg.practice2.nNCH;
+        [quickMags, quickCounts, quickNCH, quickTrialsPerBlock] = validateQuickRunProfile(cfg.debug);
+        activeProfile = struct('changeMagnitudesDeg', quickMags, ...
+            'changeCounts', quickCounts, 'noChangeTrials', quickNCH, ...
+            'trialsPerBlock', quickTrialsPerBlock);
+    otherwise
+        error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+            'cfg.runProfile must be ''full'', ''pilotBroad'', or ''debugQuick'' (received ''%s'').', ...
+            char(string(cfg.runProfile)));
 end
 
+validateRunProfileDefinition(activeProfile, cfg.runProfile);
+cfg.design.changeMagnitudesDeg = activeProfile.changeMagnitudesDeg(:)';
+cfg.design.changeCountsPerMagnitude = activeProfile.changeCounts(:)';
+cfg.nChange = sum(cfg.design.changeCountsPerMagnitude);
+cfg.nCatch = activeProfile.noChangeTrials;
+cfg.nTotal = cfg.nChange + cfg.nCatch;
+cfg.calib.maxTrials = cfg.nTotal;  % retained name for output compatibility
+cfg.trialsPerBlock = activeProfile.trialsPerBlock;
+cfg.nBlocks = cfg.nTotal / cfg.trialsPerBlock;
+cfg.trialDial.applyPerBlock = true;
+cfg.trialDial.nChangePerBlock = cfg.nChange / cfg.nBlocks;
+cfg.trialDial.nNoChangePerBlock = cfg.nCatch / cfg.nBlocks;
 cfg.trialDial.pChange = cfg.trialDial.nChangePerBlock / cfg.trialsPerBlock;
 
 assert(mod(cfg.nTotal, cfg.trialsPerBlock) == 0, ...
     'nTotal must be divisible by trialsPerBlock');
+assert(mod(cfg.nChange, cfg.nBlocks) == 0 && mod(cfg.nCatch, cfg.nBlocks) == 0, ...
+    'Change and no-change totals must each divide evenly across blocks.');
 assert(cfg.trialDial.nChangePerBlock + cfg.trialDial.nNoChangePerBlock == cfg.trialsPerBlock, ...
     'Per-block change + no-change counts must equal trialsPerBlock');
 assert(numel(cfg.design.changeMagnitudesDeg) == numel(cfg.design.changeCountsPerMagnitude), ...
@@ -260,7 +272,7 @@ cfg.S1_sec            = 0.600;
 cfg.ISI_sec           = 0.200;
 cfg.S2_sec            = 0.600;
 cfg.postS2Gap_sec     = 0.200;         % gap between S2 and Q1
-cfg.ITI_sec           = 1.00;          % after final PAS response
+cfg.ITI_sec           = 1.00;          % after the final localisation response
 cfg.maxRespSec        = 30.00;         % failsafe
 
 % Grating/mask appearance (visual-angle locked; converted to px at runtime)
@@ -270,12 +282,26 @@ cfg.stim.cyclesPerStim  = 10;
 cfg.stim.contrast       = 0.8;
 cfg.stim.backgroundGrey = 0.5;
 cfg.stim.gaborSigmaFrac = 0.40;
-cfg.stim.allowedOri = 0:22.5:157.5;
+cfg.stim.allowedOri = 0:11.25:168.75;
 cfg.stim.changeAngleDeg = NaN;    % per-trial value comes from cfg.design.changeMagnitudesDeg
 
 % Fixation (visual-angle locked; converted to px at runtime)
 cfg.fix.sizeDeg      = 0.37;
 cfg.fix.lineWidthDeg = 0.08;
+
+%% ------------------------- RANDOMISATION + SCHEDULE -------------------------
+cfg.randomisation = initialiseRandomisation(cfg.randomSeed);
+trials = buildTrialList(cfg);
+cfg.design.balanceSummary = validateTrialSchedule(trials, cfg);
+cfg.randomisation.stateAfterSchedule = rng;
+if cfg.debug.scheduleOnly
+    printTrialBalanceSummary(cfg.design.balanceSummary, cfg);
+    nStress = str2double(getenv('CB_ORIENTATION_SCHEDULE_ITERATIONS'));
+    if ~isfinite(nStress) || nStress < 1, nStress = 1; end
+    runScheduleStressTest(cfg, round(nStress));
+    fprintf('Schedule-only validation complete; PTB and hardware were not initialised.\n');
+    return;
+end
 
 %% ------------------------- DEPENDENCY CHECKS -------------------------
 try
@@ -288,27 +314,20 @@ end
 cfg.keys.escape = KbName('ESCAPE');
 cfg.keys.space  = KbName('space');
 
-% Q1 PAS: left hand (q/w/e/r). Q2 detection: A=Yes/green, F=No/red.
-% Q3 localisation: right hand (numpad 7/9/1/3).
+% Q1 PAS: left hand (q/w/e/r). Q2 localisation: right hand (numpad 7/9/1/3).
 % If numpad keys fail at runtime, run KbName interactively (e.g. KbName('KP_7'))
 % to confirm correct names on this system - do not remap to top-row number keys.
-cfg.keys.detectPhysical = {'a','f'};
-cfg.keys.detectValues   = [1 0];
-
 cfg.keys.quadPhysical = {'7','9','1','3'};
 cfg.keys.quadValues   = [1 2 3 4];
 
 cfg.keys.pasPhysical = {'q','w','e','r'};
 cfg.keys.pasValues   = [1 2 3 4];
 
-cfg.keys.detect = KbName(cfg.keys.detectPhysical);
 cfg.keys.quad   = KbName(cfg.keys.quadPhysical);
 cfg.keys.pas    = KbName(cfg.keys.pasPhysical);
 
-fprintf('DETECTION key mapping: a=Yes (GREEN sticker), f=No (RED sticker)\n');
 fprintf('LOC key mapping: numpad7=1, numpad9=2, numpad1=3, numpad3=4\n');
 fprintf('PAS key mapping: q=1, w=2, e=3, r=4\n');
-fprintf('DETECTION KbName codes: %s\n', mat2str(cfg.keys.detect));
 fprintf('LOC KbName codes: %s\n', mat2str(cfg.keys.quad));
 fprintf('PAS KbName codes: %s\n', mat2str(cfg.keys.pas));
 
@@ -326,7 +345,7 @@ cleanupObj = []; %#ok<NASGU> % remains empty only if OpenWindow fails before onC
 %% ------------ FAILSAFE LOGGING ------------ %%
 outDir = fullfile(pwd, 'data');
 if ~exist(outDir,'dir'), mkdir(outDir); end
-timestamp = datestr(now,'yyyymmdd_HHMMSS');
+timestamp = char(datetime('now','Format','yyyyMMdd_HHmmss'));
 outFile = fullfile(outDir, sprintf('%s_%s_FullRun_%s.csv', cfg.outputPrefix, cfg.participantID, timestamp));
 
 cfg.trigger = initSerialTrigger(cfg.eeg);
@@ -421,7 +440,10 @@ try
     cfg.fixJitterFrames = round(cfg.fixJitterRangeSec / ifi);
 
     fprintf('\nFixed orientation-magnitude run\n');
-    if cfg.debug.quickRun
+    fprintf('Protocol version: %s\n', cfg.protocolVersion);
+    fprintf('Run profile: %s\n', cfg.runProfile);
+    fprintf('Random seed: %u\n', cfg.randomisation.seed);
+    if strcmp(cfg.runProfile, 'debugQuick')
         fprintf('*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
     end
     fprintf('Total trials: %d\n', cfg.nTotal);
@@ -434,7 +456,7 @@ try
     fprintf('Change magnitudes: %s deg\n', mat2str(cfg.design.changeMagnitudesDeg));
     fprintf('Change counts by magnitude: %s\n', mat2str(cfg.design.changeCountsPerMagnitude));
     fprintf('Question order: %s\n', cfg.questionOrder);
-    fprintf('Detection buttons: %s\n', cfg.detectionKeyMapping);
+    fprintf('Awareness rule: %s\n', cfg.awarenessRule);
     fprintf('Question trigger scheme: %s\n', cfg.eegQuestionTriggerScheme);
     fprintf('S1_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.S1_frames, cfg.S1_frames * ifi * 1000, 1/ifi);
     fprintf('ISI_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.ISI_frames, cfg.ISI_frames * ifi * 1000, 1/ifi);
@@ -487,22 +509,15 @@ try
     qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg);
     cfg.qTex = qTex;
 
-    %% ------------------------- TRIAL LIST ----------------------------------
-    trials = buildTrialList(cfg);
-
-    for b = 1:cfg.nBlocks
-        ii = (b-1)*cfg.trialsPerBlock + (1:cfg.trialsPerBlock);
-        nC  = sum([trials(ii).isChange] == 1);
-        nNC = sum([trials(ii).isChange] == 0);
-        fprintf('Block %02d: C=%d  NC=%d\n', b, nC, nNC);
-    end
+    %% ------------------------- PREVALIDATED TRIAL LIST ---------------------
+    printTrialBalanceSummary(cfg.design.balanceSummary, cfg);
 
     %% ------------------------- START TOBII RECORDING ----------------------
     % Record the full visible session: instructions, overview, practice, main trials, breaks, and end screen.
     tobii = startTobiiRecording(tobii, cfg, windowRect, ifi, timestamp);
     emitTobiiMessage('RUN_START', 'runStart', 'experiment', NaN, NaN, GetSecs, ...
-        sprintf('participantID=%s timestamp=%s screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d magnitudesDeg=%s magnitudeCounts=%s questionOrder=%s detectionKeyMapping=%s eegQuestionTriggerScheme=%s S1ms=%.0f ISIms=%.0f S2ms=%.0f gapMs=%.0f', ...
-        cfg.participantID, timestamp, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable), mat2str(cfg.design.changeMagnitudesDeg), mat2str(cfg.design.changeCountsPerMagnitude), cfg.questionOrder, cfg.detectionKeyMapping, cfg.eegQuestionTriggerScheme, cfg.S1_frames*ifi*1000, cfg.ISI_frames*ifi*1000, cfg.S2_frames*ifi*1000, cfg.gap_frames*ifi*1000));
+        sprintf('participantID=%s timestamp=%s protocolVersion=%s runProfile=%s randomSeed=%u screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d magnitudesDeg=%s magnitudeCounts=%s questionOrder=%s awarenessRule=%s eegQuestionTriggerScheme=%s S1ms=%.0f ISIms=%.0f S2ms=%.0f gapMs=%.0f', ...
+        cfg.participantID, timestamp, cfg.protocolVersion, cfg.runProfile, cfg.randomisation.seed, cfg.screenNumber, windowRect(3), windowRect(4), 1/ifi, cfg.nTotal, cfg.trialsPerBlock, double(cfg.eeg.enable), mat2str(cfg.design.changeMagnitudesDeg), mat2str(cfg.design.changeCountsPerMagnitude), cfg.questionOrder, cfg.awarenessRule, cfg.eegQuestionTriggerScheme, cfg.S1_frames*ifi*1000, cfg.ISI_frames*ifi*1000, cfg.S2_frames*ifi*1000, cfg.gap_frames*ifi*1000));
 
     %% ------------------------- INSTRUCTIONS SCREEN -------------------------
 
@@ -521,8 +536,10 @@ try
 
     %% ------------------------- PRACTICE FLOW (LINEAR) -----------------------------
     practiceFlow = struct();
+    practiceFlow.protocolVersion = cfg.protocolVersion;
+    practiceFlow.runProfile = cfg.runProfile;
     practiceFlow.questionOrder = cfg.questionOrder;
-    practiceFlow.detectionKeyMapping = cfg.detectionKeyMapping;
+    practiceFlow.awarenessRule = cfg.awarenessRule;
     practiceFlow.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
     practiceFlow.block1 = struct('summary', struct(), 'result', 'not_run');
     practiceFlow.block2 = struct('summary', struct(), 'result', 'not_run');
@@ -554,58 +571,80 @@ try
 
     practiceRow.participantID = string(cfg.participantID);
     practiceRow.timestamp     = string(timestamp);
+    practiceRow.protocolVersion = string(cfg.protocolVersion);
+    practiceRow.runProfile = string(cfg.runProfile);
     practiceRow.questionOrder = string(cfg.questionOrder);
-    practiceRow.detectionKeyMapping = string(cfg.detectionKeyMapping);
+    practiceRow.awarenessRule = string(cfg.awarenessRule);
     practiceRow.eegQuestionTriggerScheme = string(cfg.eegQuestionTriggerScheme);
     
     % Block 1 summary
     practiceRow.b1_result            = string(practiceFlow.block1.result);
     practiceRow.b1_classification    = getTextFieldOrDefault(practiceFlow.block1.summary, 'classification', 'not_run');
     practiceRow.b1_nTrials           = getFieldOrNaN(practiceFlow.block1.summary, 'nTrials');
+    practiceRow.b1_nMissingPAS       = getFieldOrNaN(practiceFlow.block1.summary, 'nMissingPAS');
+    practiceRow.b1_nMissingLoc       = getFieldOrNaN(practiceFlow.block1.summary, 'nMissingLoc');
     practiceRow.b1_nSTD              = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD');
-    practiceRow.b1_nSTD_detect       = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD_detect');
+    practiceRow.b1_nSTD_validPAS     = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD_validPAS');
+    practiceRow.b1_nSTD_validBehaviour = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD_validBehaviour');
+    practiceRow.b1_nSTD_aware        = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD_aware');
     practiceRow.b1_nSTD_see          = getFieldOrNaN(practiceFlow.block1.summary, 'nSTD_see');
-    practiceRow.b1_stdDetect         = getFieldOrNaN(practiceFlow.block1.summary, 'stdDetectRate');
+    practiceRow.b1_stdAware          = getFieldOrNaN(practiceFlow.block1.summary, 'stdAwareRate');
     practiceRow.b1_stdSee            = getFieldOrNaN(practiceFlow.block1.summary, 'stdSeeRate');
     practiceRow.b1_nNCH              = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH');
+    practiceRow.b1_nNCH_validPAS     = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH_validPAS');
+    practiceRow.b1_nNCH_validBehaviour = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH_validBehaviour');
     practiceRow.b1_nNCH_FA           = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH_FA');
     practiceRow.b1_nNCH_CR           = getFieldOrNaN(practiceFlow.block1.summary, 'nNCH_CR');
     practiceRow.b1_faRateNCH         = getFieldOrNaN(practiceFlow.block1.summary, 'faRateNCH');
     practiceRow.b1_crRateNCH         = getFieldOrNaN(practiceFlow.block1.summary, 'crRateNCH');
     practiceRow.b1_nEASY             = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY');
-    practiceRow.b1_nEASY_detect      = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY_detect');
+    practiceRow.b1_nEASY_validPAS    = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY_validPAS');
+    practiceRow.b1_nEASY_validBehaviour = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY_validBehaviour');
+    practiceRow.b1_nEASY_aware       = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY_aware');
     practiceRow.b1_nEASY_see         = getFieldOrNaN(practiceFlow.block1.summary, 'nEASY_see');
-    practiceRow.b1_easyDetect        = getFieldOrNaN(practiceFlow.block1.summary, 'easyDetectRate');
+    practiceRow.b1_easyAware         = getFieldOrNaN(practiceFlow.block1.summary, 'easyAwareRate');
     practiceRow.b1_easySee           = getFieldOrNaN(practiceFlow.block1.summary, 'easySeeRate');
     practiceRow.b1_nChange           = getFieldOrNaN(practiceFlow.block1.summary, 'nChange');
-    practiceRow.b1_nChange_detect    = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_detect');
+    practiceRow.b1_nChange_validPAS  = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_validPAS');
+    practiceRow.b1_nChange_validBehaviour = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_validBehaviour');
+    practiceRow.b1_nChange_aware     = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_aware');
     practiceRow.b1_nChange_see       = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_see');
-    practiceRow.b1_changeDetect      = getFieldOrNaN(practiceFlow.block1.summary, 'changeDetectRate');
+    practiceRow.b1_changeAware       = getFieldOrNaN(practiceFlow.block1.summary, 'changeAwareRate');
     practiceRow.b1_changeSee         = getFieldOrNaN(practiceFlow.block1.summary, 'changeSeeRate');
     
     % Block 2 summary
     practiceRow.b2_result            = string(practiceFlow.block2.result);
     practiceRow.b2_classification    = getTextFieldOrDefault(practiceFlow.block2.summary, 'classification', 'not_run');
     practiceRow.b2_nTrials           = getFieldOrNaN(practiceFlow.block2.summary, 'nTrials');
+    practiceRow.b2_nMissingPAS       = getFieldOrNaN(practiceFlow.block2.summary, 'nMissingPAS');
+    practiceRow.b2_nMissingLoc       = getFieldOrNaN(practiceFlow.block2.summary, 'nMissingLoc');
     practiceRow.b2_nSTD              = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD');
-    practiceRow.b2_nSTD_detect       = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD_detect');
+    practiceRow.b2_nSTD_validPAS     = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD_validPAS');
+    practiceRow.b2_nSTD_validBehaviour = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD_validBehaviour');
+    practiceRow.b2_nSTD_aware        = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD_aware');
     practiceRow.b2_nSTD_see          = getFieldOrNaN(practiceFlow.block2.summary, 'nSTD_see');
-    practiceRow.b2_stdDetect         = getFieldOrNaN(practiceFlow.block2.summary, 'stdDetectRate');
+    practiceRow.b2_stdAware          = getFieldOrNaN(practiceFlow.block2.summary, 'stdAwareRate');
     practiceRow.b2_stdSee            = getFieldOrNaN(practiceFlow.block2.summary, 'stdSeeRate');
     practiceRow.b2_nNCH              = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH');
+    practiceRow.b2_nNCH_validPAS     = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH_validPAS');
+    practiceRow.b2_nNCH_validBehaviour = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH_validBehaviour');
     practiceRow.b2_nNCH_FA           = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH_FA');
     practiceRow.b2_nNCH_CR           = getFieldOrNaN(practiceFlow.block2.summary, 'nNCH_CR');
     practiceRow.b2_faRateNCH         = getFieldOrNaN(practiceFlow.block2.summary, 'faRateNCH');
     practiceRow.b2_crRateNCH         = getFieldOrNaN(practiceFlow.block2.summary, 'crRateNCH');
     practiceRow.b2_nEASY             = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY');
-    practiceRow.b2_nEASY_detect      = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY_detect');
+    practiceRow.b2_nEASY_validPAS    = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY_validPAS');
+    practiceRow.b2_nEASY_validBehaviour = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY_validBehaviour');
+    practiceRow.b2_nEASY_aware       = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY_aware');
     practiceRow.b2_nEASY_see         = getFieldOrNaN(practiceFlow.block2.summary, 'nEASY_see');
-    practiceRow.b2_easyDetect        = getFieldOrNaN(practiceFlow.block2.summary, 'easyDetectRate');
+    practiceRow.b2_easyAware         = getFieldOrNaN(practiceFlow.block2.summary, 'easyAwareRate');
     practiceRow.b2_easySee           = getFieldOrNaN(practiceFlow.block2.summary, 'easySeeRate');
     practiceRow.b2_nChange           = getFieldOrNaN(practiceFlow.block2.summary, 'nChange');
-    practiceRow.b2_nChange_detect    = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_detect');
+    practiceRow.b2_nChange_validPAS  = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_validPAS');
+    practiceRow.b2_nChange_validBehaviour = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_validBehaviour');
+    practiceRow.b2_nChange_aware     = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_aware');
     practiceRow.b2_nChange_see       = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_see');
-    practiceRow.b2_changeDetect      = getFieldOrNaN(practiceFlow.block2.summary, 'changeDetectRate');
+    practiceRow.b2_changeAware       = getFieldOrNaN(practiceFlow.block2.summary, 'changeAwareRate');
     practiceRow.b2_changeSee         = getFieldOrNaN(practiceFlow.block2.summary, 'changeSeeRate');
     
     practiceTable = struct2table(practiceRow);
@@ -638,27 +677,16 @@ try
         selectedPSensing = NaN;
         selectedPSeeing = NaN;
         selectedPAware = NaN;
-        selectedPDetect = NaN;
         selectedPLocGivenAware = NaN;
         posteriorEntropyBits = NaN;
         trackName = char(string(trial.staircase));
         trackTargetOutcome = 'fixedMagnitude';
         trackTargetProb = NaN;
 
-        % Build S1/S2 orientations.
-        allowedOri = cfg.stim.allowedOri;
-        if trial.isChange
-            changeMagnitudeDeg = trial.changeMagnitudeDeg;
-            oriS1 = makeOriS1_noPostChangeDup(trial.changeQuad, trial.changeStartOri, allowedOri, changeMagnitudeDeg);
-        else
-            changeMagnitudeDeg = cfg.design.noChangeMagnitudeDeg;
-            oriS1 = allowedOri(randperm(numel(allowedOri), 4))';
-        end
-        
-        oriS2 = oriS1;
-        if trial.isChange
-            oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + changeMagnitudeDeg, 180);
-        end
+        % S1/S2 orientations and direction were precomputed and validated before PTB opened.
+        changeMagnitudeDeg = trial.changeMagnitudeDeg;
+        oriS1 = trial.oriS1(:);
+        oriS2 = trial.oriS2(:);
 
         blockNum = ceil(t / cfg.trialsPerBlock);
 
@@ -674,8 +702,9 @@ try
         end
         tTrialStart = tFixOn;
         emitTobiiMessage('TRIAL_META', 'trialMeta', 'main_trial', t, blockNum, tTrialStart, ...
-            sprintf('isChange=%d magnitudeDeg=%.1f label=%s changeQuad=%d S1Frames=%d ISIFrames=%d S2Frames=%d gapFrames=%d', ...
-            trial.isChange, changeMagnitudeDeg, char(string(trial.staircase)), trial.changeQuad, cfg.S1_frames, cfg.ISI_frames, cfg.S2_frames, cfg.gap_frames));
+            sprintf('isChange=%d magnitudeDeg=%.2f direction=%d label=%s changeQuad=%d startOriDeg=%s S1Frames=%d ISIFrames=%d S2Frames=%d gapFrames=%d', ...
+            trial.isChange, changeMagnitudeDeg, trial.changeDirection, char(string(trial.staircase)), ...
+            trial.changeQuad, numToStrOrNA(trial.changeStartOri), cfg.S1_frames, cfg.ISI_frames, cfg.S2_frames, cfg.gap_frames));
 
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
@@ -728,67 +757,34 @@ try
             end
         end
 
-        % Q2 (Detection Yes/No)
-        drawDetection(window, windowRect, black, bg, cfg);
+        % Q2 (forced localisation) - always asked, including after PAS 1 and on catches.
+        Screen('DrawTexture', window, cfg.qTex.Loc);
         Screen('DrawingFinished', window);
         vblTargetQ2 = GetSecs + 0.5 * ifi;
-        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Detect', 'main_trial', t, blockNum, vblTargetQ2);
+        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, blockNum, vblTargetQ2);
         if cfg.eeg.markerPolicy.markMainTrials
-            emitTrigger('q2On', 'main_trial', t, blockNum, cfg.eeg.codes.q2On, 'Q2_Detect', tQ2);
+            emitTrigger('q2On', 'main_trial', t, blockNum, cfg.eeg.codes.q2On, 'Q2_Loc', tQ2);
         end
 
-        [detectKey, detectTime] = waitForKeyQueue(cfg.keys.detect, cfg.keys.escape, cfg.maxRespSec, cfg);
-        detectRT = detectTime - tQ2;
-        detectResp = keyToMappedValue(detectKey, cfg.keys.detect, cfg.keys.detectValues);
-        emitTobiiMessage('DETECT_RESP', 'Q2_Detect', 'main_trial', t, blockNum, detectTime, ...
-            sprintf('detect=%s keyCode=%s rtMs=%.3f', numToStrOrNA(detectResp), numToStrOrNA(detectKey), detectRT * 1000));
+        [locKey, locTime] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
+        locRT = locTime - tQ2;
+        locResp = keyToMappedValue(locKey, cfg.keys.quad, cfg.keys.quadValues);
+        emitTobiiMessage('LOC_RESP', 'Q2_Loc', 'main_trial', t, blockNum, locTime, ...
+            sprintf('loc=%s keyCode=%s rtMs=%.3f', numToStrOrNA(locResp), numToStrOrNA(locKey), locRT * 1000));
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
-            if ~isnan(detectResp)
-                if detectResp == 1
-                    emitTrigger('detectYes', 'main_trial', t, blockNum, cfg.eeg.codes.detectYes, 'Q2_Detect', tQ2);
-                elseif detectResp == 0
-                    emitTrigger('detectNo', 'main_trial', t, blockNum, cfg.eeg.codes.detectNo, 'Q2_Detect', tQ2);
-                end
-            end
-        end
-        hit = double(~isnan(detectResp) && detectResp == 1);
-
-        % Q3 (Localise) - ALWAYS ask, even after a no response.
-        if hit == 0
-            Screen('DrawTexture', window, cfg.qTex.Loc_detectNo);
-        else
-            Screen('DrawTexture', window, cfg.qTex.Loc_default);
-        end
-        Screen('DrawingFinished', window);
-        vblTargetQ3 = GetSecs + 0.5 * ifi;
-        [tQ3, ~, ~, missedQ3] = cfg.loggedFlip('Q3_Loc', 'main_trial', t, blockNum, vblTargetQ3);
-        if cfg.eeg.markerPolicy.markMainTrials
-            emitTrigger('q3On', 'main_trial', t, blockNum, cfg.eeg.codes.q3On, 'Q3_Loc', tQ3);
-        end
-
-        [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
-        locRT = resp2Time - tQ3;
-        resp2 = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
-        emitTobiiMessage('LOC_RESP', 'Q3_Loc', 'main_trial', t, blockNum, resp2Time, ...
-            sprintf('loc=%s keyCode=%s rtMs=%.3f', numToStrOrNA(resp2), numToStrOrNA(resp2Key), locRT * 1000));
-        if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
-            if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
-                emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + resp2, 'Q3_Loc', tQ3);
+            if ~isnan(locResp) && locResp >= 1 && locResp <= 4
+                emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + locResp, 'Q2_Loc', tQ2);
             end
         end
 
         % Localisation correctness (only meaningful on change trials)
-        if trial.isChange
-            if isnan(resp2)
-                locCorrect = 0;
-            else
-                locCorrect = double(resp2 == trial.changeQuad);
-            end
+        if trial.isChange && ~isnan(locResp)
+            locCorrect = double(locResp == trial.changeQuad);
         else
             locCorrect = NaN;
         end
 
-        tTrialEnd = resp2Time;
+        tTrialEnd = locTime;
         trialTotalSec = tTrialEnd - tTrialStart;
 
         % ITI
@@ -802,17 +798,37 @@ try
         end
         holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
 
-        % ---------------- OUTCOME CLASSIFICATION ----------------
-        if trial.isChange
-            if hit == 0
-                outcomeBin = 1;   % Blind/objective miss
+        % ---------------- PAS-DERIVED OUTCOME CLASSIFICATION ----------------
+        validPAS = ~isnan(pas) && pas >= 1 && pas <= 4;
+        validLoc = ~isnan(locResp) && locResp >= 1 && locResp <= 4;
+        validBehaviouralTrial = double(validPAS && validLoc);
+        awareFromPAS = NaN;
+        derivedDetectionFromPAS = NaN;
+        catchOutcome = '';
+        if validPAS
+            awareFromPAS = double(pas >= 2);
+            derivedDetectionFromPAS = awareFromPAS;
+        end
+
+        if ~validPAS
+            outcomeBin = 'MissingPAS';
+        elseif ~validLoc
+            outcomeBin = 'MissingLoc';
+        elseif trial.isChange
+            if awareFromPAS == 0
+                outcomeBin = 'Blind';
             elseif locCorrect == 1
-                outcomeBin = 3;   % Seeing/detected and localised
+                outcomeBin = 'Seeing';
             else
-                outcomeBin = 2;   % Sensing/detected but not localised
+                outcomeBin = 'Sensing';
             end
         else
-            outcomeBin = NaN;   % no-change catch trial
+            outcomeBin = 'NoChange';
+            if awareFromPAS == 0
+                catchOutcome = 'CorrectRejection';
+            else
+                catchOutcome = 'FalseAlarm';
+            end
         end
 
         % ---------------- LOG DATA ----------------
@@ -823,6 +839,8 @@ try
         results(t).isChange = trial.isChange;
         results(t).staircase = trial.staircase;
         results(t).changeQuad = trial.changeQuad;
+        results(t).changeDirection = trial.changeDirection;
+        results(t).changeStartOri = trial.changeStartOri;
 
         results(t).durFrames = durFrames;
         results(t).durSec = durFrames * ifi;
@@ -844,12 +862,11 @@ try
         results(t).selectedPSensing = selectedPSensing;
         results(t).selectedPSeeing = selectedPSeeing;
         results(t).selectedPAware = selectedPAware;
-        results(t).selectedPDetect = selectedPDetect;
         results(t).selectedPLocGivenAware = selectedPLocGivenAware;
         results(t).posteriorEntropyBits = posteriorEntropyBits;
 
-        results(t).oriS1 = sprintf('%.1f,%.1f,%.1f,%.1f', oriS1(1),oriS1(2),oriS1(3),oriS1(4));
-        results(t).oriS2 = sprintf('%.1f,%.1f,%.1f,%.1f', oriS2(1),oriS2(2),oriS2(3),oriS2(4));
+        results(t).oriS1 = sprintf('%.2f,%.2f,%.2f,%.2f', oriS1(1),oriS1(2),oriS1(3),oriS1(4));
+        results(t).oriS2 = sprintf('%.2f,%.2f,%.2f,%.2f', oriS2(1),oriS2(2),oriS2(3),oriS2(4));
 
         results(t).tS1 = tS1;
         results(t).tISI = tISI;
@@ -864,26 +881,18 @@ try
         results(t).missedISI = missedISI;
         results(t).missedS2  = missedS2;
         results(t).missedGap = missedGap;
-        % Positional fields follow Q1 PAS, Q2 detection, Q3 localisation.
+        % Positional fields follow Q1 PAS, Q2 localisation.
         results(t).missedQ1  = missedQ1;
         results(t).missedQ2  = missedQ2;
-        results(t).missedQ3  = missedQ3;
         results(t).missedPAS = missedQ1;
-        results(t).missedDetect = missedQ2;
-        results(t).missedLoc = missedQ3;
+        results(t).missedLoc = missedQ2;
         results(t).missedITI = missedITI;
         results(t).tQ1 = tQ1;
         results(t).tQ2 = tQ2;
-        results(t).tQ3 = tQ3;
         results(t).tPAS = tQ1;
-        results(t).tDetect = tQ2;
-        results(t).tLoc = tQ3;
+        results(t).tLoc = tQ2;
 
-        results(t).detectResp = detectResp;
-        results(t).detectRT = detectRT;
-        % Legacy resp2 remains a localisation-response alias for compatibility.
-        results(t).resp2 = resp2;
-        results(t).locResp = resp2;
+        results(t).locResp = locResp;
         results(t).locRT = locRT;
 
         results(t).pas = pas;
@@ -893,19 +902,12 @@ try
         results(t).trialTotalSec = trialTotalSec;
 
 
-        results(t).hit = double(hit);
+        results(t).awareFromPAS = awareFromPAS;
+        results(t).derivedDetectionFromPAS = derivedDetectionFromPAS;
+        results(t).validBehaviouralTrial = validBehaviouralTrial;
         results(t).locCorrect = locCorrect;
-
-        if ~trial.isChange
-            results(t).outcomeBin = 'NoChange';
-        else
-            switch outcomeBin
-                case 1, results(t).outcomeBin = 'Blind';
-                case 2, results(t).outcomeBin = 'Sensing';
-                case 3, results(t).outcomeBin = 'Seeing';
-                otherwise, results(t).outcomeBin = '';
-            end
-        end
+        results(t).outcomeBin = outcomeBin;
+        results(t).catchOutcome = catchOutcome;
 
         results(t).track1_xCurrent = NaN;
         results(t).track2_xCurrent = NaN;
@@ -917,7 +919,7 @@ try
         results(t).track2_frozenFrames = NaN;
         results(t).track3_frozenFrames = NaN;
 
-        trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, []);
+        trialLogLine(t, cfg, trial, durFrames, locResp, awareFromPAS, locCorrect, pas, outcomeBin);
 
         % End-of-block
         if mod(t, cfg.trialsPerBlock) == 0
@@ -937,7 +939,10 @@ try
         cfg.S1_frames, cfg.ISI_frames, cfg.S2_frames, cfg.gap_frames);
     fprintf('Orientation magnitudes used: %s deg.\n', mat2str(cfg.design.changeMagnitudesDeg));
     fprintf('Change counts by magnitude: %s.\n', mat2str(cfg.design.changeCountsPerMagnitude));
+    fprintf('Protocol version: %s.\n', cfg.protocolVersion);
+    fprintf('Run profile: %s.\n', cfg.runProfile);
     fprintf('Question order: %s.\n', cfg.questionOrder);
+    fprintf('Awareness rule: %s.\n', cfg.awarenessRule);
 
 
     %% ------------------------- SAVE -------------------------
@@ -977,11 +982,23 @@ try
     T.changeTrialsPerMagnitude = repmat(cfg.nChangePerMagnitude, height(T), 1);
     T.changeCountsPerMagnitude = repmat(string(mat2str(cfg.design.changeCountsPerMagnitude)), height(T), 1);
     T.noChangeTrials = repmat(cfg.nCatch, height(T), 1);
-    T.debugQuickRun = repmat(double(cfg.debug.quickRun), height(T), 1);
-    T.questTest100 = repmat(0, height(T), 1);
+    T.debugQuickRun = repmat(double(strcmp(cfg.runProfile, 'debugQuick')), height(T), 1);
+    T.questTest100 = zeros(height(T), 1);
+    T.protocolVersion = repmat(string(cfg.protocolVersion), height(T), 1);
+    T.runProfile = repmat(string(cfg.runProfile), height(T), 1);
     T.questionOrder = repmat(string(cfg.questionOrder), height(T), 1);
-    T.detectionKeyMapping = repmat(string(cfg.detectionKeyMapping), height(T), 1);
+    T.awarenessRule = repmat(string(cfg.awarenessRule), height(T), 1);
     T.eegQuestionTriggerScheme = repmat(string(cfg.eegQuestionTriggerScheme), height(T), 1);
+    T.randomSeed = repmat(double(cfg.randomisation.seed), height(T), 1);
+    T.blockMagnitudeInventory = strings(height(T),1);
+    T.blockQuadrantInventory = strings(height(T),1);
+    for rr = 1:height(T)
+        bb = T.blockNum(rr);
+        T.blockMagnitudeInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockMagnitudeCounts(bb,:)));
+        T.blockQuadrantInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockQuadrantCounts(bb,:)));
+    end
+    T.globalMagnitudeQuadrantInventory = repmat( ...
+        string(mat2str(cfg.design.balanceSummary.cellTotals)), height(T), 1);
 
     writetable(T, outFile);
 
@@ -1000,13 +1017,14 @@ try
     
     % --- Change-trial outcome distribution (blind/sensing/seeing) ---
     isChg   = (T2.isChange == 1);
-    blind   = isChg & (T2.hit == 0);
-    seeing  = isChg & (T2.hit == 1) & (T2.locCorrect == 1);
-    sensing = isChg & (T2.hit == 1) & (T2.locCorrect == 0);
+    blind   = isChg & strcmp(string(T2.outcomeBin), 'Blind');
+    seeing  = isChg & strcmp(string(T2.outcomeBin), 'Seeing');
+    sensing = isChg & strcmp(string(T2.outcomeBin), 'Sensing');
 
     outCounts = [sum(blind) sum(sensing) sum(seeing)];
-    if sum(isChg) > 0
-        outPct = 100 * outCounts / sum(isChg);
+    nClassifiedChange = sum(outCounts);
+    if nClassifiedChange > 0
+        outPct = 100 * outCounts / nClassifiedChange;
     else
         outPct = [0 0 0];
     end
@@ -1014,10 +1032,25 @@ try
     disp(table((1:4)', pasCounts', pasPct', 'VariableNames', {'PAS','Count','Percent'}));
     disp(table(["blind";"sensing";"seeing"], outCounts', outPct', 'VariableNames', {'Outcome','Count','Percent'}));
 
+    isCatch = (T2.isChange == 0);
+    correctRejection = isCatch & strcmp(string(T2.catchOutcome), 'CorrectRejection');
+    falseAlarm = isCatch & strcmp(string(T2.catchOutcome), 'FalseAlarm');
+    catchCounts = [sum(correctRejection) sum(falseAlarm)];
+    nClassifiedCatch = sum(catchCounts);
+    if nClassifiedCatch > 0
+        catchPct = 100 * catchCounts / nClassifiedCatch;
+    else
+        catchPct = [0 0];
+    end
+    disp(table(["correct_rejection";"false_alarm"], catchCounts', catchPct', ...
+        'VariableNames', {'CatchOutcome','Count','Percent'}));
+
         
     cal = struct();
     cal.participantID  = cfg.participantID;
     cal.timestamp      = timestamp;
+    cal.protocolVersion = cfg.protocolVersion;
+    cal.runProfile = cfg.runProfile;
     cal.design         = cfg.design;
     cal.changeMagnitudesDeg = cfg.design.changeMagnitudesDeg;
     cal.nChangePerMagnitude = cfg.nChangePerMagnitude;
@@ -1033,10 +1066,12 @@ try
     cal.ISI_sec        = cfg.ISI_frames * ifi;
     cal.S2_sec         = cfg.S2_frames * ifi;
     cal.gap_sec        = cfg.gap_frames * ifi;
-    cal.debugQuickRun  = cfg.debug.quickRun;
+    cal.debugQuickRun  = strcmp(cfg.runProfile, 'debugQuick');
     cal.questionOrder = cfg.questionOrder;
-    cal.detectionKeyMapping = cfg.detectionKeyMapping;
+    cal.awarenessRule = cfg.awarenessRule;
     cal.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
+    cal.randomisation = cfg.randomisation;
+    cal.plannedTrials = trials;
 
     calFile = fullfile(outDir, sprintf('%s_%s_FullRun_%s.mat', cfg.outputPrefix, cfg.participantID, timestamp));
     save(calFile, 'cal');
@@ -1311,20 +1346,22 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
         'In this task you will see four striped circles arranged in a 2 x 2 grid.\n' ...
         'Sometimes ONE of the circles will rotate and change orientation.\n' ...
         'Sometimes NO circles will rotate and change orientation.\n\n' ...
-        'After each trial you will answer three questions:\n\n' ...
+        'After each trial you will answer two questions:\n\n' ...
     ];
     instrQ1Bold = 'Question 1: How clearly did you experience the change?\n';
-    instrBodyB = 'Use q/w/e/r for PAS ratings 1-4.\n\n';
-    instrQ2Bold = 'Question 2: Did you detect a change?\n';
-    instrBodyC = 'Press the GREEN button for Yes, or the RED button for No.\n\n';
-    instrQ3Bold = 'Question 3: Where was the change?\n';
-    instrBodyD = [ ...
+    instrBodyB = [ ...
+        'Use q/w/e/r for PAS ratings 1-4. Rate only your experience that a change occurred,\n' ...
+        'not how confident you are about its location. There is no objectively correct PAS answer.\n\n' ...
+    ];
+    instrQ2Bold = 'Question 2: Which location is most likely to have changed?\n';
+    instrBodyC = [ ...
+        'Make your best location guess even if you experienced no change.\n' ...
         'Press the labelled quadrant button:\n\n' ...
         '[1] Top Left    [2] Top Right    [3] Bottom Left    [4] Bottom Right\n\n' ...
-        'You will always be asked all three questions, even if you press the RED button for No in Question 2.\n\n' ...
+        'You will always answer both questions, including on trials where no change seemed to occur.\n\n' ...
     ];
-    instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC, instrQ3Bold, instrBodyD };
-    instrSegBold = [ false, true, false, true, false, true, false ];
+    instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC };
+    instrSegBold = [ false, true, false, true, false ];
 
     % ---- Lockout settings ----
     tcfg = cfg.display.text;
@@ -1403,10 +1440,22 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
     if ~isempty(map)
         img = uint8(ind2rgb(img, map) * 255);
     end
+    % Crop any black letterbox area while retaining the complete six-panel row.
+    rgbForBounds = img(:,:,1:min(3,size(img,3)));
+    contentMask = any(double(rgbForBounds) > 8, 3);
+    contentRows = find(any(contentMask,2));
+    contentCols = find(any(contentMask,1));
+    if ~isempty(contentRows) && ~isempty(contentCols)
+        pad = 2;
+        r1 = max(1,contentRows(1)-pad); r2 = min(size(img,1),contentRows(end)+pad);
+        c1 = max(1,contentCols(1)-pad); c2 = min(size(img,2),contentCols(end)+pad);
+        img = img(r1:r2,c1:c2,:);
+        if ~isempty(alpha), alpha = alpha(r1:r2,c1:c2,:); end
+    end
     if size(img, 3) == 4
         rgba = img;
     else
-        if ndims(img) == 2
+        if ismatrix(img)
             rgb = repmat(img, [1 1 3]);
         else
             rgb = img(:, :, 1:3);
@@ -1445,13 +1494,13 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
         '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
         'First, a fixation cross will appear in the centre. Next, you will see four circles, a brief blank screen, then the four circles again.\n' ...
         'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear.\nTry to avoid looking around at the individual circles during the brief sequence.\n\n' ...
-        'After the sequence, you will answer all three questions in this order:\n' ...
-        '1) PAS clarity, 2) detection using the GREEN/RED buttons, 3) localisation.\n' ...
+        'After the sequence, you will answer both questions in this order:\n' ...
+        '1) PAS clarity, then 2) a forced location choice.\n' ...
         'The diagram shows examples of the stimulus, PAS, and localisation screens.\n\n' ...
     ];
 
     bottomText = [ ...
-        '\nYou will always answer PAS, detection, and localisation, including after a RED/No response.\n' ...
+        '\nYou will always answer PAS and localisation. Make your best location guess after PAS 1.\n' ...
         'We will begin with some practice trials so you can get comfortable with the task.\n' ...
     ];
 
@@ -1542,15 +1591,13 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     titlePractice1 = 'Practice Information\n\n\n\n';
 
     % --- Notice text (tight + readable) ---
-    practice1BodyA = [ ...
-        'Before we begin the practice trials, please remember:\n\n'
-    ];
-    practice1BoldOrder = 'Question order: PAS, detection, then localisation.\n\n';
+    practice1BodyA = 'Before we begin the practice trials, please remember:\n\n';
+    practice1BoldOrder = 'Question order: PAS, then forced localisation.\n\n';
     practice1BodyB = [ ...
         'Question 1 is the 1-4 PAS clarity rating using q/w/e/r.\n' ...
-        'Question 2 is detection: GREEN means Yes and RED means No.\n' ...
-        'Question 3 is localisation using the labelled quadrant buttons.\n' ...
-        'Always answer all three questions, including after a RED/No response.\n\n\n' ...
+        'Rate your experience of a change, not confidence about its location.\n' ...
+        'Question 2 is localisation using the labelled quadrant buttons.\n' ...
+        'Always make your best location guess, including after PAS 1.\n\n\n' ...
     ];
     practice1BoldBlocks = 'You will be completing two practice blocks:\n\n';
     practice1BodyC = [ ...
@@ -1617,7 +1664,7 @@ function showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, flipLab
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
 end
 
-function showPractice1BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+function showPractice1BeginScreen(window, windowRect, bg, black, cfg)
 
     showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'practice1_begin');
 end
@@ -1642,8 +1689,8 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
         '\nNice work!\n\n' ...
         'You will now complete a second block of practice trials designed to feel more like the real task.\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
-        'Question 1 is PAS clarity using q/w/e/r. Question 2 is detection using GREEN for Yes and RED for No.\n' ...
-        'Question 3 is localisation using the labelled quadrant buttons. Always answer all three questions.\n\n' ...
+        'Question 1 is PAS clarity using q/w/e/r. Question 2 is forced localisation using the labelled quadrant buttons.\n' ...
+        'Always answer both questions and make your best location guess after PAS 1.\n\n' ...
     ];
     PracticeText2b = 'Feedback will be removed for this second block.\n';
 
@@ -1689,7 +1736,7 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
 end
 
-function showPractice2BeginScreen(window, windowRect, bg, black, cfg) %#ok<INUSD>
+function showPractice2BeginScreen(window, windowRect, bg, black, cfg)
 
     showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'practice2_begin');
 end
@@ -1710,8 +1757,8 @@ function showMainExperimentIntroScreen(window, windowRect, bg, black, cfg)
         'You will NOT receive feedback during the main run.\n\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
         'As before, please keep your eyes on the centre fixation cross during each trial, even when the circles appear.\n\n' ...
-        'Question 1 is PAS clarity using q/w/e/r. Question 2 is detection using GREEN for Yes and RED for No.\n' ...
-        'Question 3 is localisation using the labelled quadrant buttons. Always answer all three questions.\n' ...
+        'Question 1 is PAS clarity using q/w/e/r. Question 2 is forced localisation using the labelled quadrant buttons.\n' ...
+        'Always answer both questions and make your best location guess after PAS 1.\n' ...
     ];
 
     % ---- PASS 1: greyed prompt ----
@@ -1823,17 +1870,17 @@ function result = classifyPractice1(summary, cfg)
 
     % Pull metrics (safe defaults)
     faRateNCH       = NaN;
-    easyDetectRate  = NaN;
+    easyAwareRate   = NaN;
     easySeeRate     = NaN;
-    changeDetectRate = NaN;
+    changeAwareRate = NaN;
 
     if isfield(summary,'faRateNCH'),        faRateNCH = summary.faRateNCH; end
-    if isfield(summary,'easyDetectRate'),   easyDetectRate = summary.easyDetectRate; end
+    if isfield(summary,'easyAwareRate'),    easyAwareRate = summary.easyAwareRate; end
     if isfield(summary,'easySeeRate'),      easySeeRate = summary.easySeeRate; end
-    if isfield(summary,'changeDetectRate'), changeDetectRate = summary.changeDetectRate; end
+    if isfield(summary,'changeAwareRate'),  changeAwareRate = summary.changeAwareRate; end
 
     % ---- Safety rule: missing metrics => conservative fail ----
-    requiredMissing = isnan(faRateNCH) || isnan(easyDetectRate) || isnan(easySeeRate);
+    requiredMissing = isnan(faRateNCH) || isnan(easyAwareRate) || isnan(easySeeRate);
     if requiredMissing
         warning('classifyPractice1: Missing required practice metrics. Treating as fail_conservative.');
         result = 'fail_conservative';
@@ -1841,9 +1888,9 @@ function result = classifyPractice1(summary, cfg)
     end
 
     % Optional extra metric
-    if isfield(crit,'useChangeDetect') && crit.useChangeDetect
-        if isnan(changeDetectRate)
-            warning('classifyPractice1: changeDetectRate missing. Treating as fail_conservative.');
+    if isfield(crit,'useChangeAware') && crit.useChangeAware
+        if isnan(changeAwareRate)
+            warning('classifyPractice1: changeAwareRate missing. Treating as fail_conservative.');
             result = 'fail_conservative';
             return;
         end
@@ -1855,11 +1902,11 @@ function result = classifyPractice1(summary, cfg)
         return;
     end
 
-    conservativeFail = (easyDetectRate < crit.minEasyDetect) || ...
+    conservativeFail = (easyAwareRate < crit.minEasyAware) || ...
                        (easySeeRate    < crit.minEasySee);
 
-    if isfield(crit,'useChangeDetect') && crit.useChangeDetect
-        conservativeFail = conservativeFail || (changeDetectRate < crit.minChangeDetect);
+    if isfield(crit,'useChangeAware') && crit.useChangeAware
+        conservativeFail = conservativeFail || (changeAwareRate < crit.minChangeAware);
     end
 
     if conservativeFail
@@ -1886,15 +1933,17 @@ function printPracticeSummary(summary, label)
     end
 
     % Helper for pretty printing NaN-safe values
-    fprintf('StdDetect=%s | StdSee=%s | FA(NCH)=%s | CR(NCH)=%s | EasyDetect=%s | EasySee=%s | ChangeDetect=%s | ChangeSee=%s\n', ...
-        fmtRate(getFieldOrNaN(summary,'stdDetectRate')), ...
+    fprintf('StdAware=%s | StdSee=%s | FA(NCH)=%s | CR(NCH)=%s | EasyAware=%s | EasySee=%s | ChangeAware=%s | ChangeSee=%s | MissingPAS=%s | MissingLoc=%s\n', ...
+        fmtRate(getFieldOrNaN(summary,'stdAwareRate')), ...
         fmtRate(getFieldOrNaN(summary,'stdSeeRate')), ...
         fmtRate(getFieldOrNaN(summary,'faRateNCH')), ...
         fmtRate(getFieldOrNaN(summary,'crRateNCH')), ...
-        fmtRate(getFieldOrNaN(summary,'easyDetectRate')), ...
+        fmtRate(getFieldOrNaN(summary,'easyAwareRate')), ...
         fmtRate(getFieldOrNaN(summary,'easySeeRate')), ...
-        fmtRate(getFieldOrNaN(summary,'changeDetectRate')), ...
-        fmtRate(getFieldOrNaN(summary,'changeSeeRate')));
+        fmtRate(getFieldOrNaN(summary,'changeAwareRate')), ...
+        fmtRate(getFieldOrNaN(summary,'changeSeeRate')), ...
+        numToStrOrNA(getFieldOrNaN(summary,'nMissingPAS')), ...
+        numToStrOrNA(getFieldOrNaN(summary,'nMissingLoc')));
 
     if isfield(summary,'classification')
         fprintf('classification=%s\n', string(summary.classification));
@@ -1990,6 +2039,7 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
         'isChange', false, ...
         'changeQuad', NaN, ...
         'changeStartOri', NaN, ...
+        'changeDirection', 0, ...
         'changeMagnitudeDeg', NaN, ...
         'staircase', 'P');
 
@@ -2003,10 +2053,12 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
 
     nSTD = pracCfg.nSTD;
     stdQuads = makeBalancedQuads(nSTD);
+    stdDirections = makeBalancedDirections(nSTD, magSTD);
     for i = 1:nSTD
         pTrials(k).trialType  = 'STD';
         pTrials(k).isChange   = true;
         pTrials(k).changeQuad = stdQuads(i);
+        pTrials(k).changeDirection = stdDirections(i);
         pTrials(k).changeMagnitudeDeg = magSTD;
         pTrials(k).staircase = orientationMagnitudeLabel(magSTD);
         k = k + 1;
@@ -2017,6 +2069,7 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
         pTrials(k).trialType  = 'NCH';
         pTrials(k).isChange   = false;
         pTrials(k).changeQuad = NaN;
+        pTrials(k).changeDirection = 0;
         pTrials(k).changeMagnitudeDeg = 0;
         pTrials(k).staircase = 'NCH';
         k = k + 1;
@@ -2024,10 +2077,12 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
 
     nEASY = pracCfg.nEASY;
     easyQuads = makeBalancedQuads(nEASY);
+    easyDirections = makeBalancedDirections(nEASY, magEasy);
     for i = 1:nEASY
         pTrials(k).trialType  = 'EASY';
         pTrials(k).isChange   = true;
         pTrials(k).changeQuad = easyQuads(i);
+        pTrials(k).changeDirection = easyDirections(i);
         pTrials(k).changeMagnitudeDeg = magEasy;
         pTrials(k).staircase = orientationMagnitudeLabel(magEasy);
         k = k + 1;
@@ -2125,6 +2180,49 @@ function [mags, counts, nNoChange, trialsPerBlock] = validateQuickRunProfile(deb
     end
 end
 
+function validateRunProfileDefinition(profile, profileName)
+    required = {'changeMagnitudesDeg','changeCounts','noChangeTrials','trialsPerBlock'};
+    for ii = 1:numel(required)
+        if ~isfield(profile,required{ii})
+            error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+                'Run profile %s is missing %s.', profileName, required{ii});
+        end
+    end
+    mags = profile.changeMagnitudesDeg;
+    counts = profile.changeCounts;
+    if ~isnumeric(mags) || ~isvector(mags) || isempty(mags) || any(~isfinite(mags)) || ...
+            any(mags <= 0) || any(mags > 90) || numel(unique(mags)) ~= numel(mags)
+        error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+            'Profile %s magnitudes must be unique finite values in (0,90].', profileName);
+    end
+    if ~isnumeric(counts) || ~isvector(counts) || numel(counts) ~= numel(mags) || ...
+            any(~isfinite(counts)) || any(counts <= 0) || any(counts ~= round(counts))
+        error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+            'Profile %s changeCounts must be positive integers matching the magnitude vector.', profileName);
+    end
+    if ~isscalar(profile.noChangeTrials) || ~isfinite(profile.noChangeTrials) || ...
+            profile.noChangeTrials < 0 || profile.noChangeTrials ~= round(profile.noChangeTrials)
+        error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+            'Profile %s noChangeTrials must be a non-negative integer.', profileName);
+    end
+    if ~isscalar(profile.trialsPerBlock) || ~isfinite(profile.trialsPerBlock) || ...
+            profile.trialsPerBlock <= 0 || profile.trialsPerBlock ~= round(profile.trialsPerBlock)
+        error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+            'Profile %s trialsPerBlock must be a positive integer.', profileName);
+    end
+    nChange = sum(counts);
+    nTotal = nChange + profile.noChangeTrials;
+    if mod(nTotal,profile.trialsPerBlock) ~= 0
+        error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+            'Profile %s total trials must divide evenly by trialsPerBlock.', profileName);
+    end
+    nBlocks = nTotal/profile.trialsPerBlock;
+    if mod(nChange,nBlocks) ~= 0 || mod(profile.noChangeTrials,nBlocks) ~= 0
+        error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
+            'Profile %s change and no-change totals must each divide evenly across blocks.', profileName);
+    end
+end
+
 function trials = buildTrialList(cfg)
 
     trialTemplate = struct( ...
@@ -2132,9 +2230,12 @@ function trials = buildTrialList(cfg)
         'staircase', 'NCH', ...
         'changeQuad', 0, ...
         'changeStartOri', NaN, ...
+        'changeDirection', 0, ...
         'changeMagnitudeDeg', NaN, ...
         'magnitudeIndex', NaN, ...
-        'magnitudeLabel', '');
+        'magnitudeLabel', '', ...
+        'oriS1', nan(1,4), ...
+        'oriS2', nan(1,4));
     trials = repmat(trialTemplate, cfg.nTotal, 1);
 
     mags = cfg.design.changeMagnitudesDeg(:)';
@@ -2144,63 +2245,82 @@ function trials = buildTrialList(cfg)
     assert(sum(magCounts) == cfg.nChange, ...
         'buildTrialList: Magnitude-specific counts must sum to nChange.');
 
-    magPool = repelem(mags, magCounts);
-    magPool = magPool(randperm(numel(magPool)));
-
-    if mod(cfg.nChange, 4) == 0
-        quadPool = repmat(1:4, 1, cfg.nChange / 4);
-        quadPool = quadPool(randperm(numel(quadPool)));
-    else
-        quadPool = makeBalancedQuads(cfg.nChange);
-    end
-
-    idxChange = 0;
+    cellByBlock = allocateMagnitudeQuadrantBlocks(cfg);
+    directionBalance = zeros(numel(mags), 4);
+    catchOri = makeBalancedCatchOrientations(cfg.nCatch, cfg.stim.allowedOri);
+    catchIdx = 0;
     idx0 = 1;
 
     for b = 1:cfg.nBlocks
-        if isfield(cfg,'trialDial') && isfield(cfg.trialDial,'applyPerBlock') && cfg.trialDial.applyPerBlock
-            nChg = cfg.trialDial.nChangePerBlock;
-            nCat = cfg.trialDial.nNoChangePerBlock;
-        else
-            nChg = round(cfg.trialsPerBlock * cfg.trialDial.pChange);
-            nCat = cfg.trialsPerBlock - nChg;
-        end
-
+        nChg = cfg.trialDial.nChangePerBlock;
+        nCat = cfg.trialDial.nNoChangePerBlock;
         block = repmat(trialTemplate, cfg.trialsPerBlock, 1);
         k = 1;
 
-        for i = 1:nChg
-            idxChange = idxChange + 1;
-            mag = magPool(idxChange);
+        for mm = 1:numel(mags)
+            mag = mags(mm);
             label = orientationMagnitudeLabel(mag);
-
-            block(k).isChange = 1;
-            block(k).staircase = label;
-            block(k).magnitudeLabel = label;
-            block(k).changeMagnitudeDeg = mag;
-            block(k).magnitudeIndex = find(abs(mags - mag) < 1e-9, 1, 'first');
-            block(k).changeQuad = quadPool(idxChange);
-            k = k + 1;
+            for q = 1:4
+                nCell = cellByBlock(mm,q,b);
+                dirs = balancedCellDirections(nCell, mag, directionBalance(mm,q));
+                directionBalance(mm,q) = directionBalance(mm,q) + sum(dirs);
+                dirs = dirs(randperm(numel(dirs)));
+                for ii = 1:nCell
+                    block(k).isChange = 1;
+                    block(k).staircase = label;
+                    block(k).magnitudeLabel = label;
+                    block(k).changeMagnitudeDeg = mag;
+                    block(k).magnitudeIndex = mm;
+                    block(k).changeQuad = q;
+                    block(k).changeDirection = dirs(ii);
+                    k = k + 1;
+                end
+            end
         end
 
         for i = 1:nCat
+            catchIdx = catchIdx + 1;
             block(k).isChange = 0;
             block(k).staircase = 'NCH';
             block(k).magnitudeLabel = 'NCH';
             block(k).changeMagnitudeDeg = 0;
             block(k).magnitudeIndex = 0;
             block(k).changeQuad = 0;
+            block(k).changeDirection = 0;
+            block(k).oriS1 = catchOri(catchIdx,:);
+            block(k).oriS2 = catchOri(catchIdx,:);
             k = k + 1;
         end
 
+        assert(k-1 == cfg.trialsPerBlock && sum(cellByBlock(:,:,b), 'all') == nChg, ...
+            'buildTrialList: block construction count mismatch.');
         order = randperm(numel(block));
         block = block(order);
         trials(idx0:idx0+cfg.trialsPerBlock-1) = block;
         idx0 = idx0 + cfg.trialsPerBlock;
     end
 
-    assert(idxChange == cfg.nChange, 'buildTrialList: change-trial count mismatch.');
-    trials = assignBalancedChangeStartOri(trials, cfg.stim.allowedOri);
+    assert(catchIdx == cfg.nCatch, 'buildTrialList: no-change trial count mismatch.');
+
+    % Balance target starting orientations globally within each magnitude,
+    % then precompute every change trial's complete S1/S2 orientation arrays.
+    for mm = 1:numel(mags)
+        idx = find([trials.magnitudeIndex] == mm);
+        startPool = makeBalancedValuePool(cfg.stim.allowedOri, numel(idx));
+        idx = idx(randperm(numel(idx)));
+        for ii = 1:numel(idx)
+            tt = idx(ii);
+            trials(tt).changeStartOri = startPool(ii);
+            signedChange = trials(tt).changeDirection * trials(tt).changeMagnitudeDeg;
+            oriS1 = makeOriS1_noPostChangeDup(trials(tt).changeQuad, ...
+                trials(tt).changeStartOri, cfg.stim.allowedOri, signedChange);
+            oriS2 = oriS1;
+            oriS2(trials(tt).changeQuad) = mod( ...
+                oriS1(trials(tt).changeQuad) + signedChange, 180);
+            trials(tt).oriS1 = oriS1(:)';
+            trials(tt).oriS2 = oriS2(:)';
+        end
+    end
 end
 
 function q = makeBalancedQuads(n)
@@ -2283,14 +2403,12 @@ end
 function drawQuadrantPrompt(window, windowRect, colour, bg, promptText, cfg)
 
     if nargin < 5 || isempty(promptText)
-        promptText = 'Where was the change?';
+        promptText = 'Which location is most likely to have changed?';
     end
     qcfg = cfg.display.text.questions;
 
     Screen('FillRect', window, bg);
     [xc,yc] = RectCenter(windowRect);
-    xLeft = windowRect(1);
-    xRight = windowRect(3);
     yTop = windowRect(2);
     yBottom = windowRect(4);
     w = windowRect(3) - windowRect(1);
@@ -2343,21 +2461,6 @@ function drawQuadrantPrompt(window, windowRect, colour, bg, promptText, cfg)
     DrawFormattedText(window, promptText, 'center', promptY, colour, qcfg.quadPromptWrap);
 end
 
-
-function drawDetection(window, windowRect, colour, bg, cfg)
-    Screen('TextFont', window, 'Arial');
-    Screen('TextStyle', window, 0);
-    Screen('FillRect', window, bg);
-    [~, yc] = RectCenter(windowRect);
-    h = windowRect(4) - windowRect(2);
-    qcfg = cfg.display.text.questions;
-
-    Screen('TextSize', window, qcfg.pasQuestionSize);
-    DrawFormattedText(window, 'Did you detect a change?', 'center', yc - round(h * 0.12), colour, qcfg.pasQuestionWrap);
-
-    Screen('TextSize', window, qcfg.pasNumberSize);
-    DrawFormattedText(window, 'GREEN button = Yes        RED button = No', 'center', yc + round(h * 0.06), colour, qcfg.pasQuestionWrap);
-end
 
 function drawPAS(window, windowRect, colour, bg, cfg)
     Screen('TextFont', window, 'Arial');
@@ -2453,10 +2556,6 @@ function val = keyToMappedValue(keyCode, keyList, valueList)
     if ~isempty(idx)
         val = valueList(idx);
     end
-end
-
-function v = clamp(v, lo, hi)
-    v = max(lo, min(hi, v));
 end
 
 function displayCfg = makeDisplayProfile(profileName)
@@ -2619,6 +2718,8 @@ function r = emptyResultRow()
         'isChange', NaN, ...
         'staircase', '', ...
         'changeQuad', NaN, ...
+        'changeDirection', NaN, ...
+        'changeStartOri', NaN, ...
         'durFrames', NaN, ...
         'durSec', NaN, ...
         's1Frames', NaN, ...
@@ -2638,7 +2739,6 @@ function r = emptyResultRow()
         'selectedPSensing', NaN, ...
         'selectedPSeeing', NaN, ...
         'selectedPAware', NaN, ...
-        'selectedPDetect', NaN, ...
         'selectedPLocGivenAware', NaN, ...
         'posteriorEntropyBits', NaN, ...
         'oriS1', '', ...
@@ -2658,27 +2758,23 @@ function r = emptyResultRow()
         'missedGap', NaN, ...
         'missedQ1', NaN, ...
         'missedQ2', NaN, ...
-        'missedQ3', NaN, ...
         'missedPAS', NaN, ...
-        'missedDetect', NaN, ...
         'missedLoc', NaN, ...
         'missedITI', NaN, ...
         'tQ1', NaN, ...
         'tQ2', NaN, ...
-        'tQ3', NaN, ...
         'tPAS', NaN, ...
-        'tDetect', NaN, ...
         'tLoc', NaN, ...
-        'detectResp', NaN, ...
-        'detectRT', NaN, ...
-        'resp2', NaN, ...
         'locResp', NaN, ...
         'locRT', NaN, ...
         'pas', NaN, ...
         'pasRT', NaN, ...
-        'hit', NaN, ...
+        'awareFromPAS', NaN, ...
+        'derivedDetectionFromPAS', NaN, ...
+        'validBehaviouralTrial', NaN, ...
         'locCorrect', NaN, ...
         'outcomeBin', '', ...
+        'catchOutcome', '', ...
         'track1_xCurrent', NaN, ...
         'track2_xCurrent', NaN, ...
         'track3_xCurrent', NaN, ...
@@ -2706,19 +2802,10 @@ function qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg)
         Screen('TextSize', off, 45);
 
         Screen('FillRect', off, bg);
-        drawDetection(off, offRect, black, bg, cfg);
+        drawQuadrantPrompt(off, offRect, black, bg, ...
+            'Which location is most likely to have changed?\nMake your best guess even if you experienced no change.', cfg);
         img = Screen('GetImage', off);
-        qTex.Detect = Screen('MakeTexture', window, img);
-
-        Screen('FillRect', off, bg);
-        drawQuadrantPrompt(off, offRect, black, bg, 'Where was the change?', cfg);
-        img = Screen('GetImage', off);
-        qTex.Loc_default = Screen('MakeTexture', window, img);
-
-        Screen('FillRect', off, bg);
-        drawQuadrantPrompt(off, offRect, black, bg, 'Select a quadrant, even if you said no change.', cfg);
-        img = Screen('GetImage', off);
-        qTex.Loc_detectNo = Screen('MakeTexture', window, img);
+        qTex.Loc = Screen('MakeTexture', window, img);
 
         Screen('FillRect', off, bg);
         drawPAS(off, offRect, black, bg, cfg);
@@ -2792,7 +2879,7 @@ function ensureTittaOnPath(cfg)
     end
 
     oldDir = pwd;
-    cleanupObj = onCleanup(@() cd(oldDir)); %#ok<NASGU>
+    cleanupObj = onCleanup(@() cd(oldDir));
     cd(cfg.tobii.tittaRoot);
 
     if exist('addTittaToPath.m', 'file') == 2
@@ -2935,7 +3022,7 @@ function tobii = stopAndSaveTobii(tobii, cfg, outDir, participantID, timestamp, 
 
         dat = tobii.EThndl.collectSessionData();
         dat.expt.scriptName    = cfg.outputPrefix;
-        dat.expt.stage         = 'Stage3_fixedOrientation_passiveTobii';
+        dat.expt.stage         = cfg.protocolVersion;
         dat.expt.statusLabel   = statusLabel;
         dat.expt.participantID = participantID;
         dat.expt.timestamp     = timestamp;
@@ -2972,9 +3059,12 @@ end
 function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary = struct();
     cfgSummary.participantID = cfg.participantID;
+    cfgSummary.protocolVersion = cfg.protocolVersion;
+    cfgSummary.runProfile = cfg.runProfile;
+    cfgSummary.randomisation = cfg.randomisation;
     cfgSummary.screenNumber = cfg.screenNumber;
     cfgSummary.debugWindow = cfg.debugWindow;
-    cfgSummary.debugQuickRun = cfg.debug.quickRun;
+    cfgSummary.debugQuickRun = strcmp(cfg.runProfile, 'debugQuick');
     cfgSummary.eegEnable = cfg.eeg.enable;
     cfgSummary.nTotal = cfg.nTotal;
     cfgSummary.trialsPerBlock = cfg.trialsPerBlock;
@@ -2984,7 +3074,7 @@ function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary.changeMagnitudesDeg = cfg.design.changeMagnitudesDeg;
     cfgSummary.changeCountsPerMagnitude = cfg.design.changeCountsPerMagnitude;
     cfgSummary.questionOrder = cfg.questionOrder;
-    cfgSummary.detectionKeyMapping = cfg.detectionKeyMapping;
+    cfgSummary.awarenessRule = cfg.awarenessRule;
     cfgSummary.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
     cfgSummary.S1_frames = cfg.S1_frames;
     cfgSummary.ISI_frames = cfg.ISI_frames;
@@ -3127,9 +3217,21 @@ function checkpointSave(results, t, outFile, cfg)
         if isempty(r), return; end
 
         T = struct2table(r);
+        T.protocolVersion = repmat(string(cfg.protocolVersion), height(T), 1);
+        T.runProfile = repmat(string(cfg.runProfile), height(T), 1);
         T.questionOrder = repmat(string(cfg.questionOrder), height(T), 1);
-        T.detectionKeyMapping = repmat(string(cfg.detectionKeyMapping), height(T), 1);
+        T.awarenessRule = repmat(string(cfg.awarenessRule), height(T), 1);
         T.eegQuestionTriggerScheme = repmat(string(cfg.eegQuestionTriggerScheme), height(T), 1);
+        T.randomSeed = repmat(double(cfg.randomisation.seed), height(T), 1);
+        T.blockMagnitudeInventory = strings(height(T),1);
+        T.blockQuadrantInventory = strings(height(T),1);
+        for rr = 1:height(T)
+            bb = T.blockNum(rr);
+            T.blockMagnitudeInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockMagnitudeCounts(bb,:)));
+            T.blockQuadrantInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockQuadrantCounts(bb,:)));
+        end
+        T.globalMagnitudeQuadrantInventory = repmat( ...
+            string(mat2str(cfg.design.balanceSummary.cellTotals)), height(T), 1);
 
         % Write to temp CSV first, then replace
         [p,n,e] = fileparts(outFile);              % e should be '.csv'
@@ -3145,7 +3247,7 @@ function checkpointSave(results, t, outFile, cfg)
     end
 end
 
-function trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, ~)
+function trialLogLine(t, cfg, trial, durFrames, locResp, awareFromPAS, locCorrect, pas, outcomeBin)
 
     if ~isfield(cfg,'debug') || ~isfield(cfg.debug,'trialLog') || ~cfg.debug.trialLog
         return;
@@ -3156,34 +3258,32 @@ function trialLogLine(t, cfg, trial, durFrames, resp2, hit, locCorrect, pas, ~)
     if trial.isChange
         tc = 'CHG';
         qStr = sprintf('%d', trial.changeQuad);
-        locStr = sprintf('%d', locCorrect);
+        locStr = numToStrOrNA(locCorrect);
     else
         tc = 'NCH';
         qStr = '-';
         locStr = '-';
     end
 
-    if isnan(resp2), locStrResp = '-'; else, locStrResp = sprintf('%d', resp2); end
+    if isnan(locResp), locStrResp = '-'; else, locStrResp = sprintf('%d', locResp); end
     if isnan(pas), pasStr = 'NaN'; else, pasStr = sprintf('%d', pas); end
+    awareStr = numToStrOrNA(awareFromPAS);
 
-    if trial.isChange
-        if hit && ~isnan(locCorrect) && locCorrect == 1
-            outcomeStr = 'SEE';
-        elseif hit
-            outcomeStr = 'SENS';
-        else
-            outcomeStr = 'BLIND';
-        end
-    else
-        if hit
+    if strcmp(outcomeBin, 'NoChange')
+        if isnan(awareFromPAS)
+            outcomeStr = 'MISSING';
+        elseif awareFromPAS == 1
             outcomeStr = 'FA';
         else
             outcomeStr = 'CR';
         end
+    else
+        outcomeStr = upper(outcomeBin);
     end
 
-    fprintf('blk=%02d trl=%03d %s mag=%.1f q=%s dur=%02d | PAS=%s DET=%d LOC=%s | loc=%s | %s\n', ...
-        blockNum, t, tc, trial.changeMagnitudeDeg, qStr, durFrames, pasStr, hit, locStrResp, locStr, outcomeStr);
+    fprintf('blk=%02d trl=%03d %s mag=%.2f dir=%+d q=%s dur=%02d | PAS=%s AWARE=%s LOC=%s | loc=%s | %s\n', ...
+        blockNum, t, tc, trial.changeMagnitudeDeg, trial.changeDirection, qStr, durFrames, ...
+        pasStr, awareStr, locStrResp, locStr, outcomeStr);
 end
 
 function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, xCentre, yCentre, ifi, cfg, bg, black, pracCfg)
@@ -3208,30 +3308,29 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     m = struct();
     
     m.nTrials = numel(pTrials);
-    
-    m.nSTD = 0;  m.nSTD_detect = 0;  m.nSTD_see = 0;
-    m.nNCH = 0;  m.nNCH_FA = 0;      m.nNCH_CR = 0;
-    m.nEASY = 0; m.nEASY_detect = 0; m.nEASY_see = 0;
-    
-    m.nChange = 0; m.nChange_detect = 0; m.nChange_see = 0;
+    m.nMissingPAS = 0;
+    m.nMissingLoc = 0;
+    m.nSTD = 0;  m.nSTD_validPAS = 0;  m.nSTD_validBehaviour = 0;  m.nSTD_aware = 0;  m.nSTD_see = 0;
+    m.nNCH = 0;  m.nNCH_validPAS = 0;  m.nNCH_validBehaviour = 0;  m.nNCH_FA = 0;  m.nNCH_CR = 0;
+    m.nEASY = 0; m.nEASY_validPAS = 0; m.nEASY_validBehaviour = 0; m.nEASY_aware = 0; m.nEASY_see = 0;
+    m.nChange = 0; m.nChange_validPAS = 0; m.nChange_validBehaviour = 0; m.nChange_aware = 0; m.nChange_see = 0;
 
         for p = 1:numel(pTrials)
             trial = pTrials(p);
             checkAbort(cfg);
     
-            % Build S1 orientations using the same rules as main task
+            % Build practice S1/S2 orientations using the same physical rules as main.
             if trial.isChange
-                oriS1 = makeOriS1_noPostChangeDup(trial.changeQuad, trial.changeStartOri, allowedOri, trial.changeMagnitudeDeg);
+                signedChange = trial.changeDirection * trial.changeMagnitudeDeg;
+                oriS1 = makeOriS1_noPostChangeDup(trial.changeQuad, trial.changeStartOri, allowedOri, signedChange);
             else
-                % No-change: still avoid "all same" and keep it non-trivial
                 oriS1 = allowedOri(randperm(numel(allowedOri), 4))';
             end
             
             % Build S2
             oriS2 = oriS1;
             if trial.isChange
-                % Use the same configurable orientation-change magnitude as the main task.
-                oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + trial.changeMagnitudeDeg, 180);
+                oriS2(trial.changeQuad) = mod(oriS1(trial.changeQuad) + signedChange, 180);
             end
     
             % ---- Timeline (same as main) ----
@@ -3240,12 +3339,10 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             Screen('DrawingFinished', window);
             vblTargetFixOn = GetSecs + 0.5 * ifi;
-            [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', pracCfg.name, p, NaN, vblTargetFixOn);
+            [tFixOn, ~, ~, ~] = cfg.loggedFlip('FixOn', pracCfg.name, p, NaN, vblTargetFixOn);
             if doPracticeTriggers
                 cfg.emitTrigger('trialStart', pracCfg.name, p, NaN, cfg.eeg.codes.trialStart + pracOff, 'FixOn', tFixOn);
             end
-            tTrialStart = tFixOn;
-
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
@@ -3298,73 +3395,56 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 end
             end
 
-            % Q2 (Detection Yes/No)
-            drawDetection(window, windowRect, black, bg, cfg);
+            % Q2 (forced localisation, always asked)
+            Screen('DrawTexture', window, cfg.qTex.Loc);
             Screen('DrawingFinished', window);
             vblTargetQ2 = GetSecs + 0.5 * ifi;
-            [tQ2, ~, ~, ~] = cfg.loggedFlip('Q2_Detect', pracCfg.name, p, NaN, vblTargetQ2);
+            [tQ2, ~, ~, ~] = cfg.loggedFlip('Q2_Loc', pracCfg.name, p, NaN, vblTargetQ2);
             if doPracticeTriggers
-                cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On + pracOff, 'Q2_Detect', tQ2);
+                cfg.emitTrigger('q2On', pracCfg.name, p, NaN, cfg.eeg.codes.q2On + pracOff, 'Q2_Loc', tQ2);
             end
-            [detectKey, detectTime] = waitForKeyQueue(cfg.keys.detect, cfg.keys.escape, cfg.maxRespSec, cfg);
-            detectResp = keyToMappedValue(detectKey, cfg.keys.detect, cfg.keys.detectValues);
-            detectRT = detectTime - tQ2;
+            [locKey, locTime] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
+            locResp = keyToMappedValue(locKey, cfg.keys.quad, cfg.keys.quadValues);
             if isfield(cfg, 'emitTobii')
-                cfg.emitTobii('DETECT_RESP', 'Q2_Detect', pracCfg.name, p, NaN, detectTime, ...
-                    sprintf('detect=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(detectResp), numToStrOrNA(detectKey), detectRT * 1000, trial.trialType));
+                cfg.emitTobii('LOC_RESP', 'Q2_Loc', pracCfg.name, p, NaN, locTime, ...
+                    sprintf('loc=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(locResp), numToStrOrNA(locKey), (locTime - tQ2) * 1000, trial.trialType));
             end
             if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
-                if ~isnan(detectResp)
-                    if detectResp == 1
-                        cfg.emitTrigger('detectYes', pracCfg.name, p, NaN, cfg.eeg.codes.detectYes + pracOff, 'Q2_Detect', tQ2);
-                    elseif detectResp == 0
-                        cfg.emitTrigger('detectNo', pracCfg.name, p, NaN, cfg.eeg.codes.detectNo + pracOff, 'Q2_Detect', tQ2);
-                    end
-                end
-            end
-            detected = double(~isnan(detectResp) && detectResp == 1);
-
-            % Q3 (localisation, always asked)
-            if detected == 0
-                Screen('DrawTexture', window, cfg.qTex.Loc_detectNo);
-            else
-                Screen('DrawTexture', window, cfg.qTex.Loc_default);
-            end
-            Screen('DrawingFinished', window);
-            vblTargetQ3 = GetSecs + 0.5 * ifi;
-            [tQ3, ~, ~, ~] = cfg.loggedFlip('Q3_Loc', pracCfg.name, p, NaN, vblTargetQ3);
-            if doPracticeTriggers
-                cfg.emitTrigger('q3On', pracCfg.name, p, NaN, cfg.eeg.codes.q3On + pracOff, 'Q3_Loc', tQ3);
-            end
-            [resp2Key, resp2Time] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
-            resp2 = keyToMappedValue(resp2Key, cfg.keys.quad, cfg.keys.quadValues);
-            if isfield(cfg, 'emitTobii')
-                cfg.emitTobii('LOC_RESP', 'Q3_Loc', pracCfg.name, p, NaN, resp2Time, ...
-                    sprintf('loc=%s keyCode=%s rtMs=%.3f trialType=%s', numToStrOrNA(resp2), numToStrOrNA(resp2Key), (resp2Time - tQ3) * 1000, trial.trialType));
-            end
-            if doPracticeTriggers && cfg.eeg.markerPolicy.markResponses
-                if ~isnan(resp2) && resp2 >= 1 && resp2 <= 4
-                    cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + resp2 + pracOff, 'Q3_Loc', tQ3);
+                if ~isnan(locResp) && locResp >= 1 && locResp <= 4
+                    cfg.emitTrigger('locResponse', pracCfg.name, p, NaN, cfg.eeg.codes.locBase + locResp + pracOff, 'Q2_Loc', tQ2);
                 end
             end
 
-            if trial.isChange
-                if isnan(resp2)
-                    locCorrect = 0;
-                else
-                    locCorrect = double(resp2 == trial.changeQuad);
-                end
+            if trial.isChange && ~isnan(locResp)
+                locCorrect = double(locResp == trial.changeQuad);
             else
                 locCorrect = NaN;
             end
 
+            validPAS = ~isnan(pas) && pas >= 1 && pas <= 4;
+            validLoc = ~isnan(locResp) && locResp >= 1 && locResp <= 4;
+            validBehaviour = validPAS && validLoc;
+            awareFromPAS = NaN;
+            if validPAS
+                awareFromPAS = double(pas >= 2);
+            end
+
             % ---- Practice metrics ----
+            if ~validPAS, m.nMissingPAS = m.nMissingPAS + 1; end
+            if ~validLoc, m.nMissingLoc = m.nMissingLoc + 1; end
+
             if trial.isChange
                 m.nChange = m.nChange + 1;
-                if detected
-                    m.nChange_detect = m.nChange_detect + 1;
+                if validPAS
+                    m.nChange_validPAS = m.nChange_validPAS + 1;
                 end
-                if detected && locCorrect == 1
+                if validBehaviour
+                    m.nChange_validBehaviour = m.nChange_validBehaviour + 1;
+                end
+                if validPAS && awareFromPAS == 1
+                    m.nChange_aware = m.nChange_aware + 1;
+                end
+                if validBehaviour && awareFromPAS == 1 && locCorrect == 1
                     m.nChange_see = m.nChange_see + 1;
                 end
             end
@@ -3372,27 +3452,45 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             switch trial.trialType
                 case 'STD'
                     m.nSTD = m.nSTD + 1;
-                    if detected
-                        m.nSTD_detect = m.nSTD_detect + 1;
+                    if validPAS
+                        m.nSTD_validPAS = m.nSTD_validPAS + 1;
                     end
-                    if detected && locCorrect == 1
+                    if validBehaviour
+                        m.nSTD_validBehaviour = m.nSTD_validBehaviour + 1;
+                    end
+                    if validPAS && awareFromPAS == 1
+                        m.nSTD_aware = m.nSTD_aware + 1;
+                    end
+                    if validBehaviour && awareFromPAS == 1 && locCorrect == 1
                         m.nSTD_see = m.nSTD_see + 1;
                     end
 
                 case 'NCH'
                     m.nNCH = m.nNCH + 1;
-                    if detected
-                        m.nNCH_FA = m.nNCH_FA + 1;
-                    else
-                        m.nNCH_CR = m.nNCH_CR + 1;
+                    if validPAS
+                        m.nNCH_validPAS = m.nNCH_validPAS + 1;
+                    end
+                    if validBehaviour
+                        m.nNCH_validBehaviour = m.nNCH_validBehaviour + 1;
+                        if awareFromPAS == 1
+                            m.nNCH_FA = m.nNCH_FA + 1;
+                        else
+                            m.nNCH_CR = m.nNCH_CR + 1;
+                        end
                     end
 
                 case 'EASY'
                     m.nEASY = m.nEASY + 1;
-                    if detected
-                        m.nEASY_detect = m.nEASY_detect + 1;
+                    if validPAS
+                        m.nEASY_validPAS = m.nEASY_validPAS + 1;
                     end
-                    if detected && locCorrect == 1
+                    if validBehaviour
+                        m.nEASY_validBehaviour = m.nEASY_validBehaviour + 1;
+                    end
+                    if validPAS && awareFromPAS == 1
+                        m.nEASY_aware = m.nEASY_aware + 1;
+                    end
+                    if validBehaviour && awareFromPAS == 1 && locCorrect == 1
                         m.nEASY_see = m.nEASY_see + 1;
                     end
             end
@@ -3401,27 +3499,34 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 if trial.isChange
                     qStr = numToStrOrNA(trial.changeQuad);
                     locStr = numToStrOrNA(locCorrect);
-                    if detected && locCorrect == 1
+                else
+                    qStr = '-';
+                    locStr = '-';
+                end
+                if ~validPAS
+                    outcomeStr = 'MISSING_PAS';
+                elseif ~validLoc
+                    outcomeStr = 'MISSING_LOC';
+                elseif trial.isChange
+                    if awareFromPAS == 1 && locCorrect == 1
                         outcomeStr = 'SEE';
-                    elseif detected
+                    elseif awareFromPAS == 1
                         outcomeStr = 'SENS';
                     else
                         outcomeStr = 'BLIND';
                     end
                 else
-                    qStr = '-';
-                    locStr = '-';
-                    if detected
+                    if awareFromPAS == 1
                         outcomeStr = 'FA';
                     else
                         outcomeStr = 'CR';
                     end
                 end
 
-                fprintf(['PRACTICE %-16s trl=%02d/%02d type=%-4s mag=%5.1f q=%s | ' ...
-                    'PAS=%s DET=%s LOC=%s | loc=%s | %s\n'], ...
+                fprintf(['PRACTICE %-16s trl=%02d/%02d type=%-4s mag=%5.2f q=%s | ' ...
+                    'PAS=%s AWARE=%s LOC=%s | loc=%s | %s\n'], ...
                     pracCfg.name, p, numel(pTrials), trial.trialType, trial.changeMagnitudeDeg, qStr, ...
-                    numToStrOrNA(pas), numToStrOrNA(detectResp), numToStrOrNA(resp2), locStr, outcomeStr);
+                    numToStrOrNA(pas), numToStrOrNA(awareFromPAS), numToStrOrNA(locResp), locStr, outcomeStr);
             end
     
             % ---- Feedback ----
@@ -3431,20 +3536,15 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 end
         
                  if trial.isChange
-                    if detected && locCorrect == 1
-                        fb = 'Nice.\n\nYou detected the change\nand localised it correctly.';
-                    elseif detected && locCorrect == 0
-                        fb = sprintf('Close.\n\nYou detected the change,\nbut localised it incorrectly.\n\nCorrect location: %s', correctQuadName);
+                    if validLoc && locCorrect == 1
+                        fb = sprintf('A change occurred.\n\nYour location response was correct.\n\nCorrect location: %s', correctQuadName);
+                    elseif validLoc
+                        fb = sprintf('A change occurred.\n\nYour location response was incorrect.\n\nCorrect location: %s', correctQuadName);
                     else
-                        fb = sprintf('Missed.\n\nYou did not detect the change.\n\nCorrect location: %s', correctQuadName);
+                        fb = sprintf('A change occurred.\n\nNo location response was recorded.\n\nCorrect location: %s', correctQuadName);
                     end
                 else
-                    % No-change practice trials (if you're mixing them in)
-                    if detected
-                        fb = 'No change occurred.\n\nThat was a false alarm.';
-                    else
-                        fb = 'Correct.\n\nNo change occurred.';
-                    end
+                    fb = 'No change occurred on this trial.\n\nThere was no objectively correct location response.';
                 end
         
                 fbcfg = cfg.display.text.feedback;
@@ -3476,7 +3576,7 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             Screen('FillRect', window, bg);
             Screen('DrawingFinished', window);
             vblTargetITI = GetSecs + 0.5 * ifi;
-            [tITI, ~, ~, missedITI] = cfg.loggedFlip('ITI', pracCfg.name, p, NaN, vblTargetITI);
+            [tITI, ~, ~, ~] = cfg.loggedFlip('ITI', pracCfg.name, p, NaN, vblTargetITI);
             if doPracticeTriggers
                 cfg.emitTrigger('trialEnd', pracCfg.name, p, NaN, cfg.eeg.codes.trialEnd + pracOff, 'ITI', tITI);
             end
@@ -3486,92 +3586,461 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
         summary = struct();
         summary.name = pracCfg.name;
         summary.nTrials = m.nTrials;
-        
+        summary.nMissingPAS = m.nMissingPAS;
+        summary.nMissingLoc = m.nMissingLoc;
+
         summary.nSTD = m.nSTD;
-        summary.nSTD_detect = m.nSTD_detect;
+        summary.nSTD_validPAS = m.nSTD_validPAS;
+        summary.nSTD_validBehaviour = m.nSTD_validBehaviour;
+        summary.nSTD_aware = m.nSTD_aware;
         summary.nSTD_see = m.nSTD_see;
         summary.nNCH = m.nNCH;
+        summary.nNCH_validPAS = m.nNCH_validPAS;
+        summary.nNCH_validBehaviour = m.nNCH_validBehaviour;
         summary.nEASY = m.nEASY;
-        
+        summary.nEASY_validPAS = m.nEASY_validPAS;
+        summary.nEASY_validBehaviour = m.nEASY_validBehaviour;
+
         summary.nChange = m.nChange;
-        
+        summary.nChange_validPAS = m.nChange_validPAS;
+        summary.nChange_validBehaviour = m.nChange_validBehaviour;
+
         summary.nNCH_FA = m.nNCH_FA;
         summary.nNCH_CR = m.nNCH_CR;
-        
-        summary.nEASY_detect = m.nEASY_detect;
+
+        summary.nEASY_aware = m.nEASY_aware;
         summary.nEASY_see    = m.nEASY_see;
-        
-        summary.nChange_detect = m.nChange_detect;
+
+        summary.nChange_aware = m.nChange_aware;
         summary.nChange_see    = m.nChange_see;
 
-        summary.stdDetectRate  = safeRate(m.nSTD_detect, m.nSTD);
-        summary.stdSeeRate     = safeRate(m.nSTD_see, m.nSTD);
-        
-        summary.faRateNCH      = safeRate(m.nNCH_FA, m.nNCH);
-        summary.crRateNCH      = safeRate(m.nNCH_CR, m.nNCH);
-        
-        summary.easyDetectRate = safeRate(m.nEASY_detect, m.nEASY);
-        summary.easySeeRate    = safeRate(m.nEASY_see, m.nEASY);
-        
-        summary.changeDetectRate = safeRate(m.nChange_detect, m.nChange);
-        summary.changeSeeRate    = safeRate(m.nChange_see, m.nChange);
+        summary.stdAwareRate  = safeRate(m.nSTD_aware, m.nSTD_validPAS);
+        summary.stdSeeRate    = safeRate(m.nSTD_see, m.nSTD_validBehaviour);
+
+        summary.faRateNCH     = safeRate(m.nNCH_FA, m.nNCH_validBehaviour);
+        summary.crRateNCH     = safeRate(m.nNCH_CR, m.nNCH_validBehaviour);
+
+        summary.easyAwareRate = safeRate(m.nEASY_aware, m.nEASY_validPAS);
+        summary.easySeeRate   = safeRate(m.nEASY_see, m.nEASY_validBehaviour);
+
+        summary.changeAwareRate = safeRate(m.nChange_aware, m.nChange_validPAS);
+        summary.changeSeeRate   = safeRate(m.nChange_see, m.nChange_validBehaviour);
 
     end
 
-function cfg = applyTrialDial(cfg)
-    % Uses cfg.trialDial.pChange to set cfg.nChange/cfg.nCatch.
-    % nChange/nCatch are forced to multiples of 3 so the Blind/Sensing/Seeing
-    % tracks each receive an integer number of change AND catch trials.
+function info = initialiseRandomisation(seed)
+    if isempty(seed)
+        rng('shuffle', 'twister');
+    else
+        if ~isnumeric(seed) || ~isscalar(seed) || ~isfinite(seed) || ...
+                seed < 0 || seed > 2^32-1 || abs(seed-round(seed)) > 1e-9
+            error('CB_4xGratings_v3_Orientation:InvalidRandomSeed', ...
+                'cfg.randomSeed must be empty or an integer scalar in [0, 2^32-1].');
+        end
+        rng(double(round(seed)), 'twister');
+    end
+    state = rng;
+    info = struct('seed', double(state.Seed), 'stateBeforeSchedule', state);
+end
 
-    if ~isfield(cfg,'trialDial') || ~isfield(cfg.trialDial,'pChange')
-        error('applyTrialDial: Missing cfg.trialDial.pChange');
+function cellByBlock = allocateMagnitudeQuadrantBlocks(cfg)
+    mags = cfg.design.changeMagnitudesDeg(:)';
+    magTotals = cfg.design.changeCountsPerMagnitude(:)';
+    nM = numel(mags);
+    nQ = 4;
+    nB = cfg.nBlocks;
+    nPerBlock = cfg.trialDial.nChangePerBlock;
+
+    blockTargets = repmat(nPerBlock, 1, nB);
+    magByBlock = allocateBalancedRows(magTotals, blockTargets);
+    quadTotals = makeBalancedCounts(cfg.nChange, nQ);
+    magByQuad = allocateBalancedRows(magTotals, quadTotals);
+    quadByBlock = allocateBalancedRows(quadTotals, blockTargets);
+
+    switch cfg.runProfile
+        case 'full'
+            basePerCell = 2;
+        case 'pilotBroad'
+            basePerCell = 1;
+        otherwise
+            basePerCell = 0;
     end
 
-    p = cfg.trialDial.pChange;
-    p = max(0, min(1, p));
+    maxAttempts = 5000;
+    for attempt = 1:maxAttempts
+        cellByBlock = zeros(nM, nQ, nB);
+        remaining = magByQuad;
+        blockOrder = randperm(nB);
+        success = true;
 
-    nChange = round(cfg.nTotal * p);
-    nChange = 3 * round(nChange/3);
-    nChange = max(0, min(cfg.nTotal, nChange));
+        for pos = 1:nB
+            b = blockOrder(pos);
+            futureBlocks = nB - pos;
+            lower = basePerCell * ones(nM, nQ);
+            rowNeed = magByBlock(:,b) - sum(lower,2);
+            colNeed = quadByBlock(:,b)' - sum(lower,1);
+            if any(rowNeed < 0) || any(colNeed < 0)
+                success = false;
+                break;
+            end
 
-    cfg.nChange = nChange;
-    cfg.nCatch  = cfg.nTotal - cfg.nChange;
+            if basePerCell > 0
+                capacity = remaining - basePerCell * (futureBlocks + 1);
+                capacity = min(capacity, 1);
+            else
+                capacity = remaining;
+            end
+            capacity = max(0, floor(capacity));
 
-    if mod(cfg.nCatch,3) ~= 0
-        error('applyTrialDial: nCatch is not divisible by 3. Make cfg.nTotal divisible by 3 and pChange reasonable.');
+            [extra, ok] = solveRandomBipartite(rowNeed, colNeed, capacity, 40);
+            if ~ok
+                success = false;
+                break;
+            end
+
+            allocation = lower + extra;
+            if any(allocation(:) > remaining(:))
+                success = false;
+                break;
+            end
+            cellByBlock(:,:,b) = allocation;
+            remaining = remaining - allocation;
+        end
+
+        if success && all(remaining(:) == 0)
+            return;
+        end
+    end
+
+    error('CB_4xGratings_v3_Orientation:ScheduleAllocationFailed', ...
+        'Could not construct a magnitude-by-quadrant schedule after %d attempts.', maxAttempts);
+end
+
+function matrix = allocateBalancedRows(rowTotals, colTargets)
+    rowTotals = double(rowTotals(:));
+    colTargets = double(colTargets(:)');
+    nRows = numel(rowTotals);
+    nCols = numel(colTargets);
+    if sum(rowTotals) ~= sum(colTargets)
+        error('CB_4xGratings_v3_Orientation:InvalidBalanceMargins', ...
+            'Balanced-allocation row and column totals must agree.');
+    end
+
+    rowBase = floor(rowTotals / nCols);
+    matrix = repmat(rowBase, 1, nCols);
+    rowNeed = rowTotals - nCols * rowBase;
+    colNeed = colTargets - sum(matrix,1);
+    if any(colNeed < 0)
+        error('CB_4xGratings_v3_Orientation:InvalidBalanceMargins', ...
+            'Requested column targets are incompatible with balanced row allocation.');
+    end
+
+    [extra, ok] = solveRandomBipartite(rowNeed, colNeed, ones(nRows,nCols), 200);
+    if ~ok
+        error('CB_4xGratings_v3_Orientation:InvalidBalanceMargins', ...
+            'Could not satisfy balanced row/column margins.');
+    end
+    matrix = matrix + extra;
+end
+
+function counts = makeBalancedCounts(total, nCells)
+    counts = floor(total / nCells) * ones(1,nCells);
+    nExtra = total - sum(counts);
+    if nExtra > 0
+        pick = randperm(nCells, nExtra);
+        counts(pick) = counts(pick) + 1;
     end
 end
 
-function trials = assignBalancedChangeStartOri(trials, allowedOri)
-    isChg = [trials.isChange] == 1;
-    if ~any(isChg)
+function [flow, ok] = solveRandomBipartite(rowSums, colSums, capacity, maxAttempts)
+    rowSums = round(double(rowSums(:)));
+    colSums = round(double(colSums(:)'));
+    capacity = floor(double(capacity));
+    nRows = numel(rowSums);
+    nCols = numel(colSums);
+    flow = zeros(nRows,nCols);
+    ok = false;
+    if sum(rowSums) ~= sum(colSums) || any(rowSums < 0) || any(colSums < 0)
+        return;
+    end
+    if sum(rowSums) == 0
+        ok = true;
         return;
     end
 
-    mags = unique([trials(isChg).changeMagnitudeDeg]);
+    for attempt = 1:maxAttempts
+        rp = randperm(nRows);
+        cp = randperm(nCols);
+        [fp, ok] = solveBipartiteMaxFlow(rowSums(rp), colSums(cp), capacity(rp,cp));
+        if ok
+            flow(rp,cp) = fp;
+            return;
+        end
+    end
+end
 
-    for mm = 1:numel(mags)
-        mag = mags(mm);
-        idxM = find(isChg & abs([trials.changeMagnitudeDeg] - mag) < 1e-9);
-        for q = 1:4
-            idx = idxM([trials(idxM).changeQuad] == q);
-            n = numel(idx);
-            if n == 0, continue; end
+function [flow, ok] = solveBipartiteMaxFlow(rowSums, colSums, capacity)
+    nRows = numel(rowSums);
+    nCols = numel(colSums);
+    source = 1;
+    rowNodes = 1 + (1:nRows);
+    colNodes = 1 + nRows + (1:nCols);
+    sink = nRows + nCols + 2;
+    cap = zeros(sink,sink);
+    cap(source,rowNodes) = rowSums;
+    cap(rowNodes,colNodes) = capacity;
+    cap(colNodes,sink) = colSums;
+    residual = cap;
+    totalFlow = 0;
 
-            reps = floor(n / numel(allowedOri));
-            rem  = n - reps * numel(allowedOri);
-
-            v = repmat(allowedOri, 1, reps);
-            if rem > 0
-                v = [v allowedOri(randperm(numel(allowedOri), rem))];
+    while true
+        parent = zeros(1,sink);
+        parent(source) = -1;
+        queue = source;
+        qHead = 1;
+        while qHead <= numel(queue) && parent(sink) == 0
+            u = queue(qHead);
+            qHead = qHead + 1;
+            neighbours = find(residual(u,:) > 0 & parent == 0);
+            for v = neighbours
+                parent(v) = u;
+                queue(end+1) = v; %#ok<AGROW>
+                if v == sink, break; end
             end
-            v = v(randperm(numel(v)));
+        end
+        if parent(sink) == 0, break; end
 
-            for k = 1:n
-                trials(idx(k)).changeStartOri = v(k);
+        delta = inf;
+        v = sink;
+        while v ~= source
+            u = parent(v);
+            delta = min(delta, residual(u,v));
+            v = u;
+        end
+        v = sink;
+        while v ~= source
+            u = parent(v);
+            residual(u,v) = residual(u,v) - delta;
+            residual(v,u) = residual(v,u) + delta;
+            v = u;
+        end
+        totalFlow = totalFlow + delta;
+    end
+
+    flow = cap(rowNodes,colNodes) - residual(rowNodes,colNodes);
+    ok = totalFlow == sum(rowSums) && all(sum(flow,2) == rowSums) && ...
+        all(sum(flow,1) == colSums);
+end
+
+function dirs = balancedCellDirections(n, magnitudeDeg, currentBalance)
+    if n <= 0
+        dirs = zeros(1,0);
+        return;
+    end
+    if abs(magnitudeDeg - 90) < 1e-9
+        dirs = ones(1,n);  % +/-90 are the same grating orientation modulo 180.
+        return;
+    end
+    nPairs = floor(n/2);
+    dirs = repmat([-1 1], 1, nPairs);
+    if mod(n,2) == 1
+        if currentBalance > 0
+            extra = -1;
+        elseif currentBalance < 0
+            extra = 1;
+        else
+            extra = 2 * randi(2) - 3;
+        end
+        dirs(end+1) = extra;
+    end
+end
+
+function dirs = makeBalancedDirections(n, magnitudeDeg)
+    dirs = balancedCellDirections(n, magnitudeDeg, 0);
+    if ~isempty(dirs), dirs = dirs(randperm(numel(dirs))); end
+end
+
+function pool = makeBalancedValuePool(values, n)
+    values = values(:)';
+    if n <= 0
+        pool = zeros(1,0);
+        return;
+    end
+    nValues = numel(values);
+    reps = floor(n / nValues);
+    pool = repmat(values, 1, reps);
+    nExtra = n - numel(pool);
+    if nExtra > 0
+        pool = [pool values(randperm(nValues,nExtra))];
+    end
+    pool = pool(randperm(numel(pool)));
+end
+
+function ori = makeBalancedCatchOrientations(nCatch, allowedOri)
+    allowedOri = allowedOri(:)';
+    nOri = numel(allowedOri);
+    if nCatch <= 0
+        ori = zeros(0,4);
+        return;
+    end
+    if mod(nOri,4) ~= 0
+        error('CB_4xGratings_v3_Orientation:InvalidOrientationGrid', ...
+            'The allowed-orientation grid must contain a multiple of four values.');
+    end
+    starts = makeBalancedValuePool(0:nOri-1, nCatch);
+    offsets = (0:3) * (nOri/4);
+    offsets = offsets(randperm(4));
+    ori = nan(nCatch,4);
+    for ii = 1:nCatch
+        idx = mod(starts(ii) + offsets, nOri) + 1;
+        ori(ii,:) = allowedOri(idx);
+    end
+    ori = ori(randperm(nCatch),:);
+end
+
+function summary = validateTrialSchedule(trials, cfg)
+    mags = cfg.design.changeMagnitudesDeg(:)';
+    nM = numel(mags);
+    nB = cfg.nBlocks;
+    nQ = 4;
+    assert(numel(trials) == cfg.nTotal, 'Schedule total does not match cfg.nTotal.');
+
+    blockMagnitudeCounts = zeros(nB,nM);
+    blockQuadrantCounts = zeros(nB,nQ);
+    blockCellCounts = zeros(nB,nM,nQ);
+    blockChangeCounts = zeros(nB,1);
+    blockNoChangeCounts = zeros(nB,1);
+
+    for tt = 1:numel(trials)
+        b = ceil(tt/cfg.trialsPerBlock);
+        trial = trials(tt);
+        assert(numel(trial.oriS1) == 4 && numel(trial.oriS2) == 4 && ...
+            all(isfinite(trial.oriS1)) && all(isfinite(trial.oriS2)), ...
+            'Schedule contains missing S1/S2 orientations.');
+        if trial.isChange
+            mm = trial.magnitudeIndex;
+            q = trial.changeQuad;
+            blockChangeCounts(b) = blockChangeCounts(b) + 1;
+            blockMagnitudeCounts(b,mm) = blockMagnitudeCounts(b,mm) + 1;
+            blockQuadrantCounts(b,q) = blockQuadrantCounts(b,q) + 1;
+            blockCellCounts(b,mm,q) = blockCellCounts(b,mm,q) + 1;
+            expectedS2 = mod(trial.oriS1(q) + trial.changeDirection * trial.changeMagnitudeDeg, 180);
+            assert(abs(expectedS2-trial.oriS2(q)) < 1e-8, 'Target S2 orientation mismatch.');
+            other = setdiff(1:4,q);
+            assert(all(abs(trial.oriS1(other)-trial.oriS2(other)) < 1e-8), ...
+                'A non-target grating changed orientation.');
+            assert(numel(unique(round(trial.oriS1*1e8))) == 4 && ...
+                numel(unique(round(trial.oriS2*1e8))) == 4, ...
+                'A trial contains duplicate grating orientations.');
+        else
+            blockNoChangeCounts(b) = blockNoChangeCounts(b) + 1;
+            assert(trial.changeQuad == 0 && trial.changeDirection == 0 && ...
+                all(abs(trial.oriS1-trial.oriS2) < 1e-8), ...
+                'Invalid no-change trial definition.');
+        end
+    end
+
+    magnitudeTotals = sum(blockMagnitudeCounts,1);
+    quadrantTotals = sum(blockQuadrantCounts,1);
+    cellTotals = squeeze(sum(blockCellCounts,1));
+    assert(isequal(magnitudeTotals, cfg.design.changeCountsPerMagnitude), ...
+        'Magnitude totals do not match the active profile.');
+    assert(all(blockChangeCounts == cfg.trialDial.nChangePerBlock), ...
+        'Per-block change totals are incorrect.');
+    assert(all(blockNoChangeCounts == cfg.trialDial.nNoChangePerBlock), ...
+        'Per-block no-change totals are incorrect.');
+    assert(max(quadrantTotals)-min(quadrantTotals) <= 1, ...
+        'Global quadrant totals are not near-balanced.');
+
+    if strcmp(cfg.runProfile,'full')
+        assert(all(blockMagnitudeCounts(:) >= 9 & blockMagnitudeCounts(:) <= 10), ...
+            'Full profile requires 9/10 trials per magnitude per block.');
+        assert(all(blockQuadrantCounts(:) >= 9 & blockQuadrantCounts(:) <= 10), ...
+            'Full profile requires 9/10 change targets per quadrant per block.');
+        assert(all(blockCellCounts(:) >= 2 & blockCellCounts(:) <= 3), ...
+            'Full profile requires 2/3 trials per magnitude-by-quadrant cell per block.');
+        assert(all(cellTotals(:) >= 28 & cellTotals(:) <= 29), ...
+            'Full profile requires 28/29 trials per magnitude-by-quadrant cell overall.');
+    elseif strcmp(cfg.runProfile,'pilotBroad')
+        assert(all(blockMagnitudeCounts(:) == 5), ...
+            'pilotBroad requires five trials per magnitude per block.');
+        assert(all(blockQuadrantCounts(:) >= 7 & blockQuadrantCounts(:) <= 8), ...
+            'pilotBroad requires 7/8 change targets per quadrant per block.');
+        assert(all(blockCellCounts(:) >= 1 & blockCellCounts(:) <= 2), ...
+            'pilotBroad requires 1/2 trials per magnitude-by-quadrant cell per block.');
+        assert(all(cellTotals(:) >= 7 & cellTotals(:) <= 8), ...
+            'pilotBroad requires 7/8 trials per magnitude-by-quadrant cell overall.');
+    end
+
+    allowedOri = cfg.stim.allowedOri(:)';
+    for mm = 1:nM
+        idxM = find([trials.magnitudeIndex] == mm);
+        startCounts = zeros(size(allowedOri));
+        for oo = 1:numel(allowedOri)
+            startCounts(oo) = sum(abs([trials(idxM).changeStartOri] - allowedOri(oo)) < 1e-9);
+        end
+        assert(max(startCounts)-min(startCounts) <= 1, ...
+            'Target starting orientations are not balanced within magnitude.');
+        for q = 1:nQ
+            idx = idxM([trials(idxM).changeQuad] == q);
+            dirs = [trials(idx).changeDirection];
+            if abs(mags(mm)-90) < 1e-9
+                assert(all(dirs == 1), '90-degree changes must use canonical direction +1.');
+            else
+                assert(abs(sum(dirs == 1)-sum(dirs == -1)) <= 1, ...
+                    'Change direction is not globally balanced within magnitude-by-quadrant cell.');
             end
         end
     end
+
+    idxCatch = [trials.isChange] == 0;
+    for q = 1:nQ
+        posCounts = zeros(size(allowedOri));
+        catchValues = arrayfun(@(x) x.oriS1(q), trials(idxCatch));
+        for oo = 1:numel(allowedOri)
+            posCounts(oo) = sum(abs(catchValues-allowedOri(oo)) < 1e-9);
+        end
+        assert(max(posCounts)-min(posCounts) <= 1, ...
+            'No-change orientations are not balanced across screen positions.');
+    end
+
+    summary = struct();
+    summary.blockChangeCounts = blockChangeCounts;
+    summary.blockNoChangeCounts = blockNoChangeCounts;
+    summary.blockMagnitudeCounts = blockMagnitudeCounts;
+    summary.blockQuadrantCounts = blockQuadrantCounts;
+    summary.blockCellCounts = blockCellCounts;
+    summary.magnitudeTotals = magnitudeTotals;
+    summary.quadrantTotals = quadrantTotals;
+    summary.cellTotals = cellTotals;
+end
+
+function printTrialBalanceSummary(summary, cfg)
+    fprintf('Prevalidated blockwise design inventory:\n');
+    for b = 1:cfg.nBlocks
+        fprintf('  Block %02d: C=%d NC=%d | mag=%s | quad=%s | cellRange=%d-%d\n', ...
+            b, summary.blockChangeCounts(b), summary.blockNoChangeCounts(b), ...
+            mat2str(summary.blockMagnitudeCounts(b,:)), ...
+            mat2str(summary.blockQuadrantCounts(b,:)), ...
+            min(summary.blockCellCounts(b,:,:),[],'all'), ...
+            max(summary.blockCellCounts(b,:,:),[],'all'));
+    end
+    fprintf('  Global magnitude totals: %s\n', mat2str(summary.magnitudeTotals));
+    fprintf('  Global quadrant totals: %s\n', mat2str(summary.quadrantTotals));
+    fprintf('  Global magnitude x quadrant counts:\n');
+    disp(summary.cellTotals);
+end
+
+function runScheduleStressTest(cfg, nIterations)
+    fprintf('Running %d hardware-free schedule validation iteration(s) for profile %s...\n', ...
+        nIterations, cfg.runProfile);
+    for ii = 1:nIterations
+        rng(ii, 'twister');
+        testTrials = buildTrialList(cfg);
+        validateTrialSchedule(testTrials, cfg);
+    end
+    fprintf('Schedule stress test passed for %s (%d/%d).\n', ...
+        cfg.runProfile, nIterations, nIterations);
 end
 
 function oriS1 = makeOriS1_noPostChangeDup(changeQuad, startOri, allowedOri, changeAngleDeg)
@@ -3609,10 +4078,6 @@ function oriS1 = makeOriS1_noPostChangeDup(changeQuad, startOri, allowedOri, cha
 
     otherIdx = setdiff(1:4, changeQuad);
     oriS1(otherIdx) = rem(:);
-end
-
-function out = ternary(cond, a, b)
-    if cond, out = a; else, out = b; end
 end
 
 function r = safeRate(num, den)
