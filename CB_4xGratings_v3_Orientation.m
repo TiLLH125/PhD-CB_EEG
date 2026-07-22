@@ -315,10 +315,12 @@ cfg.keys.escape = KbName('ESCAPE');
 cfg.keys.space  = KbName('space');
 
 % Q1 PAS: left hand (q/w/e/r). Q2 localisation: right hand (numpad 7/9/1/3).
-% If numpad keys fail at runtime, run KbName interactively (e.g. KbName('KP_7'))
-% to confirm correct names on this system - do not remap to top-row number keys.
-cfg.keys.quadPhysical = {'7','9','1','3'};
-cfg.keys.quadValues   = [1 2 3 4];
+% On Windows the same physical numpad keys can be reported as navigation keys
+% when Num Lock is off. Accept both names so the quadrant mapping is stable:
+%   numpad 7/Home=top-left, 9/PageUp=top-right, 1/End=bottom-left,
+%   and 3/PageDown=bottom-right. Top-row number keys remain excluded.
+cfg.keys.quadPhysical = {'7','Home','9','PageUp','1','End','3','PageDown'};
+cfg.keys.quadValues   = [ 1,   1,     2,    2,       3,   3,   4,    4];
 
 cfg.keys.pasPhysical = {'q','w','e','r'};
 cfg.keys.pasValues   = [1 2 3 4];
@@ -327,9 +329,14 @@ cfg.keys.quad   = KbName(cfg.keys.quadPhysical);
 cfg.keys.pas    = KbName(cfg.keys.pasPhysical);
 
 fprintf('LOC key mapping: numpad7=1, numpad9=2, numpad1=3, numpad3=4\n');
+fprintf('LOC Num Lock-off aliases: Home=1, PageUp=2, End=3, PageDown=4\n');
 fprintf('PAS key mapping: q=1, w=2, e=3, r=4\n');
 fprintf('LOC KbName codes: %s\n', mat2str(cfg.keys.quad));
 fprintf('PAS KbName codes: %s\n', mat2str(cfg.keys.pas));
+assert(numel(cfg.keys.quad) == numel(cfg.keys.quadValues) && ...
+    numel(unique(cfg.keys.quad)) == numel(cfg.keys.quad), ...
+    'CB_4xGratings_v3_Orientation:InvalidLocalisationKeys', ...
+    'Localisation key names did not resolve to eight distinct key codes.');
 
 
 %% ------------------------- SETUP PTB -------------------------
@@ -757,8 +764,12 @@ try
             end
         end
 
-        % Q2 (forced localisation) - always asked, including after PAS 1 and on catches.
-        Screen('DrawTexture', window, cfg.qTex.Loc);
+        % Q2 (localisation) - always asked, with wording conditioned on PAS.
+        if ~isnan(pas) && pas == 1
+            Screen('DrawTexture', window, cfg.qTex.Loc_pas1);
+        else
+            Screen('DrawTexture', window, cfg.qTex.Loc_default);
+        end
         Screen('DrawingFinished', window);
         vblTargetQ2 = GetSecs + 0.5 * ifi;
         [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, blockNum, vblTargetQ2);
@@ -1341,24 +1352,23 @@ function showInstructionScreen(window, windowRect, bg, black, cfg)
 
     % ---- Instruction text (aligned with web task copy) ----
     titleFirstInstructions = 'Change Blindness Task Instruction';
-    % Split body so each question heading can be drawn bold (TextStyle 1).
+    % Split body so Question 1 / Question 2 headings can be drawn bold (TextStyle 1).
     instrBodyA = [ ...
         'In this task you will see four striped circles arranged in a 2 x 2 grid.\n' ...
         'Sometimes ONE of the circles will rotate and change orientation.\n' ...
         'Sometimes NO circles will rotate and change orientation.\n\n' ...
         'After each trial you will answer two questions:\n\n' ...
     ];
-    instrQ1Bold = 'Question 1: How clearly did you experience the change?\n';
+    instrQ1Bold = 'Question 1: How clear was the change?\n';
     instrBodyB = [ ...
-        'Use q/w/e/r for PAS ratings 1-4. Rate only your experience that a change occurred,\n' ...
-        'not how confident you are about its location. There is no objectively correct PAS answer.\n\n' ...
+        'Press a number key:\n\n' ...
+        '[1] No change at all      [2] I had a feeling something changed      [3] I saw something change      [4] I clearly saw the change\n\n' ...
     ];
-    instrQ2Bold = 'Question 2: Which location is most likely to have changed?\n';
+    instrQ2Bold = 'Question 2: Where was the change?\n';
     instrBodyC = [ ...
-        'Make your best location guess even if you experienced no change.\n' ...
-        'Press the labelled quadrant button:\n\n' ...
+        'Press a number key:\n\n' ...
         '[1] Top Left    [2] Top Right    [3] Bottom Left    [4] Bottom Right\n\n' ...
-        'You will always answer both questions, including on trials where no change seemed to occur.\n\n' ...
+        'You will always be asked both questions, even if you said there was no change in Question 1.\n\n' ...
     ];
     instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC };
     instrSegBold = [ false, true, false, true, false ];
@@ -1494,15 +1504,10 @@ function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
         '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
         'First, a fixation cross will appear in the centre. Next, you will see four circles, a brief blank screen, then the four circles again.\n' ...
         'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear.\nTry to avoid looking around at the individual circles during the brief sequence.\n\n' ...
-        'After the sequence, you will answer both questions in this order:\n' ...
-        '1) PAS clarity, then 2) a forced location choice.\n' ...
-        'The diagram shows examples of the stimulus, PAS, and localisation screens.\n\n' ...
+        'After the sequence, you will answer the same two questions described on the previous screen:\n\n' ...
     ];
 
-    bottomText = [ ...
-        '\nYou will always answer PAS and localisation. Make your best location guess after PAS 1.\n' ...
-        'We will begin with some practice trials so you can get comfortable with the task.\n' ...
-    ];
+    bottomText ='\nWe will begin with some practice trials so you can get comfortable with the task.\n';
 
     % ---- Draw with greyed prompt ----
     Screen('FillRect', window, bg);
@@ -1590,21 +1595,20 @@ function showPractice1Intro(window, windowRect, bg, black, cfg)
     promptY  = windowRect(4) * tcfg.promptYFrac;
     titlePractice1 = 'Practice Information\n\n\n\n';
 
-    % --- Notice text (tight + readable) ---
+    % --- Notice text (tight + readable); two headings in bold ---
     practice1BodyA = 'Before we begin the practice trials, please remember:\n\n';
-    practice1BoldOrder = 'Question order: PAS, then forced localisation.\n\n';
+    practice1BoldQ1 = 'For the 1 - 4 clarity rating in Question 1:\n\n';
     practice1BodyB = [ ...
-        'Question 1 is the 1-4 PAS clarity rating using q/w/e/r.\n' ...
-        'Rate your experience of a change, not confidence about its location.\n' ...
-        'Question 2 is localisation using the labelled quadrant buttons.\n' ...
-        'Always make your best location guess, including after PAS 1.\n\n\n' ...
+        'Use 1 if you did not experience a change, or if you are just guessing.\n' ...
+        'Use 2 - 4 only if you genuinely noticed something change (even faintly).\n' ...
+        'Try to use the whole 1 - 4 range when it fits.\n\n\n' ...
     ];
     practice1BoldBlocks = 'You will be completing two practice blocks:\n\n';
     practice1BodyC = [ ...
         'In the first practice block the trials will include feedback.\n' ...
         'You can ask the researcher questions at any time during the practice trials.\n' ...
     ];
-    practice1Segs = { practice1BodyA, practice1BoldOrder, practice1BodyB, practice1BoldBlocks, practice1BodyC };
+    practice1Segs = { practice1BodyA, practice1BoldQ1, practice1BodyB, practice1BoldBlocks, practice1BodyC };
     practice1SegBold = [ false, true, false, true, false ];
     practiceBodyY = windowRect(4) * tcfg.practiceBodyY;
 
@@ -1689,8 +1693,9 @@ function showPractice2Intro(window, windowRect, bg, black, cfg)
         '\nNice work!\n\n' ...
         'You will now complete a second block of practice trials designed to feel more like the real task.\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
-        'Question 1 is PAS clarity using q/w/e/r. Question 2 is forced localisation using the labelled quadrant buttons.\n' ...
-        'Always answer both questions and make your best location guess after PAS 1.\n\n' ...
+        'Use the full 1 - 4 scale when appropriate in Question 1:\n' ...
+        'Select 1 whenever you are guessing or unsure.\n' ...
+        'Only choose 2 - 4 when you genuinely experienced a change.\n\n' ...
     ];
     PracticeText2b = 'Feedback will be removed for this second block.\n';
 
@@ -1757,8 +1762,9 @@ function showMainExperimentIntroScreen(window, windowRect, bg, black, cfg)
         'You will NOT receive feedback during the main run.\n\n' ...
         'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
         'As before, please keep your eyes on the centre fixation cross during each trial, even when the circles appear.\n\n' ...
-        'Question 1 is PAS clarity using q/w/e/r. Question 2 is forced localisation using the labelled quadrant buttons.\n' ...
-        'Always answer both questions and make your best location guess after PAS 1.\n' ...
+        'Use the full 1 - 4 scale when appropriate in Question 1.\n' ...
+        'Use 1 whenever you are guessing or unsure.\n' ...
+        'Only choose 2 - 4 when you genuinely experienced a change.\n' ...
     ];
 
     % ---- PASS 1: greyed prompt ----
@@ -2403,7 +2409,7 @@ end
 function drawQuadrantPrompt(window, windowRect, colour, bg, promptText, cfg)
 
     if nargin < 5 || isempty(promptText)
-        promptText = 'Which location is most likely to have changed?';
+        promptText = 'Where was the change?';
     end
     qcfg = cfg.display.text.questions;
 
@@ -2473,7 +2479,7 @@ function drawPAS(window, windowRect, colour, bg, cfg)
 
     % Question
     Screen('TextSize', window, qcfg.pasQuestionSize);
-    DrawFormattedText(window, 'How clearly did you experience the change?', 'center', yc - round(h * qcfg.pasQuestionYOffsetFrac), colour, qcfg.pasQuestionWrap);
+    DrawFormattedText(window, 'How clearly did you see the change?', 'center', yc - round(h * qcfg.pasQuestionYOffsetFrac), colour, qcfg.pasQuestionWrap);
 
     % Numbers + your current descriptions
     nums = {'1', '2', '3', '4'};
@@ -2802,15 +2808,19 @@ function qTex = cacheQuestionTextures(window, windowRect, black, bg, cfg)
         Screen('TextSize', off, 45);
 
         Screen('FillRect', off, bg);
-        drawQuadrantPrompt(off, offRect, black, bg, ...
-            'Which location is most likely to have changed?\nMake your best guess even if you experienced no change.', cfg);
-        img = Screen('GetImage', off);
-        qTex.Loc = Screen('MakeTexture', window, img);
-
-        Screen('FillRect', off, bg);
         drawPAS(off, offRect, black, bg, cfg);
         img = Screen('GetImage', off);
         qTex.PAS = Screen('MakeTexture', window, img);
+
+        Screen('FillRect', off, bg);
+        drawQuadrantPrompt(off, offRect, black, bg, 'Where was the change?', cfg);
+        img = Screen('GetImage', off);
+        qTex.Loc_default = Screen('MakeTexture', window, img);
+
+        Screen('FillRect', off, bg);
+        drawQuadrantPrompt(off, offRect, black, bg, 'Select a quadrant, even if you experienced no change.', cfg);
+        img = Screen('GetImage', off);
+        qTex.Loc_pas1 = Screen('MakeTexture', window, img);
     catch me
         Screen('Close', off);
         rethrow(me);
@@ -3395,8 +3405,12 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 end
             end
 
-            % Q2 (forced localisation, always asked)
-            Screen('DrawTexture', window, cfg.qTex.Loc);
+            % Q2 (localisation) - always asked, with wording conditioned on PAS.
+            if ~isnan(pas) && pas == 1
+                Screen('DrawTexture', window, cfg.qTex.Loc_pas1);
+            else
+                Screen('DrawTexture', window, cfg.qTex.Loc_default);
+            end
             Screen('DrawingFinished', window);
             vblTargetQ2 = GetSecs + 0.5 * ifi;
             [tQ2, ~, ~, ~] = cfg.loggedFlip('Q2_Loc', pracCfg.name, p, NaN, vblTargetQ2);
@@ -3524,9 +3538,10 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 end
 
                 fprintf(['PRACTICE %-16s trl=%02d/%02d type=%-4s mag=%5.2f q=%s | ' ...
-                    'PAS=%s AWARE=%s LOC=%s | loc=%s | %s\n'], ...
+                    'PAS=%s AWARE=%s LOC=%s keyCode=%s | loc=%s | %s\n'], ...
                     pracCfg.name, p, numel(pTrials), trial.trialType, trial.changeMagnitudeDeg, qStr, ...
-                    numToStrOrNA(pas), numToStrOrNA(awareFromPAS), numToStrOrNA(locResp), locStr, outcomeStr);
+                    numToStrOrNA(pas), numToStrOrNA(awareFromPAS), numToStrOrNA(locResp), ...
+                    numToStrOrNA(locKey), locStr, outcomeStr);
             end
     
             % ---- Feedback ----
@@ -3536,15 +3551,19 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                 end
         
                  if trial.isChange
-                    if validLoc && locCorrect == 1
-                        fb = sprintf('A change occurred.\n\nYour location response was correct.\n\nCorrect location: %s', correctQuadName);
-                    elseif validLoc
-                        fb = sprintf('A change occurred.\n\nYour location response was incorrect.\n\nCorrect location: %s', correctQuadName);
+                    if validPAS && awareFromPAS == 1 && validLoc && locCorrect == 1
+                        fb = 'Nice.\n\nYou detected the change\nand localised it correctly.';
+                    elseif validPAS && awareFromPAS == 1
+                        fb = sprintf('Close.\n\nYou detected the change,\nbut localised it incorrectly.\n\nCorrect location: %s', correctQuadName);
                     else
-                        fb = sprintf('A change occurred.\n\nNo location response was recorded.\n\nCorrect location: %s', correctQuadName);
+                        fb = sprintf('Missed.\n\nYou did not detect the change.\n\nCorrect location: %s', correctQuadName);
                     end
                 else
-                    fb = 'No change occurred on this trial.\n\nThere was no objectively correct location response.';
+                    if validPAS && awareFromPAS == 1
+                        fb = 'No change occurred.\n\nThat was a false alarm.';
+                    else
+                        fb = 'Correct.\n\nNo change occurred.';
+                    end
                 end
         
                 fbcfg = cfg.display.text.feedback;
