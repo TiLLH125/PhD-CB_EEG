@@ -33,6 +33,20 @@ function CB_Photodiode_Ergo1_Test(varargin)
 % After recording, use CB_Photodiode_Ergo1_LatencyFromEEG on the BDF; prefer a
 % causal search window for reported latency (see that file).
 %
+% READY-TO-RUN EEG CALIBRATIONS
+% Start a new BioSemi recording before each command and stop/save it after the
+% command finishes. These commands send the EEG triggers and save both MAT and
+% CSV timing logs in the PhotodiodeLogs folder under the current MATLAB folder.
+%
+% Test 1: photodiode probe and flashing square at the physical top-left corner:
+%   CB_Photodiode_Ergo1_Test('mode','calibration','screenNumber',2,'pdCorner','top-left','sendTriggers',true,'conditionLabel','top_left_corner','nOnPulses',150,'leadInSec',0.5,'leadOutSec',0.5,'logDir',fullfile(pwd,'PhotodiodeLogs'),'saveCsv',true);
+%
+% Test 2: probe and square centred on the experiment's top-left Gabor:
+%   CB_Photodiode_Ergo1_Test('mode','calibration','screenNumber',2,'pdCenterPx',[873 453],'sendTriggers',true,'conditionLabel','top_left_gabor','nOnPulses',150,'leadInSec',0.5,'leadOutSec',0.5,'logDir',fullfile(pwd,'PhotodiodeLogs'),'saveCsv',true);
+%
+% The Gabor centre [873 453] matches CB_4xGratings_v3_Orientation.m on the
+% 1920x1080 ViewPixx: screen centre [960 540], minus spacingPx=87 on x and y.
+%
 % Examples:
 %   CB_Photodiode_Ergo1_Test();
 %   CB_Photodiode_Ergo1_Test('mode', 'calibration', 'nOnPulses', 200, 'logDir', 'C:\data');
