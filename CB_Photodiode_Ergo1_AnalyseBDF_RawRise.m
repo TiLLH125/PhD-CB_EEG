@@ -2,10 +2,10 @@ function out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(varargin)
 % CB_Photodiode_Ergo1_AnalyseBDF_RawRise
 % -------------------------------------------------------------------------
 % Raw-waveform trigger-to-photon latency analysis for BioSemi BDF files
-% recorded with CB_Photodiode_Ergo1_Test in calibration mode.
+% recorded with CB_Photodiode_Ergo1_Test.
 %
 % This version deliberately applies NO low-pass filter and NO moving-average
-% smoothing. For every trigger-201 event it measures the first sustained
+% smoothing. For every selected onset marker it measures the first sustained
 % crossings of 10%, 50%, and 90% of the trial-specific black-to-white signal
 % range, using the raw Ergo1 samples. The 50% crossing is the primary latency
 % metric. It also reports the 10-90% rise time.
@@ -17,18 +17,28 @@ function out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(varargin)
 %   out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise( ...
 %       'bdfFile', 'C:\data\PhotodiodeTest2.bdf');
 %
+% Task-validation BDF: automatically run S1/code 21 and S2/code 23:
+%   out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise( ...
+%       'analysisProfile', 'task-validation', ...
+%       'bdfFile', 'C:\data\TaskValidation.bdf');
+%   % Results are returned as out.S1 and out.S2.
+%
 % Common options:
+%   'analysisProfile'      'calibration' (default), 'task-validation',
+%                          'task-s1', or 'task-s2'.
 %   'pdChan'               Ergo1 channel index. [] = find by label.
 %   'pdLabel'              Preferred label fragment. Default 'Erg1'.
 %   'excludePulseIndices'  Pulse numbers excluded from summaries. Default 1.
 %   'monitorHz'            Display refresh rate. Default 120.
-%   'searchWinMs'          Causal search window after trigger. Default [0 60].
-%   'baselineWinMs'        Black baseline window. Default [-100 -20].
+%   'onCode'               Override profile trigger code (201, 21, or 23).
+%   'onsetLabel'           Override profile label used in outputs.
+%   'searchWinMs'          Default [0 60] calibration; [-20 60] task.
+%   'baselineWinMs'        Default [-100 -20] calibration; [-100 -30] task.
 %   'plateauWinMs'         White reference window. Default [100 300].
 %   'riseFractions'        Raw rise thresholds. Default [0.10 0.50 0.90].
 %   'minRunSamples'        Consecutive samples beyond threshold. Default 3.
 %   'minSignalToNoise'     Minimum |white-black| / baseline MAD. Default 10.
-%   'expectedOnsets'       Expected trigger-201 count. Default 150.
+%   'expectedOnsets'       Default 150 calibration; 30 task.
 %   'outputDir'            Output folder. Default *_PhotodiodeAnalysis_RawRise.
 %   'saveFigures'          Save PNG and FIG files. Default true.
 %   'showFigures'          Display figures. Default true.
@@ -38,17 +48,19 @@ function out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(varargin)
 %   EEGLAB and the BIOSIG importer (pop_biosig).
 % -------------------------------------------------------------------------
 
-analysisVersion = 'RawRise-v2.0';
+analysisVersion = 'RawRise-v3.0';
 
 %% Parse settings
 p = inputParser;
 p.FunctionName = mfilename;
+p.addParameter('analysisProfile', 'calibration', @(x) ischar(x) || isstring(x));
 p.addParameter('bdfFile', '', @(x) ischar(x) || isstring(x));
 p.addParameter('pdChan', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && x >= 1));
 p.addParameter('pdLabel', 'Erg1', @(x) ischar(x) || isstring(x));
 p.addParameter('excludePulseIndices', 1, @(x) isempty(x) || isnumeric(x));
 p.addParameter('monitorHz', 120, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x > 0);
 p.addParameter('onCode', 201, @(x) isnumeric(x) && isscalar(x) && isfinite(x));
+p.addParameter('onsetLabel', '', @(x) ischar(x) || isstring(x));
 p.addParameter('searchWinMs', [0 60], @(x) isnumeric(x) && numel(x) == 2 && x(1) <= x(2));
 p.addParameter('baselineWinMs', [-100 -20], @(x) isnumeric(x) && numel(x) == 2 && x(1) < x(2));
 p.addParameter('plateauWinMs', [100 300], @(x) isnumeric(x) && numel(x) == 2 && x(1) < x(2));
@@ -63,8 +75,10 @@ p.addParameter('nExampleTraces', 8, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 p.parse(varargin{:});
 cfg = p.Results;
 
+cfg.analysisProfile = char(lower(strtrim(string(cfg.analysisProfile))));
 cfg.bdfFile = char(string(cfg.bdfFile));
 cfg.pdLabel = char(string(cfg.pdLabel));
+cfg.onsetLabel = strtrim(char(string(cfg.onsetLabel)));
 cfg.outputDir = char(string(cfg.outputDir));
 cfg.excludePulseIndices = unique(round(cfg.excludePulseIndices(:)'));
 cfg.excludePulseIndices = cfg.excludePulseIndices(cfg.excludePulseIndices >= 1);
@@ -73,6 +87,49 @@ cfg.saveFigures = logical(cfg.saveFigures);
 cfg.showFigures = logical(cfg.showFigures);
 cfg.frameMs = 1000 / cfg.monitorHz;
 cfg.riseFractions = sort(double(cfg.riseFractions(:)'));
+
+validProfiles = {'calibration', 'task-validation', 'task-s1', 'task-s2'};
+if ~ismember(cfg.analysisProfile, validProfiles)
+    error(['analysisProfile must be ''calibration'', ''task-validation'', ' ...
+        '''task-s1'', or ''task-s2''.']);
+end
+
+usedDefault = @(name) any(strcmpi(p.UsingDefaults, name));
+isTaskProfile = ismember(cfg.analysisProfile, {'task-validation', 'task-s1', 'task-s2'});
+if isTaskProfile
+    if usedDefault('searchWinMs')
+        cfg.searchWinMs = [-20 60];
+    end
+    if usedDefault('baselineWinMs')
+        cfg.baselineWinMs = [-100 -30];
+    end
+    if usedDefault('expectedOnsets')
+        cfg.expectedOnsets = 30;
+    end
+end
+
+if strcmp(cfg.analysisProfile, 'task-s1')
+    if usedDefault('onCode'), cfg.onCode = 21; end
+    if usedDefault('onsetLabel'), cfg.onsetLabel = 'S1'; end
+elseif strcmp(cfg.analysisProfile, 'task-s2')
+    if usedDefault('onCode'), cfg.onCode = 23; end
+    if usedDefault('onsetLabel'), cfg.onsetLabel = 'S2'; end
+elseif strcmp(cfg.analysisProfile, 'calibration')
+    if usedDefault('onCode'), cfg.onCode = 201; end
+    if usedDefault('onsetLabel')
+        if cfg.onCode == 201
+            cfg.onsetLabel = 'Calibration onset';
+        else
+            cfg.onsetLabel = sprintf('Trigger %d', round(cfg.onCode));
+        end
+    end
+else
+    cfg.onsetLabel = 'S1/S2 task validation';
+end
+
+if cfg.onCode < 0 || cfg.onCode > 255 || cfg.onCode ~= round(cfg.onCode)
+    error('onCode must be an integer in the range 0..255.');
+end
 
 if any(cfg.riseFractions <= 0 | cfg.riseFractions >= 1)
     error('riseFractions must all be strictly between 0 and 1.');
@@ -103,16 +160,34 @@ if ~isfile(cfg.bdfFile)
 end
 
 [bdfDir, bdfBase, ~] = fileparts(cfg.bdfFile);
+if strcmp(cfg.analysisProfile, 'task-validation')
+    out = runTaskValidationPair(cfg, bdfDir, bdfBase);
+    return;
+end
+
 if isempty(strtrim(cfg.outputDir))
-    cfg.outputDir = fullfile(bdfDir, [bdfBase '_PhotodiodeAnalysis_RawRise']);
+    if strcmp(cfg.analysisProfile, 'calibration') && cfg.onCode == 201
+        cfg.outputDir = fullfile(bdfDir, [bdfBase '_PhotodiodeAnalysis_RawRise']);
+    else
+        cfg.outputDir = fullfile(bdfDir, sprintf('%s_%s_Code%d_PhotodiodeAnalysis_RawRise', ...
+            bdfBase, sanitizeFileLabel(cfg.onsetLabel), cfg.onCode));
+    end
 end
 if ~exist(cfg.outputDir, 'dir')
     mkdir(cfg.outputDir);
 end
 
+if strcmp(cfg.analysisProfile, 'calibration') && cfg.onCode == 201
+    analysisStem = bdfBase;
+else
+    analysisStem = sprintf('%s_%s_Code%d', bdfBase, sanitizeFileLabel(cfg.onsetLabel), cfg.onCode);
+end
+
 fprintf('\n============================================================\n');
 fprintf('CB photodiode BDF raw-rise latency analysis\n');
 fprintf('Analysis version: %s\n', analysisVersion);
+fprintf('Analysis profile: %s\n', cfg.analysisProfile);
+fprintf('Onset marker: %s (code %d)\n', cfg.onsetLabel, cfg.onCode);
 fprintf('Detector: raw 10%% / 50%% / 90%% sustained crossings; NO smoothing\n');
 fprintf('BDF: %s\n', cfg.bdfFile);
 fprintf('Output: %s\n', cfg.outputDir);
@@ -144,7 +219,7 @@ if isempty(EEG) || ~isfield(EEG, 'data') || isempty(EEG.data)
     error('The BDF import did not return continuous data.');
 end
 if ~isfield(EEG, 'event') || isempty(EEG.event)
-    error('No events were imported from the BDF; trigger 201 is required.');
+    error('No events were imported from the BDF; onset code %d is required.', cfg.onCode);
 end
 
 fprintf('Imported channels: %d\n', EEG.nbchan);
@@ -160,10 +235,8 @@ for k = 1:nEvents
     [eventCodes(k), eventRaw(k)] = parseEventCode(EEG.event(k).type);
 end
 
-fprintf('Calibration trigger inventory:\n');
-for code = 200:203
-    fprintf('  %d: %d\n', code, sum(eventCodes == code));
-end
+fprintf('Imported trigger inventory:\n');
+printTriggerInventoryToFile(1, eventCodes);
 
 codesUsed = eventCodes;
 decodeNote = 'Exact imported event codes were used.';
@@ -173,7 +246,7 @@ if ~any(codesUsed == cfg.onCode)
     lowByteCodes(finiteMask) = double(bitand(uint32(round(eventCodes(finiteMask))), uint32(255)));
     if any(lowByteCodes == cfg.onCode)
         codesUsed = lowByteCodes;
-        decodeNote = 'No exact 201 events were found; lower 8 bits were used.';
+        decodeNote = sprintf('No exact code %d events were found; lower 8 bits were used.', cfg.onCode);
         warning('%s', decodeNote);
     end
 end
@@ -386,8 +459,10 @@ frameDeviation50Ms = latency50Ms - summary50.medianMs;
 isBeyondHalfFrame50 = detected50 & abs(frameDeviation50Ms) > cfg.frameMs / 2;
 isBeyondOneFrame50 = detected50 & abs(frameDeviation50Ms) > cfg.frameMs;
 
+onsetCode = repmat(cfg.onCode, nOnsets, 1);
+onsetLabel = repmat(string(cfg.onsetLabel), nOnsets, 1);
 resultsTable = table( ...
-    pulseIndex, eventIndex, triggerSample, triggerTimeSec, ...
+    pulseIndex, onsetCode, onsetLabel, eventIndex, triggerSample, triggerTimeSec, ...
     crossing10Sample, crossing50Sample, crossing90Sample, ...
     latency10Ms, latency50Ms, latency90Ms, riseTime10to90Ms, ...
     detected10, detected50, detected90, detectedAll, excluded, useInSummary, ...
@@ -400,6 +475,7 @@ resultsTable = table( ...
 %% Print results
 fprintf('\nRaw photodiode rise results\n');
 fprintf('------------------------------------------------------------\n');
+fprintf('Onset marker:               %s (code %d)\n', cfg.onsetLabel, cfg.onCode);
 fprintf('Onset triggers found:       %d\n', nOnsets);
 fprintf('Complete 10/50/90 rises:    %d\n', sum(detectedAll));
 fprintf('Incomplete detections:      %d\n', sum(~detectedAll));
@@ -423,7 +499,7 @@ if any(~detectedAll)
 end
 
 %% Output paths
-prefix = fullfile(cfg.outputDir, bdfBase);
+prefix = fullfile(cfg.outputDir, analysisStem);
 paths = struct();
 paths.resultsCsv = [prefix '_rawrise_results.csv'];
 paths.summaryTxt = [prefix '_rawrise_summary.txt'];
@@ -444,6 +520,9 @@ writeSummaryText(paths.summaryTxt, analysisVersion, cfg, EEG, pdChan, ...
 
 out = struct();
 out.analysisVersion = analysisVersion;
+out.analysisProfile = cfg.analysisProfile;
+out.onCode = cfg.onCode;
+out.onsetLabel = cfg.onsetLabel;
 out.bdfFile = cfg.bdfFile;
 out.pdChan = pdChan;
 out.pdLabel = pdLabelUsed;
@@ -454,9 +533,7 @@ out.summary90 = summary90;
 out.summaryRise10to90 = summaryRise;
 out.config = cfg;
 out.paths = paths;
-out.triggerInventory = table((200:203)', ...
-    arrayfun(@(c) sum(eventCodes == c), (200:203)'), ...
-    'VariableNames', {'code', 'count'});
+out.triggerInventory = buildTriggerInventory(eventCodes);
 save(paths.resultsMat, 'out', '-v7.3');
 
 %% QC figures
@@ -475,7 +552,7 @@ fig3 = plotLatenciesByPulse(pulseIndex, latency10Ms, latency50Ms, latency90Ms, .
     useInSummary, excluded, summary50, cfg, visibility);
 saveFigurePair(fig3, paths.stabilityPng, paths.stabilityFig, cfg.saveFigures);
 fig4 = plotRiseTimeByPulse(pulseIndex, riseTime10to90Ms, useInSummary, ...
-    excluded, summaryRise, visibility);
+    excluded, summaryRise, cfg, visibility);
 saveFigurePair(fig4, paths.riseTimePng, paths.riseTimeFig, cfg.saveFigures);
 
 fprintf('\nSaved outputs:\n');
@@ -489,6 +566,84 @@ fprintf('\nRaw-rise analysis complete.\n');
 end
 
 %% Local functions
+function out = runTaskValidationPair(cfg, bdfDir, bdfBase)
+% Analyse S1 and S2 independently so their distributions and files cannot mix.
+if isempty(strtrim(cfg.outputDir))
+    s1Dir = fullfile(bdfDir, [bdfBase '_S1_Code21_PhotodiodeAnalysis_RawRise']);
+    s2Dir = fullfile(bdfDir, [bdfBase '_S2_Code23_PhotodiodeAnalysis_RawRise']);
+else
+    s1Dir = fullfile(cfg.outputDir, 'S1_Code21');
+    s2Dir = fullfile(cfg.outputDir, 'S2_Code23');
+end
+
+commonArgs = { ...
+    'bdfFile', cfg.bdfFile, ...
+    'pdChan', cfg.pdChan, ...
+    'pdLabel', cfg.pdLabel, ...
+    'excludePulseIndices', cfg.excludePulseIndices, ...
+    'monitorHz', cfg.monitorHz, ...
+    'searchWinMs', cfg.searchWinMs, ...
+    'baselineWinMs', cfg.baselineWinMs, ...
+    'plateauWinMs', cfg.plateauWinMs, ...
+    'riseFractions', cfg.riseFractions, ...
+    'minRunSamples', cfg.minRunSamples, ...
+    'minSignalToNoise', cfg.minSignalToNoise, ...
+    'expectedOnsets', cfg.expectedOnsets, ...
+    'saveFigures', cfg.saveFigures, ...
+    'showFigures', cfg.showFigures, ...
+    'nExampleTraces', cfg.nExampleTraces};
+
+fprintf('\nRunning paired task-validation analysis: S1/code 21, then S2/code 23.\n');
+out = struct();
+out.analysisVersion = 'RawRise-v3.0';
+out.analysisProfile = 'task-validation';
+out.bdfFile = cfg.bdfFile;
+out.S1 = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(commonArgs{:}, ...
+    'analysisProfile', 'task-s1', 'onCode', 21, 'onsetLabel', 'S1', ...
+    'outputDir', s1Dir);
+out.S2 = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(commonArgs{:}, ...
+    'analysisProfile', 'task-s2', 'onCode', 23, 'onsetLabel', 'S2', ...
+    'outputDir', s2Dir);
+out.comparison = struct( ...
+    's1Median50Ms', out.S1.summary50.medianMs, ...
+    's2Median50Ms', out.S2.summary50.medianMs, ...
+    's2MinusS1Median50Ms', out.S2.summary50.medianMs - out.S1.summary50.medianMs, ...
+    's1Sd50Ms', out.S1.summary50.sdMs, ...
+    's2Sd50Ms', out.S2.summary50.sdMs);
+fprintf('\nPaired task-validation analysis complete.\n');
+fprintf('  S1 results: %s\n', out.S1.paths.summaryTxt);
+fprintf('  S2 results: %s\n', out.S2.paths.summaryTxt);
+fprintf('  S1/S2 median 50%% latency: %.3f / %.3f ms (S2-S1 = %.3f ms)\n', ...
+    out.comparison.s1Median50Ms, out.comparison.s2Median50Ms, ...
+    out.comparison.s2MinusS1Median50Ms);
+end
+
+function inventory = buildTriggerInventory(eventCodes)
+finiteCodes = round(eventCodes(isfinite(eventCodes)));
+codes = unique(finiteCodes);
+counts = arrayfun(@(code) sum(finiteCodes == code), codes);
+inventory = table(codes(:), counts(:), 'VariableNames', {'code', 'count'});
+end
+
+function printTriggerInventoryToFile(fid, eventCodes)
+inventory = buildTriggerInventory(eventCodes);
+if isempty(inventory)
+    fprintf(fid, '  none\n');
+    return;
+end
+for i = 1:height(inventory)
+    fprintf(fid, '  %d: %d\n', inventory.code(i), inventory.count(i));
+end
+end
+
+function label = sanitizeFileLabel(label)
+label = regexprep(char(string(label)), '[^A-Za-z0-9]+', '_');
+label = regexprep(label, '^_+|_+$', '');
+if isempty(label)
+    label = 'Onset';
+end
+end
+
 function [code, raw] = parseEventCode(t)
 raw = string(t);
 code = NaN;
@@ -655,6 +810,8 @@ fprintf(fid, 'CB Photodiode Ergo1 Raw-Rise BDF Latency Analysis\n');
 fprintf(fid, 'Analysis version: %s\n', analysisVersion);
 fprintf(fid, 'Generated: %s\n\n', datestr(now, 31));
 fprintf(fid, 'BDF: %s\n', cfg.bdfFile);
+fprintf(fid, 'Analysis profile: %s\n', cfg.analysisProfile);
+fprintf(fid, 'Onset marker: %s (code %d)\n', cfg.onsetLabel, cfg.onCode);
 fprintf(fid, 'Analysis source: BDF only; Psychtoolbox timing CSV not used.\n');
 fprintf(fid, 'Detector: raw 10%%, 50%%, and 90%% sustained crossings; no smoothing or filtering.\n');
 fprintf(fid, 'Sampling rate: %.6f Hz\n', EEG.srate);
@@ -665,10 +822,9 @@ fprintf(fid, 'Channel selection: %s\n', channelNote);
 fprintf(fid, 'Event decoding: %s\n\n', decodeNote);
 
 fprintf(fid, 'Trigger inventory\n');
-for code = 200:203
-    fprintf(fid, '  %d: %d\n', code, sum(eventCodes == code));
-end
-fprintf(fid, 'Trigger %d onsets analysed: %d\n', cfg.onCode, nOnsets);
+printTriggerInventoryToFile(fid, eventCodes);
+fprintf(fid, '%s (code %d) onsets analysed: %d\n', ...
+    cfg.onsetLabel, cfg.onCode, nOnsets);
 fprintf(fid, 'Excluded pulse indices: %s\n', numericListText(cfg.excludePulseIndices));
 fprintf(fid, 'Complete 10/50/90 rises: %d\n', sum(resultsTable.detectedAll));
 fprintf(fid, 'Incomplete detections: %d\n', sum(~resultsTable.detectedAll));
@@ -732,13 +888,14 @@ for j = 1:numel(validIdx)
     xline(latency50(i), '--', 'HandleVisibility', 'off');
     xline(latency90(i), '-.', 'HandleVisibility', 'off');
 end
-xline(0, '--', 'Trigger 201', 'LineWidth', 1.2);
+xline(0, '--', sprintf('%s code %d', cfg.onsetLabel, cfg.onCode), 'LineWidth', 1.2);
 yline(0.10, ':', '10%');
 yline(0.50, '--', '50%');
 yline(0.90, '-.', '90%');
-xlabel('Time relative to trigger 201 (ms)');
+xlabel(sprintf('Time relative to %s code %d (ms)', cfg.onsetLabel, cfg.onCode));
 ylabel('Normalized raw photodiode signal (black = 0, white reference = 1)');
-title(sprintf('Raw normalized rises: first %d included pulses (no smoothing)', nShow));
+title(sprintf('%s raw normalized rises: first %d included onsets (no smoothing)', ...
+    cfg.onsetLabel, nShow));
 grid on;
 hold off;
 end
@@ -752,9 +909,11 @@ xline(summary.medianMs, '--', 'Median', 'LineWidth', 1.2);
 xline(summary.meanMs, ':', 'Mean', 'LineWidth', 1.2);
 xline(summary.medianMs + cfg.frameMs, '-.', '+1 frame');
 xline(summary.medianMs - cfg.frameMs, '-.', '-1 frame');
-xlabel('Trigger 201 to raw 50% photodiode crossing (ms)');
+xlabel(sprintf('%s code %d to raw 50%% photodiode crossing (ms)', ...
+    cfg.onsetLabel, cfg.onCode));
 ylabel('Number of pulses');
-title(sprintf('Raw 50%% rise latency distribution, N = %d', numel(latUse)));
+title(sprintf('%s raw 50%% rise latency distribution, N = %d', ...
+    cfg.onsetLabel, numel(latUse)));
 grid on;
 hold off;
 end
@@ -776,15 +935,15 @@ end
 yline(summary50.medianMs, '--', '50% median', 'HandleVisibility', 'off');
 yline(summary50.medianMs + cfg.frameMs, '-.', '50% median + 1 frame', 'HandleVisibility', 'off');
 yline(summary50.medianMs - cfg.frameMs, '-.', '50% median - 1 frame', 'HandleVisibility', 'off');
-xlabel('Calibration pulse index');
-ylabel('Trigger 201 to raw rise crossing (ms)');
-title('Raw 10%, 50%, and 90% rise latencies across the run');
+xlabel(sprintf('%s onset index', cfg.onsetLabel));
+ylabel(sprintf('%s code %d to raw rise crossing (ms)', cfg.onsetLabel, cfg.onCode));
+title(sprintf('Raw 10%%, 50%%, and 90%% %s latencies across the run', cfg.onsetLabel));
 legend('Location', 'best');
 grid on;
 hold off;
 end
 
-function fig = plotRiseTimeByPulse(pulseIndex, riseTime, useInSummary, excluded, summaryRise, visibility)
+function fig = plotRiseTimeByPulse(pulseIndex, riseTime, useInSummary, excluded, summaryRise, cfg, visibility)
 fig = figure('Name', 'Raw 10-90% rise time by pulse', 'Color', 'w', 'Visible', visibility);
 hold on;
 plot(pulseIndex(useInSummary), riseTime(useInSummary), 'o-', ...
@@ -794,9 +953,9 @@ if any(excluded & isfinite(riseTime))
         'x', 'LineWidth', 1.5, 'MarkerSize', 8);
 end
 yline(summaryRise.medianMs, '--', 'Median', 'LineWidth', 1.2);
-xlabel('Calibration pulse index');
+xlabel(sprintf('%s onset index', cfg.onsetLabel));
 ylabel('Raw 10-90% rise time (ms)');
-title('Photodiode 10-90% rise time across the calibration run');
+title(sprintf('Photodiode 10-90%% rise time across the %s run', cfg.onsetLabel));
 grid on;
 hold off;
 end
