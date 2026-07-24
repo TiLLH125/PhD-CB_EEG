@@ -1,7 +1,7 @@
 function CB_Photodiode_Ergo1_Test(varargin)
 % CB_Photodiode_Ergo1_Test  Photodiode timing test / calibration for BioSemi Ergo1.
 %
-% Two modes (name-value 'mode'):
+% Three modes (name-value 'mode'):
 %   'demo' (default) — Keyboard-driven sanity check: SPACE start/stop, ESC quit.
 %     Status text, optional sync-test skipping, legacy loop timing (GetSecs gate).
 %   'calibration' — Automated, flip-centred pulse train for real latency measurement.
@@ -10,9 +10,12 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %     the display. Primary offline metric: code 201 (onset) vs photodiode rise.
 %     the display. Markers are sent only after WaitSecs yields to just before the
 %     scheduled flip (not a full onSec/offSec early). Primary offline metric: code 201.
+%   'task-validation' — Short S1/ISI/S2 timing test that reproduces the
+%     experiment's flip-then-trigger ordering. It uses codes 11, 21, 22, 23,
+%     24, and 60; codes 21 and 23 are the S1 and S2 light-onset markers.
 %
 % Common name-value pairs:
-%   'mode'           'demo' | 'calibration'
+%   'mode'           'demo' | 'calibration' | 'task-validation'
 %   'screenNumber'   display index (default 2)
 %   'debugWindow'    logical, small window (demo only; calibration always fullscreen)
 %   'skipSyncTests'  0 = run sync tests (default in calibration); 1 = skip (demo default)
@@ -26,8 +29,9 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %   'nOnPulses'      calibration: number of white onsets (default 150)
 %   'leadInSec'      calibration: hold OFF after runStart before first ON (default 0.5)
 %   'leadOutSec'     calibration: hold OFF after last OFF before runStop (default 0.5)
+%   'nTaskTrials'    task-validation: number of S1/ISI/S2 sequences (default 30)
 %
-% Pulse timing uses cfg.pulse.onSec / cfg.pulse.offSec (defaults 0.10 / 1.40 s).
+% Pulse timing uses cfg.pulse.onSec / cfg.pulse.offSec (defaults 0.50 / 1.40 s).
 % Serial codes: runStart=200, on=201, off=202, runStop=203 (cfg.eeg.*).
 %
 % After recording, use CB_Photodiode_Ergo1_LatencyFromEEG on the BDF; prefer a
@@ -46,6 +50,14 @@ function CB_Photodiode_Ergo1_Test(varargin)
 %
 % The Gabor centre [873 453] matches CB_4xGratings_v3_Orientation.m on the
 % 1920x1080 ViewPixx: screen centre [960 540], minus spacingPx=87 on x and y.
+%
+% Test 3: task-level S1/S2 validation at the top-left Gabor. This flips first
+% and then sends codes 21/23, matching the experiment:
+%   CB_Photodiode_Ergo1_Test('mode','task-validation','screenNumber',2,'pdCenterPx',[873 453],'sendTriggers',true,'conditionLabel','task_S1_S2_gabor','nTaskTrials',30,'logDir',fullfile(pwd,'PhotodiodeLogs'),'saveCsv',true);
+%
+% Analyse code 21 for S1 and code 23 for S2 separately. Positive latency
+% means light rose after the post-flip marker; negative latency means that
+% light had already begun rising before the marker was recorded.
 %
 % Examples:
 %   CB_Photodiode_Ergo1_Test();
@@ -84,11 +96,13 @@ p.addParameter('nOnPulses', cfg.cal.nOnPulses, @(x) isnumeric(x) && isscalar(x) 
 p.addParameter('leadInSec', cfg.cal.leadInSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 p.addParameter('leadOutSec', cfg.cal.leadOutSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
 p.addParameter('preFlipWakeLeadSec', cfg.cal.preFlipWakeLeadSec, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+p.addParameter('nTaskTrials', cfg.task.nTrials, ...
+    @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1 && x == round(x));
 p.parse(varargin{:});
 
 cfg.mode = char(lower(strtrim(string(p.Results.mode))));
-if ~ismember(cfg.mode, {'demo', 'calibration'})
-    error('%s: mode must be ''demo'' or ''calibration''.', mfilename);
+if ~ismember(cfg.mode, {'demo', 'calibration', 'task-validation'})
+    error('%s: mode must be ''demo'', ''calibration'', or ''task-validation''.', mfilename);
 end
 cfg.screenNumber = p.Results.screenNumber;
 cfg.debugWindow = logical(p.Results.debugWindow);
@@ -105,12 +119,13 @@ cfg.cal.nOnPulses = round(p.Results.nOnPulses);
 cfg.cal.leadInSec = double(p.Results.leadInSec);
 cfg.cal.leadOutSec = double(p.Results.leadOutSec);
 cfg.cal.preFlipWakeLeadSec = double(p.Results.preFlipWakeLeadSec);
+cfg.task.nTrials = double(p.Results.nTaskTrials);
 if ~isempty(p.Results.sendTriggers)
     cfg.eeg.enable = logical(p.Results.sendTriggers);
 end
 
 if isempty(p.Results.skipSyncTests)
-    if strcmp(cfg.mode, 'calibration')
+    if ismember(cfg.mode, {'calibration', 'task-validation'})
         cfg.skipSyncTests = 0;
     else
         cfg.skipSyncTests = 1;
@@ -119,7 +134,7 @@ else
     cfg.skipSyncTests = double(p.Results.skipSyncTests);
 end
 if isempty(p.Results.visualDebugLevel)
-    if strcmp(cfg.mode, 'calibration')
+    if ismember(cfg.mode, {'calibration', 'task-validation'})
         cfg.visualDebugLevel = 3;
     else
         cfg.visualDebugLevel = 1;
@@ -155,6 +170,8 @@ try
         Screen('TextSize', window, 28);
         Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
         runDemo(window, windowRect, cfg, trigger, keys);
+    elseif strcmp(cfg.mode, 'task-validation')
+        runTaskValidation(window, windowRect, cfg, trigger, keys);
     else
         runCalibration(window, windowRect, cfg, trigger, keys);
     end
@@ -180,12 +197,18 @@ cfg.saveCsv = false;
 cfg.pd = struct('enable', true, 'sizePx', 100, 'corner', 'bottom-left', 'centerPx', [], ...
     'onColor', 1.0, 'offColor', 0.0);
 
-cfg.pulse = struct('onSec', 0.10, 'offSec', 1.40);
+cfg.pulse = struct('onSec', 0.50, 'offSec', 1.40);
 
 cfg.cal = struct('nOnPulses', 150, 'leadInSec', 0.5, 'leadOutSec', 0.5, ...
     'preFlipWakeLeadSec', 0.002);
 
-cfg.eeg = struct('enable', true, 'serialPort', 'COM4', 'baudRate', 115200, ...
+cfg.task = struct('nTrials', 30, 'fixJitterRangeSec', [1.00 1.50], ...
+    's1Sec', 0.600, 'isiSec', 0.200, 's2Sec', 0.600, ...
+    'gapSec', 0.200, 'itiSec', 1.000, 'resetPulseWidthSec', 0.002, ...
+    'codeTrialStart', 11, 'codeS1', 21, 'codeISI', 22, ...
+    'codeS2', 23, 'codeGap', 24, 'codeTrialEnd', 60);
+
+cfg.eeg = struct('enable', true, 'serialPort', 'COM7', 'baudRate', 115200, ...
     'pulseWidthSec', 0.005, 'sendResetAfterCode', true, 'warnOnSendError', true, ...
     'codeRunStart', 200, 'codeOn', 201, 'codeOff', 202, 'codeRunStop', 203);
 end
@@ -296,6 +319,129 @@ meta.resetPolicy = 'deterministic absolute-deadline reset: send-before-flip and 
 
 saveTimingLog(T, R, meta, cfg);
 printPulseQcSummary(T, cfg);
+end
+
+function runTaskValidation(window, windowRect, cfg, trigger, keys)
+% Reproduce the real task's relevant visual timing and post-flip marker order.
+ifi = Screen('GetFlipInterval', window);
+pdRect = makePdRect(windowRect, cfg.pd.sizePx, cfg.pd.corner, cfg.pd.centerPx);
+oldPriority = Priority(MaxPriority(window));
+priorityCleanup = onCleanup(@() Priority(oldPriority)); %#ok<NASGU>
+
+fixJitterFrames = round(cfg.task.fixJitterRangeSec / ifi);
+s1Frames = max(1, round(cfg.task.s1Sec / ifi));
+isiFrames = max(1, round(cfg.task.isiSec / ifi));
+s2Frames = max(1, round(cfg.task.s2Sec / ifi));
+gapFrames = max(1, round(cfg.task.gapSec / ifi));
+itiFrames = max(1, round(cfg.task.itiSec / ifi));
+
+T = table();
+vn = {'event', 'code', 'pulseIndex', 'vbl', 'stimOnset', 'flipTimestamp', 'missed', ...
+    'sendTimeGetSecs', 'resetTimeGetSecs', 'pulseWidthAchievedSec', 'whenRequested'};
+R = table();
+
+% Start from a known zero status and a physically black photodiode patch.
+taskWriteByteNonblocking(trigger, 0);
+fillBackAndPatch(window, cfg, pdRect, false);
+Screen('Flip', window);
+
+aborted = false;
+for trialIndex = 1:cfg.task.nTrials
+    if checkAbort(keys)
+        aborted = true;
+        break;
+    end
+
+    % FixOn then code 11, matching the task's flip-then-trigger ordering.
+    fillBackAndPatch(window, cfg, pdRect, false);
+    whenFix = GetSecs + 0.5 * ifi;
+    [tFix, stimOnset, ft, missed] = screenFlipLog(window, whenFix);
+    tSend = taskWriteByteNonblocking(trigger, cfg.task.codeTrialStart);
+    T = appendTimingRow(T, vn, {'trialStart'}, cfg.task.codeTrialStart, trialIndex, ...
+        tFix, stimOnset, ft, missed, tSend, NaN, NaN, whenFix);
+
+    jitterFrames = randi([fixJitterFrames(1), fixJitterFrames(2)], 1, 1);
+
+    % S1 light onset: flip first, then send code 21.
+    fillBackAndPatch(window, cfg, pdRect, true);
+    whenS1 = tFix + (jitterFrames - 0.5) * ifi;
+    [tS1, stimOnset, ft, missed] = screenFlipLog(window, whenS1);
+    tSend = taskWriteByteNonblocking(trigger, cfg.task.codeS1);
+    T = appendTimingRow(T, vn, {'S1'}, cfg.task.codeS1, trialIndex, ...
+        tS1, stimOnset, ft, missed, tSend, NaN, NaN, whenS1);
+
+    % ISI light offset: flip first, then send code 22.
+    fillBackAndPatch(window, cfg, pdRect, false);
+    whenISI = tS1 + (s1Frames - 0.5) * ifi;
+    [tISI, stimOnset, ft, missed] = screenFlipLog(window, whenISI);
+    tSend = taskWriteByteNonblocking(trigger, cfg.task.codeISI);
+    T = appendTimingRow(T, vn, {'ISI'}, cfg.task.codeISI, trialIndex, ...
+        tISI, stimOnset, ft, missed, tSend, NaN, NaN, whenISI);
+
+    % S2 light onset: flip first, then send code 23.
+    fillBackAndPatch(window, cfg, pdRect, true);
+    whenS2 = tISI + (isiFrames - 0.5) * ifi;
+    [tS2, stimOnset, ft, missed] = screenFlipLog(window, whenS2);
+    tSend = taskWriteByteNonblocking(trigger, cfg.task.codeS2);
+    T = appendTimingRow(T, vn, {'S2'}, cfg.task.codeS2, trialIndex, ...
+        tS2, stimOnset, ft, missed, tSend, NaN, NaN, whenS2);
+
+    % Gap light offset: flip first, then send code 24.
+    fillBackAndPatch(window, cfg, pdRect, false);
+    whenGap = tS2 + (s2Frames - 0.5) * ifi;
+    [tGap, stimOnset, ft, missed] = screenFlipLog(window, whenGap);
+    tSend = taskWriteByteNonblocking(trigger, cfg.task.codeGap);
+    T = appendTimingRow(T, vn, {'gap'}, cfg.task.codeGap, trialIndex, ...
+        tGap, stimOnset, ft, missed, tSend, NaN, NaN, whenGap);
+
+    % Stand-in ITI screen: code 60 is the only task marker reset to zero.
+    fillBackAndPatch(window, cfg, pdRect, false);
+    whenITI = tGap + (gapFrames - 0.5) * ifi;
+    [tITI, stimOnset, ft, missed] = screenFlipLog(window, whenITI);
+    tSend = taskWriteByteNonblocking(trigger, cfg.task.codeTrialEnd);
+    [tReset, pulseAchieved] = taskResetLineAfterSend( ...
+        trigger, tSend, cfg.task.resetPulseWidthSec);
+    T = appendTimingRow(T, vn, {'trialEnd'}, cfg.task.codeTrialEnd, trialIndex, ...
+        tITI, stimOnset, ft, missed, tSend, tReset, pulseAchieved, whenITI);
+
+    WaitSecs('UntilTime', tITI + itiFrames * ifi);
+end
+
+taskWriteByteNonblocking(trigger, 0);
+if aborted
+    T = appendTimingRow(T, vn, {'abort'}, NaN, NaN, NaN, NaN, NaN, NaN, ...
+        NaN, NaN, NaN, NaN);
+end
+
+meta = struct();
+try
+    meta.ptbVersion = Screen('Version');
+catch
+    meta.ptbVersion = 'unknown';
+end
+meta.ifi = ifi;
+meta.fixJitterFrames = fixJitterFrames;
+meta.s1Frames = s1Frames;
+meta.isiFrames = isiFrames;
+meta.s2Frames = s2Frames;
+meta.gapFrames = gapFrames;
+meta.itiFrames = itiFrames;
+meta.skipSyncTests = cfg.skipSyncTests;
+meta.screenNumber = cfg.screenNumber;
+meta.mode = cfg.mode;
+meta.eegEnable = logical(cfg.eeg.enable);
+meta.serialPort = cfg.eeg.serialPort;
+meta.conditionLabel = cfg.conditionLabel;
+meta.pdCorner = cfg.pd.corner;
+meta.pdCenterPx = cfg.pd.centerPx;
+meta.pdRect = pdRect;
+meta.triggerOrder = 'Screen Flip returns first; corresponding serial marker is then written nonblocking';
+meta.resetPolicy = 'matches task trialEndOnly policy: codes 11/21/22/23/24 persist; code 60 resets to zero after 2 ms';
+
+saveTimingLog(T, R, meta, cfg);
+fprintf(['Task validation complete: %d planned trials, %d recorded S1 rows, ' ...
+    '%d recorded S2 rows. Analyse EEG codes 21 and 23 separately.\n'], ...
+    cfg.task.nTrials, sum(strcmp(T.event, 'S1')), sum(strcmp(T.event, 'S2')));
 end
 
 function [vbl, stimOnset, ft, missed] = screenFlipLog(window, when)
@@ -525,6 +671,43 @@ catch ME
 end
 end
 
+function tWhen = taskWriteByteNonblocking(trigger, code)
+% Match CB_4xGratings_v3_Orientation emitTrigger: timestamp immediately
+% before a nonblocking IOPort write, with no per-marker zero reset.
+tWhen = NaN;
+if ~trigger.enabled || isempty(trigger.handle)
+    return;
+end
+if isnan(code) || code < 0 || code > 255
+    return;
+end
+try
+    tWhen = GetSecs;
+    IOPort('Write', trigger.handle, uint8(code), 0);
+catch ME
+    if trigger.warnOnSendError
+        warning('Task-validation trigger send failed (%d): %s', code, mExceptionText(ME));
+    end
+end
+end
+
+function [tResetWhen, achievedSec] = taskResetLineAfterSend(trigger, tSendWhen, pulseWidthSec)
+% Match the experiment's trialEndOnly reset: wait, then write zero nonblocking.
+tResetWhen = NaN;
+achievedSec = NaN;
+if ~trigger.enabled || isempty(trigger.handle) || ~isfinite(tSendWhen)
+    return;
+end
+deadline = tSendWhen + pulseWidthSec;
+if GetSecs < deadline
+    WaitSecs('UntilTime', deadline);
+end
+tResetWhen = taskWriteByteNonblocking(trigger, 0);
+if isfinite(tResetWhen)
+    achievedSec = tResetWhen - tSendWhen;
+end
+end
+
 function tWhen = calibrationWriteByteBlocking(trigger, code)
 tWhen = NaN;
 if ~trigger.enabled || isempty(trigger.handle)
@@ -614,6 +797,7 @@ try ListenChar(0); catch, end
 try KbQueueRelease(-1); catch, end
 try
     if trigger.enabled && ~isempty(trigger.handle)
+        try IOPort('Write', trigger.handle, uint8(0), 0); catch, end
         IOPort('Close', trigger.handle);
     end
 catch
