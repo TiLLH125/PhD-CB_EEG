@@ -36,7 +36,7 @@ cfg.protocolVersion = 'Orientation_PASLOC_v1';
 cfg.questionOrder = 'PAS>Localisation';
 cfg.awarenessRule = 'PAS1=no_awareness;PAS2-4=awareness';
 cfg.eegQuestionTriggerScheme = 'Q1_PAS_30-34;Q2_Localisation_50-54';
-cfg.runProfile = 'full';  % 'full', 'pilotBroad', or 'debugQuick'
+cfg.runProfile = 'full';  % 'full', 'pilotBroad', 'debugQuick', or 'photodiodeTest'
 cfg.randomSeed = [];      % [] = shuffled seed; numeric scalar = reproducible seed
 cfg.debug.scheduleOnly = strcmp(getenv('CB_ORIENTATION_SCHEDULE_ONLY'), '1');
 if cfg.debug.scheduleOnly
@@ -202,6 +202,21 @@ cfg.profiles.pilotBroad = struct( ...
     'noChangeTrials', 60, ...
     'trialsPerBlock', 40);
 
+% Photodiode test profile: 30 real main-task trials in one block. The
+% validation patch is centred on the task's top-left Gabor at runtime.
+cfg.profiles.photodiodeTest = struct( ...
+    'changeMagnitudesDeg', [22.5 45 67.5 90], ...
+    'changeCounts', [6 6 6 6], ...
+    'noChangeTrials', 6, ...
+    'trialsPerBlock', 30);
+cfg.photodiodeTest = struct( ...
+    'enable', false, ...
+    'patchSizePx', 100, ...
+    'onColor', 1.0, ...
+    'offColor', 0.0, ...
+    'centerPx', [], ...
+    'rectPx', []);
+
 % Custom debug profile; totals apply across the complete debug run.
 cfg.debug.trialLog = false;
 cfg.debug.logHeaderEachBlock = true;
@@ -229,9 +244,15 @@ switch cfg.runProfile
         activeProfile = struct('changeMagnitudesDeg', quickMags, ...
             'changeCounts', quickCounts, 'noChangeTrials', quickNCH, ...
             'trialsPerBlock', quickTrialsPerBlock);
+    case 'photodiodeTest'
+        fprintf('\n*** PHOTODIODE TEST PROFILE ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
+        cfg.photodiodeTest.enable = true;
+        cfg.practice.enable = false;
+        activeProfile = cfg.profiles.photodiodeTest;
     otherwise
         error('CB_4xGratings_v3_Orientation:InvalidRunProfile', ...
-            'cfg.runProfile must be ''full'', ''pilotBroad'', or ''debugQuick'' (received ''%s'').', ...
+            ['cfg.runProfile must be ''full'', ''pilotBroad'', ''debugQuick'', ' ...
+             'or ''photodiodeTest'' (received ''%s'').'], ...
             char(string(cfg.runProfile)));
 end
 
@@ -452,6 +473,8 @@ try
     fprintf('Random seed: %u\n', cfg.randomisation.seed);
     if strcmp(cfg.runProfile, 'debugQuick')
         fprintf('*** DEBUG QUICK RUN ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
+    elseif strcmp(cfg.runProfile, 'photodiodeTest')
+        fprintf('*** PHOTODIODE TEST PROFILE ENABLED: NOT FOR REAL DATA COLLECTION ***\n');
     end
     fprintf('Total trials: %d\n', cfg.nTotal);
     fprintf('Blocks: %d\n', cfg.nBlocks);
@@ -510,6 +533,22 @@ try
         allRects(i,:) = CenterRectOnPoint(baseRect, xPos(i), yPos(i));
     end
 
+    if cfg.photodiodeTest.enable
+        [pdX, pdY] = RectCenter(allRects(1,:));
+        cfg.photodiodeTest.centerPx = [pdX pdY];
+        pdBaseRect = [0 0 cfg.photodiodeTest.patchSizePx cfg.photodiodeTest.patchSizePx];
+        cfg.photodiodeTest.rectPx = CenterRectOnPoint(pdBaseRect, pdX, pdY);
+        pdRect = cfg.photodiodeTest.rectPx;
+        if pdRect(1) < windowRect(1) || pdRect(2) < windowRect(2) || ...
+                pdRect(3) > windowRect(3) || pdRect(4) > windowRect(4)
+            error('CB_4xGratings_v3_Orientation:PhotodiodePatchOutsideWindow', ...
+                'Photodiode patch rectangle %s is outside window rectangle %s.', ...
+                mat2str(pdRect), mat2str(windowRect));
+        end
+        fprintf('Photodiode test patch: centre=[%.1f %.1f] px, rect=%s, size=%d px.\n', ...
+            pdX, pdY, mat2str(pdRect), cfg.photodiodeTest.patchSizePx);
+    end
+
     gratingTex = makeGratingTexture(window, cfg.stim.squareSizePx, cfg.stim.cyclesPerStim, cfg.stim.contrast, bg, cfg.stim.gaborSigmaFrac);
     fixationCoords = [-cfg.fix.sizePx cfg.fix.sizePx 0 0; 0 0 -cfg.fix.sizePx cfg.fix.sizePx];
 
@@ -528,18 +567,23 @@ try
 
     %% ------------------------- INSTRUCTIONS SCREEN -------------------------
 
-    showInstructionScreen(window, windowRect, bg, black, cfg);
+    if ~cfg.photodiodeTest.enable
+        showInstructionScreen(window, windowRect, bg, black, cfg);
+    end
 
     %% ------------------------- TRIAL OVERVIEW SCREEN -----------------------
 
-    exptDir = fileparts(mfilename('fullpath'));
-    cfg.trialOverviewPNG = fullfile(exptDir, cfg.trialOverviewFilename);
-
-    showTrialOverviewScreen(window, windowRect, bg, black, cfg);
+    if ~cfg.photodiodeTest.enable
+        exptDir = fileparts(mfilename('fullpath'));
+        cfg.trialOverviewPNG = fullfile(exptDir, cfg.trialOverviewFilename);
+        showTrialOverviewScreen(window, windowRect, bg, black, cfg);
+    end
 
     %% ------------------------- PRACTICE ENTRY SCREEN -----------------------
 
-    showPractice1Intro(window, windowRect, bg, black, cfg);
+    if isfield(cfg,'practice') && cfg.practice.enable
+        showPractice1Intro(window, windowRect, bg, black, cfg);
+    end
 
     %% ------------------------- PRACTICE FLOW (LINEAR) -----------------------------
     practiceFlow = struct();
@@ -665,7 +709,11 @@ try
 
     %% ------------------------- MAIN EXPERIMENT ENTRY SCREEN ----------------
 
-    showMainExperimentIntroScreen(window, windowRect, bg, black, cfg);
+    if cfg.photodiodeTest.enable
+        showPhotodiodeTestSetupScreen(window, windowRect, bg, black, cfg);
+    else
+        showMainExperimentIntroScreen(window, windowRect, bg, black, cfg);
+    end
     showMainTrialBeginScreen(window, windowRect, bg, black, cfg);
 
     %% ------------------------- RUN MAIN EXPERIMENT -------------------------
@@ -701,6 +749,7 @@ try
         % Fixation jitter
         jitterFrames = randi([cfg.fixJitterFrames(1), cfg.fixJitterFrames(2)], 1, 1);
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawPhotodiodeTestPatch(window, cfg, false);
         Screen('DrawingFinished', window);
         vblTargetFixOn = GetSecs + 0.5 * ifi;
         [tFixOn, ~, ~, missedFixOn] = cfg.loggedFlip('FixOn', 'main_trial', t, blockNum, vblTargetFixOn);
@@ -715,6 +764,7 @@ try
 
         drawGratings(window, gratingTex, allRects, oriS1, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawPhotodiodeTestPatch(window, cfg, true);
         vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
         [tS1,  ~, ~, missedS1]  = cfg.loggedFlip('S1', 'main_trial', t, blockNum, vblTargetS1);
         if cfg.eeg.markerPolicy.markMainTrials
@@ -722,6 +772,7 @@ try
         end
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawPhotodiodeTestPatch(window, cfg, false);
        %drawMaskFixationOnly(window, bg, maskRect, cfg.stim.maskGrey, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         vblTargetISI = tS1 + (cfg.S1_frames - 0.5) * ifi;
         [tISI, ~, ~, missedISI] = cfg.loggedFlip('ISI', 'main_trial', t, blockNum, vblTargetISI);
@@ -731,6 +782,7 @@ try
 
         drawGratings(window, gratingTex, allRects, oriS2, bg);
         drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawPhotodiodeTestPatch(window, cfg, true);
         vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
         [tS2,  ~, ~, missedS2]  = cfg.loggedFlip('S2', 'main_trial', t, blockNum, vblTargetS2);
         if cfg.eeg.markerPolicy.markMainTrials
@@ -738,6 +790,7 @@ try
         end
 
         drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
+        drawPhotodiodeTestPatch(window, cfg, false);
         vblTargetGap = tS2 + (cfg.S2_frames - 0.5) * ifi;
         [tGap, ~, ~, missedGap] = cfg.loggedFlip('Gap', 'main_trial', t, blockNum, vblTargetGap);
         if cfg.eeg.markerPolicy.markMainTrials
@@ -1082,6 +1135,7 @@ try
     cal.awarenessRule = cfg.awarenessRule;
     cal.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
     cal.randomisation = cfg.randomisation;
+    cal.photodiodeTest = cfg.photodiodeTest;
     cal.plannedTrials = trials;
 
     calFile = fullfile(outDir, sprintf('%s_%s_FullRun_%s.mat', cfg.outputPrefix, cfg.participantID, timestamp));
@@ -1746,6 +1800,29 @@ function showPractice2BeginScreen(window, windowRect, bg, black, cfg)
     showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'practice2_begin');
 end
 
+function showPhotodiodeTestSetupScreen(window, windowRect, bg, black, cfg)
+
+    Screen('FillRect', window, bg);
+    drawPhotodiodeTestPatch(window, cfg, true);
+    Screen('TextSize', window, 38);
+    txt = sprintf([ ...
+        'PHOTODIODE TEST PROFILE\n\n' ...
+        'Place the Ergo1 probe over the white square centred at [%.1f %.1f] pixels.\n' ...
+        'The patch will be WHITE during S1/S2 and BLACK during fixation/ISI/gap.\n\n' ...
+        'Tobii recording, task flips, and EEG codes 21/23 use the real task path.\n\n' ...
+        'Press SPACEBAR when the probe is secured.'], ...
+        cfg.photodiodeTest.centerPx(1), cfg.photodiodeTest.centerPx(2));
+    DrawFormattedText(window, txt, 'center', windowRect(4) * 0.62, black, 80);
+    cfg.loggedFlip('photodiode_test_setup', 'photodiode_test', NaN, NaN, NaN);
+
+    KbQueueFlush(cfg.kbDev);
+    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+
+    Screen('FillRect', window, bg);
+    drawPhotodiodeTestPatch(window, cfg, false);
+    cfg.loggedFlip('photodiode_test_ready', 'photodiode_test', NaN, NaN, NaN);
+end
+
 function showMainExperimentIntroScreen(window, windowRect, bg, black, cfg)
 
     % --- Settings (match your other screens) ---
@@ -2395,6 +2472,18 @@ function drawGratings(window, tex, allRects, orientations, bg)
     for i = 1:4
         Screen('DrawTexture', window, tex, [], allRects(i,:), orientations(i));
     end
+end
+
+function drawPhotodiodeTestPatch(window, cfg, stateOn)
+    if ~isfield(cfg, 'photodiodeTest') || ~cfg.photodiodeTest.enable
+        return;
+    end
+    if stateOn
+        patchColor = cfg.photodiodeTest.onColor;
+    else
+        patchColor = cfg.photodiodeTest.offColor;
+    end
+    Screen('FillRect', window, patchColor, cfg.photodiodeTest.rectPx);
 end
 
 function drawFixation(window, fixationCoords, lineWidthPx, colour, xCentre, yCentre)
@@ -3075,6 +3164,7 @@ function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary.screenNumber = cfg.screenNumber;
     cfgSummary.debugWindow = cfg.debugWindow;
     cfgSummary.debugQuickRun = strcmp(cfg.runProfile, 'debugQuick');
+    cfgSummary.photodiodeTest = cfg.photodiodeTest;
     cfgSummary.eegEnable = cfg.eeg.enable;
     cfgSummary.nTotal = cfg.nTotal;
     cfgSummary.trialsPerBlock = cfg.trialsPerBlock;
