@@ -2,13 +2,13 @@ function out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(varargin)
 % CB_Photodiode_Ergo1_AnalyseBDF_RawRise
 % -------------------------------------------------------------------------
 % Raw-waveform trigger-to-photon latency analysis for BioSemi BDF files
-% recorded with CB_Photodiode_Ergo1_Test.
+% recorded with CB_Photodiode_Ergo1_Test or the task photodiode profile.
 %
 % This version deliberately applies NO low-pass filter and NO moving-average
-% smoothing. For every selected onset marker it measures the first sustained
-% crossings of 10%, 50%, and 90% of the trial-specific black-to-white signal
-% range, using the raw Ergo1 samples. The 50% crossing is the primary latency
-% metric. It also reports the 10-90% rise time.
+% smoothing. Calibration runs retain the independently sustained raw
+% 10%, 50%, and 90% detector. Task-validation runs first locate a sustained
+% 90% white-state anchor, then recover the last 10% and 50% crossings on the
+% same raw rising edge. The 50% crossing is the primary latency metric.
 %
 % Basic use:
 %   out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise;
@@ -20,7 +20,8 @@ function out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(varargin)
 % Task-validation BDF: automatically run S1/code 21 and S2/code 23:
 %   out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise( ...
 %       'analysisProfile', 'task-validation', ...
-%       'bdfFile', 'C:\data\TaskValidation.bdf');
+%       'bdfFile', 'C:\data\TaskValidation.bdf', ...
+%       'outputDir', 'C:\data\TaskValidation_RawRise_v4');
 %   % Results are returned as out.S1 and out.S2.
 %
 % Common options:
@@ -36,7 +37,14 @@ function out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(varargin)
 %   'baselineWinMs'        Default [-100 -20] calibration; [-100 -30] task.
 %   'plateauWinMs'         White reference window. Default [100 300].
 %   'riseFractions'        Raw rise thresholds. Default [0.10 0.50 0.90].
-%   'minRunSamples'        Consecutive samples beyond threshold. Default 3.
+%   'minRunSamples'        Sustained samples. Default 3 calibration;
+%                          16 task (7.8125 ms at 2048 Hz).
+%   'edgeLookbackMs'       Task same-edge search before 90%. Default 8 ms.
+%   'maxRiseTimeMs'        Maximum accepted 10-90% rise. Default Inf
+%                          calibration; 5 ms task.
+%   'searchBoundaryGuardMs' Reject crossings this close to either search
+%                          boundary. Default 0 calibration; 1 ms task.
+%   'preOnsetQcWinMs'      Window for Tobii/interference QC. Default [-100 0].
 %   'minSignalToNoise'     Minimum |white-black| / baseline MAD. Default 10.
 %   'expectedOnsets'       Default 150 calibration; 30 task.
 %   'outputDir'            Output folder. Default *_PhotodiodeAnalysis_RawRise.
@@ -48,7 +56,7 @@ function out = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(varargin)
 %   EEGLAB and the BIOSIG importer (pop_biosig).
 % -------------------------------------------------------------------------
 
-analysisVersion = 'RawRise-v3.0';
+analysisVersion = 'RawRise-v4.0';
 
 %% Parse settings
 p = inputParser;
@@ -66,6 +74,10 @@ p.addParameter('baselineWinMs', [-100 -20], @(x) isnumeric(x) && numel(x) == 2 &
 p.addParameter('plateauWinMs', [100 300], @(x) isnumeric(x) && numel(x) == 2 && x(1) < x(2));
 p.addParameter('riseFractions', [0.10 0.50 0.90], @(x) isnumeric(x) && numel(x) == 3 && all(isfinite(x)));
 p.addParameter('minRunSamples', 3, @(x) isnumeric(x) && isscalar(x) && x >= 1);
+p.addParameter('edgeLookbackMs', 8, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x > 0);
+p.addParameter('maxRiseTimeMs', Inf, @(x) isnumeric(x) && isscalar(x) && x > 0);
+p.addParameter('searchBoundaryGuardMs', 0, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 0);
+p.addParameter('preOnsetQcWinMs', [-100 0], @(x) isnumeric(x) && numel(x) == 2 && all(isfinite(x)) && x(1) < x(2) && x(2) <= 0);
 p.addParameter('minSignalToNoise', 10, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 0);
 p.addParameter('expectedOnsets', 150, @(x) isempty(x) || (isnumeric(x) && isscalar(x) && x >= 1));
 p.addParameter('outputDir', '', @(x) ischar(x) || isstring(x));
@@ -83,6 +95,10 @@ cfg.outputDir = char(string(cfg.outputDir));
 cfg.excludePulseIndices = unique(round(cfg.excludePulseIndices(:)'));
 cfg.excludePulseIndices = cfg.excludePulseIndices(cfg.excludePulseIndices >= 1);
 cfg.minRunSamples = round(cfg.minRunSamples);
+cfg.edgeLookbackMs = double(cfg.edgeLookbackMs);
+cfg.maxRiseTimeMs = double(cfg.maxRiseTimeMs);
+cfg.searchBoundaryGuardMs = double(cfg.searchBoundaryGuardMs);
+cfg.preOnsetQcWinMs = double(cfg.preOnsetQcWinMs(:)');
 cfg.saveFigures = logical(cfg.saveFigures);
 cfg.showFigures = logical(cfg.showFigures);
 cfg.frameMs = 1000 / cfg.monitorHz;
@@ -106,6 +122,19 @@ if isTaskProfile
     if usedDefault('expectedOnsets')
         cfg.expectedOnsets = 30;
     end
+    if usedDefault('minRunSamples')
+        cfg.minRunSamples = 16;
+    end
+    if usedDefault('maxRiseTimeMs')
+        cfg.maxRiseTimeMs = 5;
+    end
+    if usedDefault('searchBoundaryGuardMs')
+        cfg.searchBoundaryGuardMs = 1;
+    end
+end
+cfg.detectorMode = 'independent-sustained';
+if isTaskProfile
+    cfg.detectorMode = 'task-anchored-same-edge';
 end
 
 if strcmp(cfg.analysisProfile, 'task-s1')
@@ -164,6 +193,12 @@ if strcmp(cfg.analysisProfile, 'task-validation')
     out = runTaskValidationPair(cfg, bdfDir, bdfBase);
     return;
 end
+if cfg.edgeLookbackMs > diff(cfg.searchWinMs)
+    error('edgeLookbackMs cannot exceed the width of searchWinMs.');
+end
+if 2 * cfg.searchBoundaryGuardMs >= diff(cfg.searchWinMs)
+    error('searchBoundaryGuardMs leaves no usable search interval.');
+end
 
 if isempty(strtrim(cfg.outputDir))
     if strcmp(cfg.analysisProfile, 'calibration') && cfg.onCode == 201
@@ -188,7 +223,7 @@ fprintf('CB photodiode BDF raw-rise latency analysis\n');
 fprintf('Analysis version: %s\n', analysisVersion);
 fprintf('Analysis profile: %s\n', cfg.analysisProfile);
 fprintf('Onset marker: %s (code %d)\n', cfg.onsetLabel, cfg.onCode);
-fprintf('Detector: raw 10%% / 50%% / 90%% sustained crossings; NO smoothing\n');
+fprintf('Detector: %s; raw data; NO smoothing or filtering\n', cfg.detectorMode);
 fprintf('BDF: %s\n', cfg.bdfFile);
 fprintf('Output: %s\n', cfg.outputDir);
 fprintf('============================================================\n\n');
@@ -315,6 +350,14 @@ detected10 = false(nOnsets, 1);
 detected50 = false(nOnsets, 1);
 detected90 = false(nOnsets, 1);
 detectedAll = false(nOnsets, 1);
+isMonotonicCrossing = false(nOnsets, 1);
+isRiseTimePlausible = false(nOnsets, 1);
+isSearchBoundaryCrossing = false(nOnsets, 1);
+passesTransitionQc = false(nOnsets, 1);
+preOnsetMaxFraction = nan(nOnsets, 1);
+preOnsetExceeds10 = false(nOnsets, 1);
+preOnsetExceeds50 = false(nOnsets, 1);
+preOnsetExceeds90 = false(nOnsets, 1);
 missReason = strings(nOnsets, 1);
 
 for i = 1:nOnsets
@@ -371,31 +414,49 @@ for i = 1:nOnsets
 
     crossingSamples = nan(1, 3);
     thresholdLevels = base + fractions * delta;
+    normalizedSearch = (searchSeg(:) - base) / delta;
 
-    for f = 1:3
-        threshold = thresholdLevels(f);
-        if delta > 0
-            crossed = searchSeg(:) >= threshold;
-        else
-            crossed = searchSeg(:) <= threshold;
-        end
+    q1 = t0 + round(cfg.preOnsetQcWinMs(1) / 1000 * sr);
+    q2 = t0 + ceil(cfg.preOnsetQcWinMs(2) / 1000 * sr) - 1;
+    if q1 >= 1 && q2 <= nPnts && q1 <= q2
+        normalizedPre = (pd(q1:q2) - base) / delta;
+        preOnsetMaxFraction(i) = max(normalizedPre, [], 'omitnan');
+        preOnsetExceeds10(i) = any(normalizedPre >= fractions(1));
+        preOnsetExceeds50(i) = any(normalizedPre >= fractions(2));
+        preOnsetExceeds90(i) = any(normalizedPre >= fractions(3));
+    end
 
-        kCross = firstConsecutiveRun(crossed, cfg.minRunSamples);
-        if isempty(kCross)
-            continue;
-        end
-
-        onset = s1 + kCross - 1;
-        if kCross > 1
-            v1 = searchSeg(kCross - 1);
-            v2 = searchSeg(kCross);
-            if isfinite(v1) && isfinite(v2) && v2 ~= v1
-                fracWithinSample = (threshold - v1) / (v2 - v1);
-                fracWithinSample = max(0, min(1, fracWithinSample));
-                onset = (s1 + kCross - 2) + fracWithinSample;
+    if strcmp(cfg.detectorMode, 'task-anchored-same-edge')
+        % The Tobii IR pulse train can briefly exceed 10%, so task runs
+        % first require a sustained near-white state at 90%. The 10% and
+        % 50% crossings are then taken from the last raw upward crossings
+        % immediately preceding that anchor.
+        k90 = firstConsecutiveRun(normalizedSearch >= fractions(3), ...
+            cfg.minRunSamples);
+        if ~isempty(k90)
+            crossingSamples(3) = interpolateCrossingSample( ...
+                searchSeg, thresholdLevels(3), s1, k90);
+            lookbackSamples = max(1, ceil(cfg.edgeLookbackMs / 1000 * sr));
+            for f = 1:2
+                kCross = lastUpwardCrossing(normalizedSearch, fractions(f), ...
+                    k90, lookbackSamples);
+                if ~isempty(kCross)
+                    crossingSamples(f) = interpolateCrossingSample( ...
+                        searchSeg, thresholdLevels(f), s1, kCross);
+                end
             end
         end
-        crossingSamples(f) = onset;
+    else
+        % Preserve the independently sustained detector for clean
+        % standalone calibration recordings.
+        for f = 1:3
+            kCross = firstConsecutiveRun(normalizedSearch >= fractions(f), ...
+                cfg.minRunSamples);
+            if ~isempty(kCross)
+                crossingSamples(f) = interpolateCrossingSample( ...
+                    searchSeg, thresholdLevels(f), s1, kCross);
+            end
+        end
     end
 
     threshold10Level(i) = thresholdLevels(1);
@@ -422,11 +483,26 @@ for i = 1:nOnsets
     detectedAll(i) = detected10(i) && detected50(i) && detected90(i);
     if detectedAll(i)
         riseTime10to90Ms(i) = latency90Ms(i) - latency10Ms(i);
-        if latency10Ms(i) <= latency50Ms(i) && latency50Ms(i) <= latency90Ms(i)
-            missReason(i) = "ok";
-        else
-            detectedAll(i) = false;
+        isMonotonicCrossing(i) = ...
+            latency10Ms(i) <= latency50Ms(i) && latency50Ms(i) <= latency90Ms(i);
+        isRiseTimePlausible(i) = riseTime10to90Ms(i) >= 0 && ...
+            riseTime10to90Ms(i) <= cfg.maxRiseTimeMs;
+        guardSamples = round(cfg.searchBoundaryGuardMs / 1000 * sr);
+        lowerBoundary = s1 + guardSamples;
+        upperBoundary = s2 - guardSamples;
+        isSearchBoundaryCrossing(i) = any( ...
+            crossingSamples <= lowerBoundary | crossingSamples >= upperBoundary);
+        passesTransitionQc(i) = isMonotonicCrossing(i) && ...
+            isRiseTimePlausible(i) && ~isSearchBoundaryCrossing(i);
+
+        if ~isMonotonicCrossing(i)
             missReason(i) = "nonmonotonic_crossings";
+        elseif ~isRiseTimePlausible(i)
+            missReason(i) = "rise_time_above_maximum";
+        elseif isSearchBoundaryCrossing(i)
+            missReason(i) = "crossing_at_search_boundary";
+        else
+            missReason(i) = "ok";
         end
     else
         missingParts = strings(0, 1);
@@ -437,9 +513,9 @@ for i = 1:nOnsets
     end
 end
 
-useInSummary = detectedAll & ~excluded & isfinite(latency50Ms);
+useInSummary = passesTransitionQc & ~excluded & isfinite(latency50Ms);
 if ~any(useInSummary)
-    error('No valid, non-excluded raw 10/50/90 transitions were detected.');
+    error('No non-excluded raw 10/50/90 transitions passed detector QC.');
 end
 
 %% Summaries and flags
@@ -466,6 +542,9 @@ resultsTable = table( ...
     crossing10Sample, crossing50Sample, crossing90Sample, ...
     latency10Ms, latency50Ms, latency90Ms, riseTime10to90Ms, ...
     detected10, detected50, detected90, detectedAll, excluded, useInSummary, ...
+    isMonotonicCrossing, isRiseTimePlausible, isSearchBoundaryCrossing, ...
+    passesTransitionQc, preOnsetMaxFraction, preOnsetExceeds10, ...
+    preOnsetExceeds50, preOnsetExceeds90, ...
     polarity, baselineLevel, plateauLevel, signalDelta, ...
     threshold10Level, threshold50Level, threshold90Level, ...
     baselineNoiseMAD, signalToNoise, missReason, ...
@@ -477,8 +556,9 @@ fprintf('\nRaw photodiode rise results\n');
 fprintf('------------------------------------------------------------\n');
 fprintf('Onset marker:               %s (code %d)\n', cfg.onsetLabel, cfg.onCode);
 fprintf('Onset triggers found:       %d\n', nOnsets);
-fprintf('Complete 10/50/90 rises:    %d\n', sum(detectedAll));
-fprintf('Incomplete detections:      %d\n', sum(~detectedAll));
+    fprintf('Complete 10/50/90 crossings: %d\n', sum(detectedAll));
+fprintf('Transitions passing QC:     %d\n', sum(passesTransitionQc));
+fprintf('Incomplete/QC-rejected:     %d\n', sum(~passesTransitionQc));
 fprintf('Excluded pulse indices:     %s\n', numericListText(cfg.excludePulseIndices));
 fprintf('Pulses used in summaries:   %d\n', sum(useInSummary));
 
@@ -493,9 +573,17 @@ fprintf('> half-frame from median:    %d (half frame = %.3f ms)\n', ...
     sum(isBeyondHalfFrame50 & useInSummary), cfg.frameMs / 2);
 fprintf('> one frame from median:     %d (one frame = %.3f ms)\n', ...
     sum(isBeyondOneFrame50 & useInSummary), cfg.frameMs);
-if any(~detectedAll)
-    fprintf('\nDetection miss reasons:\n');
-    printReasonCounts(missReason(~detectedAll));
+fprintf('\nPre-onset interference QC (%s ms):\n', ...
+    mat2str(cfg.preOnsetQcWinMs, 4));
+fprintf('Median maximum white fraction: %.3f\n', ...
+    median(preOnsetMaxFraction(useInSummary), 'omitnan'));
+fprintf('Excursions >= 10%% / 50%% / 90%%: %d / %d / %d\n', ...
+    sum(preOnsetExceeds10 & useInSummary), ...
+    sum(preOnsetExceeds50 & useInSummary), ...
+    sum(preOnsetExceeds90 & useInSummary));
+if any(~passesTransitionQc)
+    fprintf('\nDetection/QC rejection reasons:\n');
+    printReasonCounts(missReason(~passesTransitionQc));
 end
 
 %% Output paths
@@ -587,6 +675,10 @@ commonArgs = { ...
     'plateauWinMs', cfg.plateauWinMs, ...
     'riseFractions', cfg.riseFractions, ...
     'minRunSamples', cfg.minRunSamples, ...
+    'edgeLookbackMs', cfg.edgeLookbackMs, ...
+    'maxRiseTimeMs', cfg.maxRiseTimeMs, ...
+    'searchBoundaryGuardMs', cfg.searchBoundaryGuardMs, ...
+    'preOnsetQcWinMs', cfg.preOnsetQcWinMs, ...
     'minSignalToNoise', cfg.minSignalToNoise, ...
     'expectedOnsets', cfg.expectedOnsets, ...
     'saveFigures', cfg.saveFigures, ...
@@ -595,7 +687,7 @@ commonArgs = { ...
 
 fprintf('\nRunning paired task-validation analysis: S1/code 21, then S2/code 23.\n');
 out = struct();
-out.analysisVersion = 'RawRise-v3.0';
+out.analysisVersion = 'RawRise-v4.0';
 out.analysisProfile = 'task-validation';
 out.bdfFile = cfg.bdfFile;
 out.S1 = CB_Photodiode_Ergo1_AnalyseBDF_RawRise(commonArgs{:}, ...
@@ -733,6 +825,41 @@ runCount = conv(double(mask), ones(runLength, 1), 'valid');
 firstIdx = find(runCount >= runLength, 1, 'first');
 end
 
+function crossingIdx = lastUpwardCrossing(normalizedSignal, fraction, anchorIdx, lookbackSamples)
+% Return the last raw upward threshold crossing immediately before an anchor.
+normalizedSignal = normalizedSignal(:);
+crossingIdx = [];
+if isempty(anchorIdx) || anchorIdx < 2 || numel(normalizedSignal) < 2
+    return;
+end
+anchorIdx = min(round(anchorIdx), numel(normalizedSignal));
+firstCandidate = max(2, anchorIdx - round(lookbackSamples));
+candidateIdx = (firstCandidate:anchorIdx)';
+isUpward = normalizedSignal(candidateIdx - 1) < fraction & ...
+    normalizedSignal(candidateIdx) >= fraction;
+lastCandidate = find(isUpward, 1, 'last');
+if ~isempty(lastCandidate)
+    crossingIdx = candidateIdx(lastCandidate);
+end
+end
+
+function crossingSample = interpolateCrossingSample(searchSignal, threshold, ...
+    searchStartSample, crossingIdx)
+% Linearly interpolate a raw threshold crossing to sub-sample precision.
+crossingSample = searchStartSample + crossingIdx - 1;
+if crossingIdx <= 1
+    return;
+end
+v1 = searchSignal(crossingIdx - 1);
+v2 = searchSignal(crossingIdx);
+if ~isfinite(v1) || ~isfinite(v2) || v2 == v1
+    return;
+end
+fraction = (threshold - v1) / (v2 - v1);
+fraction = min(max(fraction, 0), 1);
+crossingSample = searchStartSample + crossingIdx - 2 + fraction;
+end
+
 function s = calculateSummary(x, frameMs)
 x = x(isfinite(x));
 s = struct();
@@ -813,7 +940,13 @@ fprintf(fid, 'BDF: %s\n', cfg.bdfFile);
 fprintf(fid, 'Analysis profile: %s\n', cfg.analysisProfile);
 fprintf(fid, 'Onset marker: %s (code %d)\n', cfg.onsetLabel, cfg.onCode);
 fprintf(fid, 'Analysis source: BDF only; Psychtoolbox timing CSV not used.\n');
-fprintf(fid, 'Detector: raw 10%%, 50%%, and 90%% sustained crossings; no smoothing or filtering.\n');
+if strcmp(cfg.detectorMode, 'task-anchored-same-edge')
+    fprintf(fid, ['Detector: raw sustained 90%% white-state anchor, followed by ' ...
+        'last raw 10%% and 50%% upward crossings on the same edge.\n']);
+else
+    fprintf(fid, 'Detector: independent raw sustained 10%%, 50%%, and 90%% crossings.\n');
+end
+fprintf(fid, 'Smoothing/filtering: none.\n');
 fprintf(fid, 'Sampling rate: %.6f Hz\n', EEG.srate);
 fprintf(fid, 'Sample duration: %.6f ms\n', 1000 / EEG.srate);
 fprintf(fid, 'Monitor refresh: %.3f Hz (%.6f ms/frame)\n', cfg.monitorHz, cfg.frameMs);
@@ -827,7 +960,9 @@ fprintf(fid, '%s (code %d) onsets analysed: %d\n', ...
     cfg.onsetLabel, cfg.onCode, nOnsets);
 fprintf(fid, 'Excluded pulse indices: %s\n', numericListText(cfg.excludePulseIndices));
 fprintf(fid, 'Complete 10/50/90 rises: %d\n', sum(resultsTable.detectedAll));
-fprintf(fid, 'Incomplete detections: %d\n', sum(~resultsTable.detectedAll));
+fprintf(fid, 'Transitions passing detector QC: %d\n', sum(resultsTable.passesTransitionQc));
+fprintf(fid, 'Incomplete/QC-rejected transitions: %d\n', ...
+    sum(~resultsTable.passesTransitionQc));
 fprintf(fid, 'Pulses used in summaries: %d\n\n', sum(resultsTable.useInSummary));
 
 fprintf(fid, 'Detection settings\n');
@@ -836,8 +971,36 @@ fprintf(fid, '  Baseline window: [%.3f %.3f] ms\n', cfg.baselineWinMs);
 fprintf(fid, '  Plateau window: [%.3f %.3f] ms\n', cfg.plateauWinMs);
 fprintf(fid, '  Rise fractions: %s\n', mat2str(cfg.riseFractions, 3));
 fprintf(fid, '  Smoothing/filtering: none\n');
-fprintf(fid, '  Consecutive crossing samples: %d\n', cfg.minRunSamples);
+fprintf(fid, '  Detector mode: %s\n', cfg.detectorMode);
+fprintf(fid, '  Sustained anchor/crossing samples: %d (%.6f ms)\n', ...
+    cfg.minRunSamples, cfg.minRunSamples / EEG.srate * 1000);
+fprintf(fid, '  Same-edge lookback: %.3f ms\n', cfg.edgeLookbackMs);
+fprintf(fid, '  Maximum accepted 10-90%% rise time: %.3f ms\n', cfg.maxRiseTimeMs);
+fprintf(fid, '  Search-boundary guard: %.3f ms\n', cfg.searchBoundaryGuardMs);
 fprintf(fid, '  Minimum signal-to-noise ratio: %.3f\n\n', cfg.minSignalToNoise);
+
+fprintf(fid, 'Pre-onset interference QC\n');
+fprintf(fid, '  Window: [%.3f %.3f] ms\n', cfg.preOnsetQcWinMs);
+fprintf(fid, '  These flags are descriptive and do not by themselves exclude a transition.\n');
+fprintf(fid, '  Median maximum white fraction: %.6f\n', ...
+    median(resultsTable.preOnsetMaxFraction(resultsTable.useInSummary), 'omitnan'));
+fprintf(fid, '  Excursions >= 10%%: %d\n', ...
+    sum(resultsTable.preOnsetExceeds10 & resultsTable.useInSummary));
+fprintf(fid, '  Excursions >= 50%%: %d\n', ...
+    sum(resultsTable.preOnsetExceeds50 & resultsTable.useInSummary));
+fprintf(fid, '  Excursions >= 90%%: %d\n\n', ...
+    sum(resultsTable.preOnsetExceeds90 & resultsTable.useInSummary));
+
+rejected = ~resultsTable.passesTransitionQc;
+if any(rejected)
+    fprintf(fid, 'Detection/QC rejection reasons\n');
+    rejectedReasons = resultsTable.missReason(rejected);
+    [uniqueReasons, ~, reasonIndex] = unique(rejectedReasons);
+    for i = 1:numel(uniqueReasons)
+        fprintf(fid, '  %s: %d\n', char(uniqueReasons(i)), sum(reasonIndex == i));
+    end
+    fprintf(fid, '\n');
+end
 
 writeOneSummary(fid, '10% rise latency', summary10);
 writeOneSummary(fid, '50% rise latency (PRIMARY)', summary50);
