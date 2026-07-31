@@ -134,8 +134,32 @@ cfg.tobii.ui.fixFrontColor        = 255;
 cfg.displayProfile = 'viewpixx';
 cfg.display = makeDisplayProfile(cfg.displayProfile);
 
-% Trial overview PNG: same folder as this script (do not use pwd — depends on MATLAB current folder).
-cfg.trialOverviewFilename = 'Gratings_TrialOverview.png';
+% Full-screen participant instruction assets. Paths are resolved relative to
+% this script (never MATLAB's current folder) and validated before PTB or
+% hardware initialisation. Each pair differs only in the SPACEBAR prompt.
+cfg.instructionAssets = struct();
+cfg.instructionAssets.folderName = 'Instruction Assets';
+cfg.instructionAssets.referenceSizePx = [1920 1080];
+cfg.instructionAssets.initialInstructions = struct( ...
+    'label', 'initial instructions', ...
+    'activeFilename', 'InitialInstructions_active.png', ...
+    'greyFilename', 'InitialInstructions_grey.png');
+cfg.instructionAssets.trialOverview = struct( ...
+    'label', 'trial overview', ...
+    'activeFilename', 'TrialOverview_active.png', ...
+    'greyFilename', 'TrialOverview_grey.png');
+cfg.instructionAssets.practice1Information = struct( ...
+    'label', 'Practice Block 1 information', ...
+    'activeFilename', 'Practice1Information_active.png', ...
+    'greyFilename', 'Practice1Information_grey.png');
+cfg.instructionAssets.practice2Information = struct( ...
+    'label', 'Practice Block 2 information', ...
+    'activeFilename', 'Practice2Information_active.png', ...
+    'greyFilename', 'Practice2Information_grey.png');
+cfg.instructionAssets.experimentInformation = struct( ...
+    'label', 'experiment information', ...
+    'activeFilename', 'ExperimentInformation_active.png', ...
+    'greyFilename', 'ExperimentInformation_grey.png');
 
 % ---- Practice flow ----
 cfg.practice.enable = true;
@@ -322,6 +346,11 @@ if cfg.debug.scheduleOnly
     runScheduleStressTest(cfg, round(nStress));
     fprintf('Schedule-only validation complete; PTB and hardware were not initialised.\n');
     return;
+end
+
+if ~cfg.photodiodeTest.enable
+    cfg.instructionAssets = resolveAndValidateInstructionAssets( ...
+        cfg.instructionAssets);
 end
 
 %% ------------------------- DEPENDENCY CHECKS -------------------------
@@ -568,21 +597,19 @@ try
     %% ------------------------- INSTRUCTIONS SCREEN -------------------------
 
     if ~cfg.photodiodeTest.enable
-        showInstructionScreen(window, windowRect, bg, black, cfg);
+        showInstructionScreen(window, windowRect, cfg);
     end
 
     %% ------------------------- TRIAL OVERVIEW SCREEN -----------------------
 
     if ~cfg.photodiodeTest.enable
-        exptDir = fileparts(mfilename('fullpath'));
-        cfg.trialOverviewPNG = fullfile(exptDir, cfg.trialOverviewFilename);
-        showTrialOverviewScreen(window, windowRect, bg, black, cfg);
+        showTrialOverviewScreen(window, windowRect, cfg);
     end
 
     %% ------------------------- PRACTICE ENTRY SCREEN -----------------------
 
     if isfield(cfg,'practice') && cfg.practice.enable
-        showPractice1Intro(window, windowRect, bg, black, cfg);
+        showPractice1Intro(window, windowRect, cfg);
     end
 
     %% ------------------------- PRACTICE FLOW (LINEAR) -----------------------------
@@ -607,7 +634,7 @@ try
         end
 
         if isfield(cfg,'practice2') && cfg.practice2.enable
-            showPractice2Intro(window, windowRect, bg, black, cfg);
+            showPractice2Intro(window, windowRect, cfg);
             showPractice2BeginScreen(window, windowRect, bg, black, cfg);
             practice2Summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, ...
                 xCentre, yCentre, ifi, cfg, bg, black, cfg.practice2);
@@ -712,7 +739,7 @@ try
     if cfg.photodiodeTest.enable
         showPhotodiodeTestSetupScreen(window, windowRect, bg, black, cfg);
     else
-        showMainExperimentIntroScreen(window, windowRect, bg, black, cfg);
+        showMainExperimentIntroScreen(window, windowRect, cfg);
     end
     showMainTrialBeginScreen(window, windowRect, bg, black, cfg);
 
@@ -1402,304 +1429,177 @@ end
 
 %% ========================= LOCAL FUNCTIONS =========================
 
-function showInstructionScreen(window, windowRect, bg, black, cfg)
+function assets = resolveAndValidateInstructionAssets(assets)
+% Resolve full-screen instruction PNGs relative to this script and fail
+% before opening the PTB window, EEG port, or Tobii connection.
 
-    % ---- Instruction text (aligned with web task copy) ----
-    titleFirstInstructions = 'Change Blindness Task Instruction';
-    % Split body so Question 1 / Question 2 headings can be drawn bold (TextStyle 1).
-    instrBodyA = [ ...
-        'In this task you will see four striped circles arranged in a 2 x 2 grid.\n' ...
-        'Sometimes ONE of the circles will rotate and change orientation.\n' ...
-        'Sometimes NO circles will rotate and change orientation.\n\n' ...
-        'After each trial you will answer two questions:\n\n' ...
-    ];
-    instrQ1Bold = 'Question 1: How clear was the change?\n';
-    instrBodyB = [ ...
-        'Press a number key:\n\n' ...
-        '[1] No change at all      [2] I had a feeling something changed      [3] I saw something change      [4] I clearly saw the change\n\n' ...
-    ];
-    instrQ2Bold = 'Question 2: Where was the change?\n';
-    instrBodyC = [ ...
-        'Press a number key:\n\n' ...
-        '[1] Top Left    [2] Top Right    [3] Bottom Left    [4] Bottom Right\n\n' ...
-        'You will always be asked both questions, even if you said there was no change in Question 1.\n\n' ...
-    ];
-    instrSegs = { instrBodyA, instrQ1Bold, instrBodyB, instrQ2Bold, instrBodyC };
-    instrSegBold = [ false, true, false, true, false ];
+    scriptDir = fileparts(mfilename('fullpath'));
+    assets.directory = fullfile(scriptDir, assets.folderName);
+    screenFields = { ...
+        'initialInstructions', ...
+        'trialOverview', ...
+        'practice1Information', ...
+        'practice2Information', ...
+        'experimentInformation'};
 
-    % ---- Lockout settings ----
-    tcfg = cfg.display.text;
-    lockSec  = tcfg.lockSec;
-    greyText = tcfg.greyText;
-    promptY  = windowRect(4) * tcfg.promptYFrac;
-    titleY   = windowRect(4) * tcfg.instructionTitleY;
-    bodyY    = windowRect(4) * tcfg.instructionBodyY;
+    for ii = 1:numel(screenFields)
+        fieldName = screenFields{ii};
+        pair = assets.(fieldName);
+        pair.activePath = fullfile(assets.directory, pair.activeFilename);
+        pair.greyPath = fullfile(assets.directory, pair.greyFilename);
 
-    % ---- PASS 1: greyed-out prompt ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleFirstInstructions, 'center', titleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    % Body stays black; only the spacebar prompt is grey during the lockout interval.
-    drawFirstInstrBody(window, bodyY, black, tcfg, instrSegs, instrSegBold);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
+        validateInstructionPng( ...
+            pair.activePath, assets.referenceSizePx, ...
+            sprintf('active %s', pair.label));
+        validateInstructionPng( ...
+            pair.greyPath, assets.referenceSizePx, ...
+            sprintf('grey %s', pair.label));
 
-    [tOn, ~, ~, ~] = cfg.loggedFlip('instruction_grey_prompt', 'instruction', NaN, NaN, NaN);
+        pair.activePath = char(pair.activePath);
+        pair.greyPath = char(pair.greyPath);
+        assets.(fieldName) = pair;
+    end
 
-    KbQueueFlush(cfg.kbDev);
-    holdForSecondsWithAbort(tOn + lockSec, cfg);
-    KbQueueFlush(cfg.kbDev);
-
-    % ---- PASS 2: active prompt (black) ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleFirstInstructions, 'center', titleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    drawFirstInstrBody(window, bodyY, black, tcfg, instrSegs, instrSegBold);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-
-    cfg.loggedFlip('instruction_active', 'instruction', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    fprintf('Instruction PNG assets validated: %s\n', assets.directory);
 end
 
-function drawFirstInstrBody(window, bodyY, fg, tcfg, segs, boldOn)
-    % DrawFormattedText uses sy as the baseline of the first line (yPosIsBaseline=1).
-    % Chain segments with the returned cursor ny — not textbounds(4), or baselines misalign and text overlaps.
-    yCur = bodyY;
-    for ii = 1:numel(segs)
-        Screen('TextSize', window, tcfg.bodySize);
-        if boldOn(ii)
-            Screen('TextStyle', window, 1);
-        else
-            Screen('TextStyle', window, 0);
-        end
-        [~, ny] = DrawFormattedText(window, segs{ii}, 'center', yCur, fg, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-        Screen('TextStyle', window, 0);
-        yCur = ny;
+function validateInstructionPng(imagePath, expectedSizePx, assetLabel)
+
+    if exist(imagePath, 'file') ~= 2
+        error('CB_4xGratings_v3_Orientation:MissingInstructionAsset', ...
+            'Missing %s PNG:\n%s', assetLabel, imagePath);
+    end
+
+    try
+        imageInfo = imfinfo(imagePath);
+    catch ME
+        error('CB_4xGratings_v3_Orientation:InvalidInstructionAsset', ...
+            'Could not read %s PNG:\n%s\n%s', ...
+            assetLabel, imagePath, ME.message);
+    end
+
+    actualSizePx = [imageInfo(1).Width imageInfo(1).Height];
+    if ~isequal(actualSizePx, expectedSizePx)
+        error('CB_4xGratings_v3_Orientation:InvalidInstructionAssetSize', ...
+            '%s PNG must be %d x %d pixels, but is %d x %d:\n%s', ...
+            assetLabel, expectedSizePx(1), expectedSizePx(2), ...
+            actualSizePx(1), actualSizePx(2), imagePath);
     end
 end
 
-function showTrialOverviewScreen(window, windowRect, bg, black, cfg)
+function showInstructionScreen(window, windowRect, cfg)
 
-    tcfg = cfg.display.text;
-    lockSec  = tcfg.lockSec;
-    greyText = tcfg.greyText;
-    titleTrialOverview = 'Change Blindness Trial Overview';
-
-    % --- Load PNG as texture ---
-    pngPath = cfg.trialOverviewPNG;
-    if ~exist(pngPath, 'file')
-        error('Trial overview PNG not found: %s', pngPath);
-    end
-
-    [img, map, alpha] = imread(pngPath);
-    if ~isempty(map)
-        img = uint8(ind2rgb(img, map) * 255);
-    end
-    % Crop any black letterbox area while retaining the complete six-panel row.
-    rgbForBounds = img(:,:,1:min(3,size(img,3)));
-    contentMask = any(double(rgbForBounds) > 8, 3);
-    contentRows = find(any(contentMask,2));
-    contentCols = find(any(contentMask,1));
-    if ~isempty(contentRows) && ~isempty(contentCols)
-        pad = 2;
-        r1 = max(1,contentRows(1)-pad); r2 = min(size(img,1),contentRows(end)+pad);
-        c1 = max(1,contentCols(1)-pad); c2 = min(size(img,2),contentCols(end)+pad);
-        img = img(r1:r2,c1:c2,:);
-        if ~isempty(alpha), alpha = alpha(r1:r2,c1:c2,:); end
-    end
-    if size(img, 3) == 4
-        rgba = img;
-    else
-        if ismatrix(img)
-            rgb = repmat(img, [1 1 3]);
-        else
-            rgb = img(:, :, 1:3);
-        end
-        if ~isempty(alpha)
-            a = alpha;
-            if ndims(a) == 3
-                a = a(:, :, 1);
-            end
-            if ~isa(a, 'uint8')
-                if islogical(a)
-                    a = uint8(a) * 255;
-                else
-                    ad = double(a);
-                    if max(ad(:)) <= 1 && min(ad(:)) >= 0
-                        a = uint8(ad * 255);
-                    else
-                        a = uint8(max(0, min(255, ad)));
-                    end
-                end
-            end
-            rgba = cat(3, rgb, a);
-        else
-            rgba = cat(3, rgb, 255 * ones(size(rgb, 1), size(rgb, 2), 'uint8'));
-        end
-    end
-    % RGBA + default blend (set after OpenWindow) lets transparent PNG areas show cfg background.
-    tex = Screen('MakeTexture', window, rgba);
-    imgH = size(rgba, 1);
-    imgW = size(rgba, 2);
-
-    KbQueueFlush(cfg.kbDev);
-
-    % --- Text blocks (aligned with web task copy; spacebar = Continue) ---
-    topText = [ ...
-        '\n\nOn each trial, the sequence will look like the example below.\n\n' ...
-        'First, a fixation cross will appear in the centre. Next, you will see four circles, a brief blank screen, then the four circles again.\n' ...
-        'During each trial, please keep your eyes on the fixation cross in the centre of the screen, even when the circles appear.\nTry to avoid looking around at the individual circles during the brief sequence.\n\n' ...
-        'After the sequence, you will answer the same two questions described on the previous screen:\n\n' ...
-    ];
-
-    bottomText ='\nWe will begin with some practice trials so you can get comfortable with the task.\n';
-
-    % ---- Draw with greyed prompt ----
-    Screen('FillRect', window, bg);
-
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTrialOverview, 'center', windowRect(4) * tcfg.trialOverviewTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    [~, ~, topBounds] = DrawFormattedText(window, topText, 'center', windowRect(4) * tcfg.trialOverviewTopY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    topBottomY = topBounds(4);
-
-    % --- Fit + place image ---
-    [xc, ~] = RectCenter(windowRect);
-
-    reserveBottomPx = tcfg.trialOverviewReserveBottomPx; % room for bottomText + prompt
-    maxW = windowRect(3) * 0.90;
-    maxH = (windowRect(4) - topBottomY - reserveBottomPx) * 0.95;
-    maxH = max(maxH, 50);
-    pngScaleMult = 0.80;
-
-    scale = min(maxW / imgW, maxH / imgH) * pngScaleMult;
-    dstW = imgW * scale;
-    dstH = imgH * scale;
-
-    imgTopY = topBottomY + 20;
-    dstRect = CenterRectOnPoint([0 0 dstW dstH], xc, imgTopY + dstH/2);
-
-    Screen('DrawTexture', window, tex, [], dstRect);
-
-    % --- Bottom explanatory text ---
-    Screen('TextSize', window, tcfg.bodySize);
-    bottomY = dstRect(4) + 30;
-    DrawFormattedText(window, bottomText, 'center', bottomY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-
-    % --- Greyed "Press SPACE…" line ---
-    promptY = windowRect(4) * tcfg.promptYFrac;
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
-
-    [tOn, ~, ~, ~] = cfg.loggedFlip('trial_overview_grey', 'trial_overview', NaN, NaN, NaN);
-
-    % Lockout (ESC still works)
-    KbQueueFlush(cfg.kbDev);
-    holdForSecondsWithAbort(tOn + lockSec, cfg);
-    KbQueueFlush(cfg.kbDev);
-
-    % ---- Redraw identical screen but prompt in black ----
-    Screen('FillRect', window, bg);
-
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleTrialOverview, 'center', windowRect(4) * tcfg.trialOverviewTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    [~, ~, topBounds] = DrawFormattedText(window, topText, 'center', windowRect(4) * tcfg.trialOverviewTopY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    topBottomY = topBounds(4);
-
-    imgTopY = topBottomY + 20;
-    dstRect = CenterRectOnPoint([0 0 dstW dstH], xc, imgTopY + dstH/2);
-    Screen('DrawTexture', window, tex, [], dstRect);
-
-    Screen('TextSize', window, tcfg.bodySize);
-    bottomY = dstRect(4) + 30;
-    DrawFormattedText(window, bottomText, 'center', bottomY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-
-    cfg.loggedFlip('trial_overview_active', 'trial_overview', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
-
-    % Cleanup texture
-    Screen('Close', tex);
+    showLockedInstructionPngScreen(window, windowRect, cfg, ...
+        cfg.instructionAssets.initialInstructions, ...
+        'instruction_grey_prompt', 'instruction_active', 'instruction');
 end
 
-function showPractice1Intro(window, windowRect, bg, black, cfg)
+function showTrialOverviewScreen(window, windowRect, cfg)
 
-    % --- Settings (match your other screens) ---
-    tcfg = cfg.display.text;
-    lockSec  = tcfg.lockSec;
-    greyText = tcfg.greyText;
-    promptY  = windowRect(4) * tcfg.promptYFrac;
-    titlePractice1 = 'Practice Information\n\n\n\n';
+    showLockedInstructionPngScreen(window, windowRect, cfg, ...
+        cfg.instructionAssets.trialOverview, ...
+        'trial_overview_grey', 'trial_overview_active', 'trial_overview');
+end
 
-    % --- Notice text (tight + readable); two headings in bold ---
-    practice1BodyA = 'Before we begin the practice trials, please remember:\n\n';
-    practice1BoldQ1 = 'For the 1 - 4 clarity rating in Question 1:\n\n';
-    practice1BodyB = [ ...
-        'Use 1 if you did not experience a change, or if you are just guessing.\n' ...
-        'Use 2 - 4 only if you genuinely noticed something change (even faintly).\n' ...
-        'Try to use the whole 1 - 4 range when it fits.\n\n\n' ...
-    ];
-    practice1BoldBlocks = 'You will be completing two practice blocks:\n\n';
-    practice1BodyC = [ ...
-        'In the first practice block the trials will include feedback.\n' ...
-        'You can ask the researcher questions at any time during the practice trials.\n' ...
-    ];
-    practice1Segs = { practice1BodyA, practice1BoldQ1, practice1BodyB, practice1BoldBlocks, practice1BodyC };
-    practice1SegBold = [ false, true, false, true, false ];
-    practiceBodyY = windowRect(4) * tcfg.practiceBodyY;
+function showPractice1Intro(window, windowRect, cfg)
 
-    % ---- PASS 1: greyed prompt (optional lockout) ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice1, 'center', windowRect(4) * tcfg.practiceTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    drawFirstInstrBody(window, practiceBodyY, black, tcfg, practice1Segs, practice1SegBold);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
+    showLockedInstructionPngScreen(window, windowRect, cfg, ...
+        cfg.instructionAssets.practice1Information, ...
+        'practice1_intro_grey', 'practice1_intro_active', ...
+        'practice1_intro');
+end
 
-    [tOn, ~, ~, ~] = cfg.loggedFlip('practice1_intro_grey', 'practice1_intro', NaN, NaN, NaN);
+function showLockedInstructionPngScreen( ...
+        window, windowRect, cfg, assetPair, ...
+        greyFlipLabel, activeFlipLabel, context)
+% Present the grey-prompt PNG for the lockout, then its active-prompt pair.
+% Textures are loaded on demand and closed when this screen is dismissed.
+
+    [greyTexture, activeTexture] = loadInstructionTexturePair( ...
+        window, assetPair, cfg.instructionAssets.referenceSizePx);
+    textureCleanup = onCleanup(@() closeTextureHandles( ...
+        [greyTexture activeTexture]));
+
+    Screen('FillRect', window, cfg.stim.backgroundGrey);
+    Screen('DrawTexture', window, greyTexture, [], windowRect);
+    [tOn, ~, ~, ~] = cfg.loggedFlip( ...
+        greyFlipLabel, context, NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
-
-    if lockSec > 0
-        holdForSecondsWithAbort(tOn + lockSec, cfg);
+    if cfg.display.text.lockSec > 0
+        holdForSecondsWithAbort(tOn + cfg.display.text.lockSec, cfg);
         KbQueueFlush(cfg.kbDev);
     end
 
-    % ---- PASS 2: active prompt ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice1, 'center', windowRect(4) * tcfg.practiceTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    drawFirstInstrBody(window, practiceBodyY, black, tcfg, practice1Segs, practice1SegBold);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    cfg.loggedFlip('practice1_intro_active', 'practice1_intro', NaN, NaN, NaN);
+    Screen('FillRect', window, cfg.stim.backgroundGrey);
+    Screen('DrawTexture', window, activeTexture, [], windowRect);
+    cfg.loggedFlip(activeFlipLabel, context, NaN, NaN, NaN);
 
     KbQueueFlush(cfg.kbDev);
     waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    clear textureCleanup
+end
+
+function [greyTexture, activeTexture] = loadInstructionTexturePair( ...
+        window, assetPair, expectedSizePx)
+
+    greyTexture = [];
+    activeTexture = [];
+    try
+        greyTexture = loadFullScreenInstructionTexture( ...
+            window, assetPair.greyPath, expectedSizePx, ...
+            sprintf('grey %s', assetPair.label));
+        activeTexture = loadFullScreenInstructionTexture( ...
+            window, assetPair.activePath, expectedSizePx, ...
+            sprintf('active %s', assetPair.label));
+    catch ME
+        closeTextureHandles([greyTexture activeTexture]);
+        rethrow(ME);
+    end
+end
+
+function texture = loadFullScreenInstructionTexture( ...
+        window, imagePath, expectedSizePx, assetLabel)
+
+    [image, map, alpha] = imread(imagePath);
+    if ~isempty(map)
+        image = uint8(ind2rgb(image, map) * 255);
+    end
+    if ismatrix(image)
+        image = repmat(image, [1 1 3]);
+    elseif size(image, 3) > 4
+        image = image(:, :, 1:4);
+    end
+
+    actualSizePx = [size(image, 2) size(image, 1)];
+    if ~isequal(actualSizePx, expectedSizePx)
+        error('CB_4xGratings_v3_Orientation:InvalidInstructionAssetSize', ...
+            '%s PNG must be %d x %d pixels, but is %d x %d:\n%s', ...
+            assetLabel, expectedSizePx(1), expectedSizePx(2), ...
+            actualSizePx(1), actualSizePx(2), imagePath);
+    end
+
+    if ~isempty(alpha) && size(image, 3) < 4
+        if ~isa(alpha, 'uint8')
+            alphaDouble = double(alpha);
+            if max(alphaDouble(:)) <= 1 && min(alphaDouble(:)) >= 0
+                alpha = uint8(alphaDouble * 255);
+            else
+                alpha = uint8(max(0, min(255, alphaDouble)));
+            end
+        end
+        image = cat(3, image(:, :, 1:3), alpha(:, :, 1));
+    end
+
+    texture = Screen('MakeTexture', window, image);
+end
+
+function closeTextureHandles(textureHandles)
+
+    textureHandles = textureHandles(isfinite(textureHandles) & textureHandles > 0);
+    if ~isempty(textureHandles)
+        try Screen('Close', textureHandles); catch, end
+    end
 end
 
 function showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, flipLabel)
@@ -1734,65 +1634,12 @@ function checkAbort(cfg)
     end
 end
 
-function showPractice2Intro(window, windowRect, bg, black, cfg)
+function showPractice2Intro(window, windowRect, cfg)
 
-    % --- Settings (match your other screens) ---
-    tcfg = cfg.display.text;
-    lockSec  = tcfg.lockSec;
-    greyText = tcfg.greyText;
-    promptY  = windowRect(4) * tcfg.promptYFrac;
-    titlePractice2 = 'Practice Information\n\n\n\n\n\n\n\n';
-
-    PracticeText2a = [ ...
-        '\nNice work!\n\n' ...
-        'You will now complete a second block of practice trials designed to feel more like the real task.\n' ...
-        'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
-        'Use the full 1 - 4 scale when appropriate in Question 1:\n' ...
-        'Select 1 whenever you are guessing or unsure.\n' ...
-        'Only choose 2 - 4 when you genuinely experienced a change.\n\n' ...
-    ];
-    PracticeText2b = 'Feedback will be removed for this second block.\n';
-
-    % ---- PASS 1: greyed prompt (optional lockout) ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice2, 'center', windowRect(4) * tcfg.practiceTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    [~, ny] = DrawFormattedText(window, PracticeText2a, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, PracticeText2b, 'center', ny, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
-
-    [tOn, ~, ~, ~] = cfg.loggedFlip('practice2_intro_grey', 'practice2_intro', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-
-    if lockSec > 0
-        holdForSecondsWithAbort(tOn + lockSec, cfg);
-        KbQueueFlush(cfg.kbDev);
-    end
-
-    % ---- PASS 2: active prompt ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titlePractice2, 'center', windowRect(4) * tcfg.practiceTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    [~, ny] = DrawFormattedText(window, PracticeText2a, 'center', windowRect(4) * tcfg.practiceBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, PracticeText2b, 'center', ny, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    cfg.loggedFlip('practice2_intro_active', 'practice2_intro', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    showLockedInstructionPngScreen(window, windowRect, cfg, ...
+        cfg.instructionAssets.practice2Information, ...
+        'practice2_intro_grey', 'practice2_intro_active', ...
+        'practice2_intro');
 end
 
 function showPractice2BeginScreen(window, windowRect, bg, black, cfg)
@@ -1823,61 +1670,11 @@ function showPhotodiodeTestSetupScreen(window, windowRect, bg, black, cfg)
     cfg.loggedFlip('photodiode_test_ready', 'photodiode_test', NaN, NaN, NaN);
 end
 
-function showMainExperimentIntroScreen(window, windowRect, bg, black, cfg)
+function showMainExperimentIntroScreen(window, windowRect, cfg)
 
-    % --- Settings (match your other screens) ---
-    tcfg = cfg.display.text;
-    lockSec  = tcfg.lockSec;
-    greyText = tcfg.greyText;
-    promptY  = windowRect(4) * tcfg.promptYFrac;
-    titleMainExperiment = 'Experiment Information';
-
-    txt = [ ...
-        '\nWell done!\nYou''ve finished the practice trials.\n' ...
-        'You will now begin the main experimental trial blocks.\n\n' ...
-        'The task will continue throughout the full run with regular breaks for you to rest and refresh.\n' ...
-        'You will NOT receive feedback during the main run.\n\n' ...
-        'Remember that some trials will contain a change, and some trials will NOT contain a change.\n\n' ...
-        'As before, please keep your eyes on the centre fixation cross during each trial, even when the circles appear.\n\n' ...
-        'Use the full 1 - 4 scale when appropriate in Question 1.\n' ...
-        'Use 1 whenever you are guessing or unsure.\n' ...
-        'Only choose 2 - 4 when you genuinely experienced a change.\n' ...
-    ];
-
-    % ---- PASS 1: greyed prompt ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleMainExperiment, 'center', windowRect(4) * tcfg.mainTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, greyText);
-
-    [tOn, ~, ~, ~] = cfg.loggedFlip('main_intro_grey', 'main_intro', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-
-    if lockSec > 0
-        holdForSecondsWithAbort(tOn + lockSec, cfg);
-        KbQueueFlush(cfg.kbDev);
-    end
-
-    % ---- PASS 2: active prompt ----
-    Screen('FillRect', window, bg);
-    Screen('TextSize', window, tcfg.titleSize);
-    Screen('TextStyle', window, 1);
-    DrawFormattedText(window, titleMainExperiment, 'center', windowRect(4) * tcfg.mainTitleY, black);
-    Screen('TextStyle', window, 0);
-    Screen('TextSize', window, tcfg.bodySize);
-    DrawFormattedText(window, txt, 'center', windowRect(4) * tcfg.mainBodyY, black, tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
-    Screen('TextSize', window, tcfg.promptSize);
-    DrawFormattedText(window, 'Press SPACEBAR to continue.', 'center', promptY, black);
-    cfg.loggedFlip('main_intro_active', 'main_intro', NaN, NaN, NaN);
-
-    KbQueueFlush(cfg.kbDev);
-    waitForKeyQueue([cfg.keys.space], cfg.keys.escape, Inf, cfg);
+    showLockedInstructionPngScreen(window, windowRect, cfg, ...
+        cfg.instructionAssets.experimentInformation, ...
+        'main_intro_grey', 'main_intro_active', 'main_intro');
 end
 
 function showMainTrialBeginScreen(window, windowRect, bg, black, cfg) 
@@ -2674,15 +2471,8 @@ function displayCfg = makeDisplayProfile(profileName)
             textCfg.bodyWrap = 140;
             textCfg.bodyLineSpacing = 1.25;
 
-            textCfg.instructionTitleY = 0.08;
-            textCfg.instructionBodyY = 0.18;
-            textCfg.trialOverviewTitleY = 0.06;
-            textCfg.trialOverviewTopY = 0.13;
-            textCfg.trialOverviewReserveBottomPx = 240;
-            textCfg.practiceTitleY = 0.10;
-            textCfg.practiceBodyY = 0.18;
-            textCfg.mainTitleY = 0.10;
-            textCfg.mainBodyY = 0.18;
+            % Complex instruction pages are full-screen 1920 x 1080 PNGs.
+            % These settings remain for programmatically rendered pages.
 
             qCfg = struct();
             qCfg.quadGapFrac = 0.05;
@@ -2735,15 +2525,8 @@ function displayCfg = makeDisplayProfile(profileName)
             textCfg.bodyWrap = 120;
             textCfg.bodyLineSpacing = 1.30;
 
-            textCfg.instructionTitleY = 0.08;
-            textCfg.instructionBodyY = 0.17;
-            textCfg.trialOverviewTitleY = 0.06;
-            textCfg.trialOverviewTopY = 0.12;
-            textCfg.trialOverviewReserveBottomPx = 220;
-            textCfg.practiceTitleY = 0.10;
-            textCfg.practiceBodyY = 0.17;
-            textCfg.mainTitleY = 0.10;
-            textCfg.mainBodyY = 0.17;
+            % Complex instruction pages are full-screen 1920 x 1080 PNGs.
+            % These settings remain for programmatically rendered pages.
 
             qCfg = struct();
             qCfg.quadGapFrac = 0.09;
