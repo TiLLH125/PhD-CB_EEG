@@ -1,0 +1,81 @@
+>> CB_EEG_RunFullPreprocessingPipeline_v3
+Enter participant ID(s), separated by commas or spaces: LUKE01
+
+============================================================
+CB EEG FULL PREPROCESSING PIPELINE
+Participant: LUKE01
+Started: 11-Aug-2026 11:06:31
+Output folder:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631
+============================================================
+
+[2026-08-11 11:06:31] pipeline                 START    Pipeline started | LUKE01 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631
+[2026-08-11 11:06:31] input                    OK       Resolved BDF file | C:\Users\hrl310\Documents\EEGData_HL\LUKE01.bdf
+[2026-08-11 11:06:31] input                    OK       Resolved FullRun CSV | C:\Users\hrl310\Documents\EEGData_HL\CB_4xGratings_LUKE01_FullRun_20260714_151017.csv
+
+
+================ STAGE 2: RAW BDF IMPORT ================
+sopen mode is "OVERFLOWDETECTION:OFF"
+Reading data in BDF format...
+eeg_checkset note: upper time limit (xmax) adjusted so (xmax-xmin)*srate+1 = number of frames
+Importing data events...
+eeg_checkset note: creating the original event table (EEG.urevent)
+Raw channels: 72
+Raw points:   6369280
+Raw srate:    2048.0 Hz
+Saving dataset...
+[2026-08-11 11:06:56] raw_import               OK       Imported raw BDF | 72 channels | LUKE01_raw.set
+
+
+================ STAGE 3: DOWNSAMPLE ================
+resampling data 512.0000 Hz
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 
+resampling event latencies...
+resampling finished
+Saving dataset...
+Downsampled to 512.0 Hz
+[2026-08-11 11:07:09] downsample               OK       Downsampled continuous data | 512.0 Hz | LUKE01_ds512.set
+readlocs(): 'BESA' format assumed from file extension
+BESA header detected, skipping three lines...
+Readlocs: BESA spherical coords. converted, now deleting BESA fields
+          to avoid confusion (these fields can be exported, though)
+64 channel with the same label found and imported
+Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
+
+
+================ STAGE 3b: BAD SCALP-CHANNEL QC CHECK ================
+Removing 8 channel(s)...
+readlocs(): 'BESA' format assumed from file extension
+BESA header detected, skipping three lines...
+Readlocs: BESA spherical coords. converted, now deleting BESA fields
+          to avoid confusion (these fields can be exported, though)
+64 channel with the same label found and imported
+Running Clean RawData diagnostic pass: Downsampled flatline check on temporary copy ... done. Flagged 13 channel(s).
+Running Clean RawData diagnostic pass: Downsampled line-noise warning check on temporary copy ... done. Flagged 19 channel(s).
+[2026-08-11 11:08:05] bad_channel_check        OK       Initial flatline and line-noise channel QC completed | 13 flatline; 19 line-noise warning(s) | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_InitialChannelQC_Table.csv
+
+
+================ STAGE 4: ICA-TRAINING DATASET ================
+pop_eegfiltnew() - performing 1691 point bandpass filtering.
+pop_eegfiltnew() - transition band width: 0.999763313609467 Hz
+pop_eegfiltnew() - passband edge(s): [1 30] Hz
+pop_eegfiltnew() - cutoff frequency(ies) (-6 dB): [0.500118343195266 30.4998816568047] Hz
+pop_eegfiltnew() - filtering the data (zero-phase, non-causal)
+firfilt(): |====================| 100%, ETE 00:00
+Removing 8 channel(s)...
+readlocs(): 'BESA' format assumed from file extension
+BESA header detected, skipping three lines...
+Readlocs: BESA spherical coords. converted, now deleting BESA fields
+          to avoid confusion (these fields can be exported, though)
+64 channel with the same label found and imported
+Running Clean RawData diagnostic pass: Filtered pre-ICA correlation check on temporary copy ... done. Flagged 2 channel(s) (P1, PO3).
+[2026-08-11 11:08:41] bad_channel_decision     QC_FAIL  Too many bad scalp channels for reliable interpolation | 15 bad; maximum 6 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
+
+============================================================
+PIPELINE ERROR
+Participant LUKE01 has 15 bad scalp channels (maximum allowed: 6). QC failure details: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
+============================================================
+
+[2026-08-11 11:08:41] pipeline                 ERROR    Participant LUKE01 has 15 bad scalp channels (maximum allowed: 6). QC failure details: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
+Error using CB_EEG_RunFullPreprocessingPipeline_v3 (line 570)
+Participant LUKE01 has 15 bad scalp channels (maximum allowed: 6). QC failure details: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
