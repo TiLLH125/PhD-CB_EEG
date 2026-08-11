@@ -1526,7 +1526,10 @@ function [flaggedLabels, flaggedIndices] = localRunCleanRawDataChannelCheck( ...
     EEG_badcheck, labelsBefore, cfg, passLabel, varargin)
 
 labelsBefore = string(labelsBefore(:));
-cleanArgs = localNormaliseCleanRawDataArgs(varargin{:});
+% Clean RawData requires the literal value 'off' to disable individual
+% criteria. Pass the arguments through unchanged: replacing 'off' with
+% Inf/0 still runs clean_channels and contaminates isolated QC passes.
+cleanArgs = varargin;
 
 EEG_work = pop_select(EEG_badcheck, 'channel', 1:EEG_badcheck.nbchan);
 EEG_work = eeg_checkset(EEG_work);
@@ -1591,40 +1594,6 @@ if nargin < 1 || isempty(stageName)
     passLabel = checkType;
 else
     passLabel = sprintf('%s %s', char(stageName), checkType);
-end
-
-end
-
-
-function argsOut = localNormaliseCleanRawDataArgs(varargin)
-
-argsOut = varargin;
-for i = 1:2:numel(argsOut)
-    if ischar(argsOut{i}) || isstring(argsOut{i})
-        paramName = char(argsOut{i});
-        paramValue = argsOut{i+1};
-        if ischar(paramValue) && strcmpi(paramValue, 'off')
-            argsOut{i+1} = localCleanRawDataCriterionDisabledValue(paramName);
-        elseif isstring(paramValue) && isscalar(paramValue) && strcmpi(paramValue, "off")
-            argsOut{i+1} = localCleanRawDataCriterionDisabledValue(paramName);
-        end
-    end
-end
-
-end
-
-
-function disabledValue = localCleanRawDataCriterionDisabledValue(paramName)
-
-switch paramName
-    case 'FlatlineCriterion'
-        disabledValue = Inf;
-    case 'LineNoiseCriterion'
-        disabledValue = Inf;
-    case 'ChannelCriterion'
-        disabledValue = 0;
-    otherwise
-        disabledValue = 'off';
 end
 
 end
