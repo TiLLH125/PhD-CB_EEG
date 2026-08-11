@@ -4,14 +4,14 @@ Enter participant ID(s), separated by commas or spaces: LUKE01
 ============================================================
 CB EEG FULL PREPROCESSING PIPELINE
 Participant: LUKE01
-Started: 11-Aug-2026 11:06:31
+Started: 11-Aug-2026 12:13:15
 Output folder:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315
 ============================================================
 
-[2026-08-11 11:06:31] pipeline                 START    Pipeline started | LUKE01 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631
-[2026-08-11 11:06:31] input                    OK       Resolved BDF file | C:\Users\hrl310\Documents\EEGData_HL\LUKE01.bdf
-[2026-08-11 11:06:31] input                    OK       Resolved FullRun CSV | C:\Users\hrl310\Documents\EEGData_HL\CB_4xGratings_LUKE01_FullRun_20260714_151017.csv
+[2026-08-11 12:13:15] pipeline                 START    Pipeline started | LUKE01 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315
+[2026-08-11 12:13:15] input                    OK       Resolved BDF file | C:\Users\hrl310\Documents\EEGData_HL\LUKE01.bdf
+[2026-08-11 12:13:15] input                    OK       Resolved FullRun CSV | C:\Users\hrl310\Documents\EEGData_HL\CB_4xGratings_LUKE01_FullRun_20260714_151017.csv
 
 
 ================ STAGE 2: RAW BDF IMPORT ================
@@ -24,7 +24,7 @@ Raw channels: 72
 Raw points:   6369280
 Raw srate:    2048.0 Hz
 Saving dataset...
-[2026-08-11 11:06:56] raw_import               OK       Imported raw BDF | 72 channels | LUKE01_raw.set
+[2026-08-11 12:13:33] raw_import               OK       Imported raw BDF | 72 channels | LUKE01_raw.set
 
 
 ================ STAGE 3: DOWNSAMPLE ================
@@ -34,7 +34,7 @@ resampling event latencies...
 resampling finished
 Saving dataset...
 Downsampled to 512.0 Hz
-[2026-08-11 11:07:09] downsample               OK       Downsampled continuous data | 512.0 Hz | LUKE01_ds512.set
+[2026-08-11 12:13:45] downsample               OK       Downsampled continuous data | 512.0 Hz | LUKE01_ds512.set
 readlocs(): 'BESA' format assumed from file extension
 BESA header detected, skipping three lines...
 Readlocs: BESA spherical coords. converted, now deleting BESA fields
@@ -50,9 +50,9 @@ BESA header detected, skipping three lines...
 Readlocs: BESA spherical coords. converted, now deleting BESA fields
           to avoid confusion (these fields can be exported, though)
 64 channel with the same label found and imported
-Running Clean RawData diagnostic pass: Downsampled flatline check on temporary copy ... done. Flagged 13 channel(s).
+Running Clean RawData diagnostic pass: Downsampled flatline check on temporary copy ... done. Flagged 0 channel(s).
 Running Clean RawData diagnostic pass: Downsampled line-noise warning check on temporary copy ... done. Flagged 19 channel(s).
-[2026-08-11 11:08:05] bad_channel_check        OK       Initial flatline and line-noise channel QC completed | 13 flatline; 19 line-noise warning(s) | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_InitialChannelQC_Table.csv
+[2026-08-11 12:14:10] bad_channel_check        OK       Initial flatline and line-noise channel QC completed | 0 flatline; 19 line-noise warning(s) | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_InitialChannelQC_Table.csv
 
 
 ================ STAGE 4: ICA-TRAINING DATASET ================
@@ -69,13 +69,579 @@ Readlocs: BESA spherical coords. converted, now deleting BESA fields
           to avoid confusion (these fields can be exported, though)
 64 channel with the same label found and imported
 Running Clean RawData diagnostic pass: Filtered pre-ICA correlation check on temporary copy ... done. Flagged 2 channel(s) (P1, PO3).
-[2026-08-11 11:08:41] bad_channel_decision     QC_FAIL  Too many bad scalp channels for reliable interpolation | 15 bad; maximum 6 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
+
+Final scalp channels excluded from ICA and ERP preprocessing (2):
+    "P1"    "PO3"
+
+[2026-08-11 12:14:43] bad_channel_decision     OK       Final bad scalp-channel decision completed | 2 excluded; 62 retained | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BadChannelDecisionTable.csv
+
+Line-noise QC: Downsampled_512Hz
+  Median 50 Hz ratio, all scalp channels: 1.81 dB
+  Worst scalp channel: O2, 4.05 dB
+  Worst flagged line-noise channel: O2, 4.05 dB
+  Note: Broadband/downsampled data at 512 Hz before stage-specific low-pass
+[2026-08-11 12:14:58] line_noise_qc            OK       Line-noise QC completed for Downsampled_512Hz | median=1.81 dB; worst=O2 4.05 dB
+Removing 2 channel(s)...
+Re-referencing data
+readlocs(): 'BESA' format assumed from file extension
+BESA header detected, skipping three lines...
+Readlocs: BESA spherical coords. converted, now deleting BESA fields
+          to avoid confusion (these fields can be exported, though)
+62 channel with the same label found and imported
+Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
+Saving dataset...
+[2026-08-11 12:15:01] ica_training_dataset     OK       Created 1-30 Hz average-referenced ICA-training dataset using retained scalp channels | 62 scalp channels; PCA 61 | LUKE01_ds512_bp1to30_avgref_ICAtraining.set
+
+
+================ STAGE 5: PICARD ICA ================
+Running picard ICA on 62 scalp channels with PCA 61...
+
+Warning: you have used PCA to reduce dimensionality so ICA
+         is not modeling the entire data, only the PCA-reduced data.
+Warning: fixing rank computation inconsistency (62 vs 61) most likely because running under Linux 64-bit Matlab, taking the minimum
+Attempting to convert data matrix to double precision for more accurate ICA results.
+Decreasing data dimension from 62 to 61 using PCA...
+iteration 1, gradient norm = 0.716161 loss = 86.7383
+iteration 2, gradient norm = 0.368244 loss = 86.5099
+iteration 3, gradient norm = 0.685312 loss = 86.304
+iteration 4, gradient norm = 1.01652 loss = 85.9346
+iteration 5, gradient norm = 0.972768 loss = 85.6823
+iteration 6, gradient norm = 0.906902 loss = 85.6065
+iteration 7, gradient norm = 0.586759 loss = 85.1919
+iteration 8, gradient norm = 0.661911 loss = 84.2856
+iteration 9, gradient norm = 0.564199 loss = 83.7277
+iteration 10, gradient norm = 0.550901 loss = 82.8014
+iteration 11, gradient norm = 0.439422 loss = 82.3105
+iteration 12, gradient norm = 0.526352 loss = 82.2036
+iteration 13, gradient norm = 0.532405 loss = 81.7135
+iteration 14, gradient norm = 0.137633 loss = 81.5489
+iteration 15, gradient norm = 0.195065 loss = 81.4287
+iteration 16, gradient norm = 0.255783 loss = 81.3716
+iteration 17, gradient norm = 0.210641 loss = 81.2997
+iteration 18, gradient norm = 0.166304 loss = 81.2325
+iteration 19, gradient norm = 0.109578 loss = 81.1894
+iteration 20, gradient norm = 0.107688 loss = 81.154
+iteration 21, gradient norm = 0.148876 loss = 81.1121
+iteration 22, gradient norm = 0.140318 loss = 81.0878
+iteration 23, gradient norm = 0.0733091 loss = 81.0611
+iteration 24, gradient norm = 0.046005 loss = 81.037
+iteration 25, gradient norm = 0.0386412 loss = 81.0263
+iteration 26, gradient norm = 0.0611176 loss = 81.02
+iteration 27, gradient norm = 0.0368161 loss = 81.0121
+iteration 28, gradient norm = 0.0630769 loss = 81.0063
+iteration 29, gradient norm = 0.0588575 loss = 80.9989
+iteration 30, gradient norm = 0.0465392 loss = 80.996
+iteration 31, gradient norm = 0.0429497 loss = 80.9894
+iteration 32, gradient norm = 0.0373209 loss = 80.9802
+iteration 33, gradient norm = 0.0215733 loss = 80.9757
+iteration 34, gradient norm = 0.0120042 loss = 80.974
+iteration 35, gradient norm = 0.0142711 loss = 80.9728
+iteration 36, gradient norm = 0.00926039 loss = 80.9719
+iteration 37, gradient norm = 0.00462721 loss = 80.9712
+iteration 38, gradient norm = 0.00318899 loss = 80.971
+iteration 39, gradient norm = 0.0121009 loss = 80.9708
+iteration 40, gradient norm = 0.0090075 loss = 80.97
+iteration 41, gradient norm = 0.00344458 loss = 80.9699
+iteration 42, gradient norm = 0.00594233 loss = 80.9696
+iteration 43, gradient norm = 0.00231851 loss = 80.9695
+iteration 44, gradient norm = 0.00139058 loss = 80.9694
+iteration 45, gradient norm = 0.00217789 loss = 80.9694
+iteration 46, gradient norm = 0.0020364 loss = 80.9694
+iteration 47, gradient norm = 0.00169693 loss = 80.9694
+iteration 48, gradient norm = 0.00071117 loss = 80.9694
+iteration 49, gradient norm = 0.000693096 loss = 80.9694
+iteration 50, gradient norm = 0.000679832 loss = 80.9693
+iteration 51, gradient norm = 0.000222083 loss = 80.9693
+iteration 52, gradient norm = 0.000126101 loss = 80.9693
+iteration 53, gradient norm = 8.48943e-05 loss = 80.9693
+iteration 54, gradient norm = 5.24526e-05 loss = 80.9693
+iteration 55, gradient norm = 3.2794e-05 loss = 80.9693
+iteration 56, gradient norm = 3.65864e-05 loss = 80.9693
+iteration 57, gradient norm = 1.14683e-05 loss = 80.9693
+iteration 58, gradient norm = 1.64631e-05 loss = 80.9693
+iteration 59, gradient norm = 1.86624e-05 loss = 80.9693
+iteration 60, gradient norm = 5.47458e-06 loss = 80.9693
+iteration 61, gradient norm = 6.55899e-06 loss = 80.9693
+iteration 62, gradient norm = 3.08175e-06 loss = 80.9693
+iteration 63, gradient norm = 3.45933e-06 loss = 80.9693
+iteration 64, gradient norm = 3.13627e-06 loss = 80.9693
+iteration 65, gradient norm = 8.36832e-07 loss = 80.9693
+iteration 66, gradient norm = 3.90176e-07 loss = 80.9693
+iteration 67, gradient norm = 2.72025e-07 loss = 80.9693
+iteration 68, gradient norm = 2.10075e-07 loss = 80.9693
+iteration 69, gradient norm = 1.41625e-07 loss = 80.9693
+iteration 70, gradient norm = 9.83006e-08 loss = 80.9693
+iteration 71, gradient norm = 7.30808e-08 loss = 80.9693
+iteration 72, gradient norm = 6.085e-08 loss = 80.9693
+iteration 73, gradient norm = 6.25681e-08 loss = 80.9693
+iteration 74, gradient norm = 3.29556e-08 loss = 80.9693
+iteration 75, gradient norm = 1.58229e-08 loss = 80.9693
+Scaling components to RMS microvolt
+eeg_checkset: recomputing the ICA activation matrix ...
+
+ICA finished in 4.14 minutes.
+icaweights size: [61 x 62]
+icawinv size:    [62 x 61]
+icachansind:     62 channels
+Saving dataset...
+[2026-08-11 12:19:11] picard_ica               OK       Picard ICA completed | 4.14 min | LUKE01_ds512_bp1to30_avgref_PicardICA_pca61.set
+[2026-08-11 12:19:12] picard_ica               OK       ICA dimensions | weights 61x62; icawinv 62x61 | LUKE01_ds512_bp1to30_avgref_PicardICA_pca61.set
+
+
+================ STAGE 6: ICLABEL ================
+readlocs(): 'BESA' format assumed from file extension
+BESA header detected, skipping three lines...
+Readlocs: BESA spherical coords. converted, now deleting BESA fields
+          to avoid confusion (these fields can be exported, though)
+62 channel with the same label found and imported
+Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
+ICLabel: extracting features...
+ICLabel: calculating labels...
+ICLabel: saving results...
+Saving dataset...
+
+First 25 ICLabel classifications:
+    IC    BestClass    BestPct    BrainPct    MusclePct       EyePct       HeartPct     LineNoisePct    ChannelNoisePct    OtherPct 
+    __    _________    _______    ________    __________    __________    __________    ____________    _______________    _________
+
+     1    "Eye"        98.104     0.60511        0.16517        98.104       0.26309      0.016877          0.038912         0.80672
+     2    "Eye"        99.198     0.14159       0.076481        99.198       0.21177     0.0087727          0.018211         0.34533
+     3    "Brain"      99.973      99.973      0.0019716     0.0002116    0.00069725      0.017211        0.00021781       0.0069645
+     4    "Brain"       93.28       93.28        0.24504     0.0072149        5.5599       0.20658          0.069871         0.63129
+     5    "Other"      57.735      2.5358         36.423       0.20067        1.4279       0.71401           0.96332          57.735
+     6    "Brain"      97.891      97.891        0.17612      0.015622       0.10621       0.14193          0.041447          1.6276
+     7    "Brain"      99.258      99.258       0.012947     0.0031615      0.022493       0.50771         0.0028145         0.19321
+     8    "Brain"      99.965      99.965     0.00067701    0.00029164     0.0012567      0.020093        0.00015081        0.012658
+     9    "Brain"      99.422      99.422      0.0048428     0.0045607     0.0076149       0.31462         0.0011473         0.24517
+    10    "Brain"      98.871      98.871       0.020153     0.0058657      0.054449      0.075977          0.022337         0.95023
+    11    "Muscle"     54.314       3.365         54.314         5.271        0.2988       0.64907            26.775          9.3268
+    12    "Other"      51.015      10.704         2.3397        1.2806        1.6903         1.666            31.304          51.015
+    13    "Muscle"      81.99      5.1231          81.99       0.26245      0.032383       0.12461           0.10114          12.366
+    14    "Other"      37.291      1.1695         23.392        20.337       0.22259        4.1789            13.409          37.291
+    15    "Other"      78.363        5.38         1.3196        1.1115       0.61474        1.6401            11.571          78.363
+    16    "Muscle"      34.08      5.2827          34.08        23.436       0.61945        0.5258            3.9554            32.1
+    17    "Brain"      98.094      98.094       0.038218      0.086798       0.21768       0.37951          0.048156          1.1355
+    18    "Other"      61.704      17.785         7.9713       0.82505       0.76667       0.24037            10.708          61.704
+    19    "Brain"      94.759      94.759        0.20968      0.093674         1.211       0.68447          0.079315          2.9629
+    20    "Other"      54.109      9.3217         11.717        16.072        1.0311       0.77072            6.9784          54.109
+    21    "Other"      51.454       8.722         36.709       0.33532        1.0889      0.045437            1.6454          51.454
+    22    "Muscle"      49.55      10.605          49.55       0.18995       0.16578      0.038186            1.5748          37.877
+    23    "Other"       39.11      5.0963         26.205        21.515       0.84778        1.7513            5.4748           39.11
+    24    "Muscle"      60.57      14.186          60.57       0.42501       0.21094      0.067751           0.49931          24.042
+    25    "Other"      73.684      6.0765         16.291       0.63528       0.66022       0.16265            2.4905          73.684
+
+[2026-08-11 12:19:26] iclabel                  OK       ICLabel completed | 61 ICs | LUKE01_ds512_bp1to30_avgref_PicardICA_pca61_ICLabel.set
+[2026-08-11 12:19:26] iclabel                  OK       Saved ICLabel table | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ICLabel_Table.csv
+
+
+================ STAGE 7: ICA COMPONENT SELECTION ================
+[2026-08-11 12:19:26] ica_component_selection  OK       Auto ICA selection table saved | [1 2] | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_AutoICASelectionTable.csv
+
+Automatic ICLabel rejection enabled: true
+Classes: Muscle, Eye
+Threshold: 0.90
+
+Automatically selected ICs:
+     1     2
+
+
+Provided ComponentsToRemove:
+
+Additional manual ICs:
+
+Final components selected for removal:
+     1     2
+
+[2026-08-11 12:19:26] ica_component_selection  OK       ICA components selected for removal | [1 2] | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ICAComponentsToRemove.csv
+
+
+================ STAGE 8: ERP-ANALYSIS DATASET ================
+pop_eegfiltnew() - performing 16897 point bandpass filtering.
+pop_eegfiltnew() - transition band width: 0.1 Hz
+pop_eegfiltnew() - passband edge(s): [0.1 20] Hz
+pop_eegfiltnew() - cutoff frequency(ies) (-6 dB): [0.05 20.05] Hz
+pop_eegfiltnew() - filtering the data (zero-phase, non-causal)
+firfilt(): |====================| 100%, ETE 00:00
+Removing 2 channel(s)...
+Re-referencing data
+readlocs(): 'BESA' format assumed from file extension
+BESA header detected, skipping three lines...
+Readlocs: BESA spherical coords. converted, now deleting BESA fields
+          to avoid confusion (these fields can be exported, though)
+62 channel with the same label found and imported
+Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
+Saving dataset...
+[2026-08-11 12:19:44] erp_dataset              OK       Created 0.1-20 Hz average-referenced ERP-analysis dataset using retained scalp channels | 62 scalp channels | LUKE01_ds512_bp0p1to20_avgref.set
+
+
+================ STAGE 9: ICA TRANSFER AND COMPONENT REMOVAL ================
+Scaling components to RMS microvolt
+eeg_checkset: recomputing the ICA activation matrix ...
+Saving dataset...
+Computing projection and removing 2 components ....
+[2026-08-11 12:19:46] clear_ica_fields         OK       Cleared ICA fields from final cleaned continuous dataset after component removal
+Interpolating 2 channels...
+Re-referencing data
+readlocs(): 'BESA' format assumed from file extension
+BESA header detected, skipping three lines...
+Readlocs: BESA spherical coords. converted, now deleting BESA fields
+          to avoid confusion (these fields can be exported, though)
+64 channel with the same label found and imported
+Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
+[2026-08-11 12:19:49] channel_interpolation    OK       Restored the original montage and applied the final scalp average reference | 2 scalp channel(s) interpolated; applied=true
+Saving dataset...
+[2026-08-11 12:19:50] ica_transfer             OK       Transferred Picard ICA weights to ERP dataset | LUKE01_ds512_bp0p1to20_avgref_PicardICAtransferred.set
+[2026-08-11 12:19:50] component_removal        OK       Removed selected ICA components from ERP dataset | [1 2] | LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed.set
+
+Line-noise QC: FinalERPclean_0p1to20Hz
+  Median 50 Hz ratio, all scalp channels: -0.63 dB
+  Worst scalp channel: FC2, 1.88 dB
+  Worst flagged line-noise channel: CPz, 1.57 dB
+  Note: 50 Hz expected to be strongly attenuated by the 20 Hz low-pass; final data are post-ICA and interpolated
+[2026-08-11 12:19:59] line_noise_qc            OK       Line-noise QC completed for FinalERPclean_0p1to20Hz | median=-0.63 dB; worst=FC2 1.88 dB
+[2026-08-11 12:19:59] line_noise_qc            OK       Saved line-noise QC table and summary | 2 stage table(s) | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Table.csv
+
+
+================ STAGE 10: EVENT MATCHING ================
+Behavioural FullRun rows: 600
+
+Behaviour variables:
+    PASVar    LocCorrectVar    LocRespVar    IsChangeVar
+    ______    _____________    __________    ___________
+
+    "pas"     "locCorrect"         ""        "isChange" 
+
+[2026-08-11 12:20:01] event_matching           OK       Behaviour variable map inferred | PAS=pas; LocCorrect=locCorrect; LocResp=; IsChange=isChange | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BehaviourVariableMap.csv
+Saved BDF event code inventory: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BdfEventCodeInventory.csv
+Warning: BDF contains legacy metadata trigger code(s) 71; these are not used in ascending v3. 
+
+Ascending v3 trigger scheme reference:
+  Main:    S1=21 S2=23 Q1=31 PAS=[41 42 43 44] Q2=51 LOC=[61 62 63 64] trialEnd=71
+  Practice (+100): S1=121 S2=123 Q1=131 PAS=[141 142 143 144] Q2=151 LOC=[161 162 163 164] trialEnd=171
+Practice +100 S1-defined EEG trials: 20
+Main base-code S1-defined EEG trials: 600
+
+PAS mismatches EEG main triggers vs CSV: 0
+LOC response mismatch check skipped: no loc response column identified.
+[2026-08-11 12:20:01] event_matching           OK       Practice +100 trigger family validated | 20 trials; expected 20 = 2 x 10 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PracticePlus100TriggerAudit.csv
+[2026-08-11 12:20:01] event_matching           OK       Main base-code trigger family matched to FullRun CSV | 600 trials; expected 600 = 12 x 50 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_MainTriggerAudit.csv
+[2026-08-11 12:20:01] event_matching           OK       PAS mismatches EEG main triggers vs CSV | 0
+[2026-08-11 12:20:01] event_matching           OK       LOC mismatches EEG main triggers vs CSV | NaN
+
+
+================ STAGE 11: ADD S1/S2 OUTCOME CODES ================
+
+Behavioural outcome counts before artefact rejection:
+       Outcome       GroupCount
+    _____________    __________
+
+    "Blind"             185    
+    "NoChange_CR"       109    
+    "NoChange_FA"        35    
+    "Seeing"            197    
+    "Sensing"            74    
+
+Warning: converting all event types to strings
+eeg_checkset note: event field format 'cb_outcome' made uniform
+eeg_checkset note: event field format 'cb_lock' made uniform
+Saving dataset...
+[2026-08-11 12:20:05] s1s2_coding              OK       Added synthetic S1/S2 outcome codes | 600 S1 + 600 S2 | LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed_S1S2coded.set
+
+
+================ STAGE 12: EPOCH S1/S2 ================
+pop_epoch():600 epochs selected
+Epoching...
+pop_epoch():600 epochs generated
+pop_epoch(): time limits have been adjusted to [-0.199 1.400] to fit data points limits
+pop_epoch(): checking epochs for data discontinuity
+Warning: Do you also want to remove the single-trial ERP baseline, make sure to do so in the EEGLAB menu. 
+pop_rmbase(): Removing baseline...
+pop_epoch():600 epochs selected
+Epoching...
+pop_epoch():600 epochs generated
+pop_epoch(): time limits have been adjusted to [-0.900 0.801] to fit data points limits
+pop_epoch(): checking epochs for data discontinuity
+Warning: Do you also want to remove the single-trial ERP baseline, make sure to do so in the EEGLAB menu. 
+Saving dataset...
+Saving dataset...
+S1 epochs: 600 | -199.2 to 1398.4 ms
+S2 epochs: 600 | -900.4 to 798.8 ms
+[2026-08-11 12:20:18] epoching                 OK       Created S1 epochs with S1 baseline | 600 epochs | LUKE01_ERP_S1locked_m200to1400_S1base.set
+[2026-08-11 12:20:18] epoching                 OK       Created S2 epochs with trial-wise S1 baseline | 600 epochs | LUKE01_ERP_S2locked_m900to800_S1base.set
+
+
+================ STAGE 13: JOINT ARTEFACT REJECTION ================
+S1 bad epochs:    22 / 600
+S2 bad epochs:    22 / 600
+Union rejected:   27 / 600
+Remaining epochs: 573 / 600
+Removing 27 trial(s)...
+Pop_select: removing 259 unreferenced events
+Removing 27 trial(s)...
+Pop_select: removing 231 unreferenced events
+Saving dataset...
+Saving dataset...
+
+Condition counts before artefact rejection:
+      Condition      Code     N 
+    _____________    ____    ___
+
+    "Blind"          201     185
+    "Sensing"        202      74
+    "Seeing"         203     197
+    "NoChange_CR"    211     109
+    "NoChange_FA"    212      35
+
+
+Condition counts after artefact rejection:
+      Condition      Code     N 
+    _____________    ____    ___
+
+    "Blind"          201     178
+    "Sensing"        202      72
+    "Seeing"         203     188
+    "NoChange_CR"    211     102
+    "NoChange_FA"    212      33
+
+[2026-08-11 12:20:28] artifact_rejection       OK       Joint S1/S2 artefact rejection complete | 27 rejected; 573 kept | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_EpochArtifactRejectionReport.csv
+[2026-08-11 12:20:28] artifact_rejection       OK       Saved AR-clean S1 dataset | LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set
+[2026-08-11 12:20:28] artifact_rejection       OK       Saved AR-clean S2 dataset | LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
+[2026-08-11 12:20:29] final_qc                 OK       Saved final participant QC summary | 2 channels interpolated; 4.5% epochs rejected | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_FinalQCSummary.csv
+
+
+================ STAGE 14: ROI PLOTTING ================
+
+S1 OccipitalROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S2 OccipitalROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S1 PosteriorROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S2 PosteriorROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S1 ParietalROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S2 ParietalROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S1 CentralROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S2 CentralROI
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S1 PO7PO8
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+
+S2 PO7PO8
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+  Ignored no-change/other epochs: 135
+[2026-08-11 12:20:41] roi_plotting             OK       Generated S1/S2 ROI plots | 10 plot rows | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_ROI_Plots\LUKE01_ROIPlotFiles.csv
+
+
+================ STAGE 15: EXTRA FINAL ERP AND TOPOGRAPHY PLOTS ================
+
+Loading S1 dataset:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set
+pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set ...
+Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.fdt'...
+
+Loading S2 dataset:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
+pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set ...
+Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.fdt'...
+
+Creating central ROI trial-trace plot.
+Central ROI channels: Cz, CPz, Pz
+
+Central ROI trial-trace plot complete.
+Plot folder:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots
+PNG:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY.png
+FIG:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY.fig
+Summary CSV:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY_Summary.csv
+[2026-08-11 12:20:49] extra_final_plots        OK       Generated central ROI trial-trace plots | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY.png
+
+Loading S1 dataset:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set
+pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set ...
+Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.fdt'...
+
+Loading S2 dataset:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
+pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set ...
+Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.fdt'...
+
+Creating B/S/S overlay central ROI trial-trace plot.
+Central ROI channels: Cz, CPz, Pz
+
+Central ROI B/S/S overlay plot complete.
+Plot folder:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots
+PNG:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY.png
+FIG:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY.fig
+Summary CSV:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY_Summary.csv
+[2026-08-11 12:21:01] extra_final_plots        OK       Generated central ROI B/S/S overlay trial-trace plot | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY.png
+
+Loading S2 dataset:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
+pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set ...
+Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.fdt'...
+
+S2 epoch counts:
+  Blind:   178
+  Sensing: 72
+  Seeing:  188
+
+VAN window: 150-250 ms
+  Symmetric colour scale: -10.109 to 10.109 uV
+
+LP window: 400-600 ms
+  Symmetric colour scale: -6.483 to 6.483 uV
+Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
+Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
+Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
+Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
+Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
+Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
+
+S2 VAN/LP condition topomap figure complete.
+Plot folder:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps
+PNG:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps\LUKE01_S2locked_Topomaps_VAN150to250_LP400to600_BSSConditionMeans.png
+FIG:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps\LUKE01_S2locked_Topomaps_VAN150to250_LP400to600_BSSConditionMeans.fig
+[2026-08-11 12:21:07] extra_final_plots        OK       Generated S2 VAN/LP topomaps | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps\LUKE01_S2locked_Topomaps_VAN150to250_LP400to600_BSSConditionMeans.png
+[2026-08-11 12:21:07] pipeline                 DONE     Pipeline completed successfully | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_FinalPipelineReport.mat
 
 ============================================================
-PIPELINE ERROR
-Participant LUKE01 has 15 bad scalp channels (maximum allowed: 6). QC failure details: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
+PIPELINE COMPLETE
+Finished: 11-Aug-2026 12:21:07
+Output folder:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315
+Text log:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.txt
+CSV log:
+C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.csv
 ============================================================
 
-[2026-08-11 11:08:41] pipeline                 ERROR    Participant LUKE01 has 15 bad scalp channels (maximum allowed: 6). QC failure details: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
-Error using CB_EEG_RunFullPreprocessingPipeline_v3 (line 570)
-Participant LUKE01 has 15 bad scalp channels (maximum allowed: 6). QC failure details: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_110631\LUKE01_ChannelQCFailure.csv
+
+ans = 
+
+  struct with fields:
+
+                               participantID: 'LUKE01'
+                                    dataPath: 'C:\Users\hrl310\Documents\EEGData_HL\'
+                                      outDir: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315'
+                                     plotDir: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_ROI_Plots'
+                                  logTxtFile: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.txt'
+                                  logCsvFile: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.csv'
+                                     bdfPath: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01.bdf'
+                                  fullRunCsv: 'C:\Users\hrl310\Documents\EEGData_HL\CB_4xGratings_LUKE01_FullRun_20260714_151017.csv'
+                          nPracticeTriggered: 20
+                              nMainTriggered: 600
+                     practiceTriggerAuditCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PracticePlus100TriggerAudit.csv'
+                         mainTriggerAuditCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_MainTriggerAudit.csv'
+                    bdfEventCodeInventoryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BdfEventCodeInventory.csv'
+                                         cfg: [1×1 struct]
+                          componentsToRemove: [1 2]
+                   autoICAComponentsToRemove: [1 2]
+               providedICAComponentsToRemove: [1×0 double]
+                 manualICAComponentsToRemove: []
+                    autoICASelectionTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_AutoICASelectionTable.csv'
+                     icaComponentDecisionCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ICAComponentsToRemove.csv'
+                     flaggedBadScalpChannels: {2×1 cell}
+               flaggedBadScalpChannelIndices: [20 26]
+                    nFlaggedBadScalpChannels: 2
+             flatlineFlaggedBadScalpChannels: {0×1 cell}
+       flatlineFlaggedBadScalpChannelIndices: [1×0 double]
+            nFlatlineFlaggedBadScalpChannels: 0
+            lineNoiseFlaggedBadScalpChannels: {19×1 cell}
+      lineNoiseFlaggedBadScalpChannelIndices: [11 15 21 24 25 27 28 30 32 33 37 39 42 45 52 53 58 61 64]
+           nLineNoiseFlaggedBadScalpChannels: 19
+          correlationFlaggedBadScalpChannels: {2×1 cell}
+    correlationFlaggedBadScalpChannelIndices: [20 26]
+         nCorrelationFlaggedBadScalpChannels: 2
+                     badChannelCheckTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BadChannelDecisionTable.csv'
+                   badChannelCheckSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BadChannelDecisionSummary.csv'
+                     badChannelDecisionTable: [64×11 table]
+                    initialChannelQcTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_InitialChannelQC_Table.csv'
+                  initialChannelQcSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_InitialChannelQC_Summary.csv'
+                      preIcaCorrelationQcCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreIcaCorrelationQC_Table.csv'
+                  additionalBadScalpChannels: {0×1 cell}
+                         maxBadScalpChannels: 6
+                          badChannelsRemoved: 1
+                     badChannelsInterpolated: 1
+                         interpolationMethod: 'spherical'
+                        finalMontageRestored: 1
+                         lineNoiseQCTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Table.csv'
+                       lineNoiseQCSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Summary.csv'
+                          lineNoiseQCPlotDir: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Plots'
+                              runLineNoiseQC: 1
+                           lineNoiseQCStatus: 'OK'
+                  cleanRawDataConsoleLogFile: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CleanRawDataDiagnosticConsoleLog.txt'
+                    nGoodScalpChannelsForICA: 62
+                     goodScalpChannelsForICA: {62×1 cell}
+                          icaPcaDimRequested: []
+                          icaPcaDimAutomatic: 61
+                               icaPcaDimUsed: 61
+                            nIcaChannelsUsed: 62
+                               icaElapsedSec: 248.4079
+                               icaElapsedMin: 4.1401
+                          cleanContinuousSet: 'LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed.set'
+                finalContinuousChannelLabels: {72×1 cell}
+                          codedContinuousSet: 'LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed_S1S2coded.set'
+                                  s1EpochSet: 'LUKE01_ERP_S1locked_m200to1400_S1base.set'
+                                  s2EpochSet: 'LUKE01_ERP_S2locked_m900to800_S1base.set'
+                                  s1CleanSet: 'LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set'
+                                  s2CleanSet: 'LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set'
+                              countsBeforeAR: [5×3 table]
+                               countsAfterAR: [5×3 table]
+                              finalQcSummary: [1×23 table]
+                           finalQcSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_FinalQCSummary.csv'
+                                  plotReport: [1×1 struct]
+                          runExtraFinalPlots: 1
+                       extraFinalPlotOutputs: [1×1 struct]
+
+>> 
