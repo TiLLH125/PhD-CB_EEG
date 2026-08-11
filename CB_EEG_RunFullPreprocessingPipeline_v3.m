@@ -11,7 +11,8 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %      confirmed bad scalp channels, then apply the retained-channel average reference
 %   5. Run Picard ICA on retained scalp channels with automatic PCA dimension
 %   6. Run ICLabel
-%   7. Automatically reject ICLabel Muscle/Eye components (threshold 0.90 default)
+%   7. Automatically reject ICLabel Eye/Muscle/Channel Noise components
+%      at >= 0.90 and log components from 0.80 to < 0.90 for review
 %   8. Create matched ERP-analysis copy: 0.1-20 Hz, same retained channels/reference
 %   9. Transfer ICA weights, remove selected components, interpolate bad
 %      scalp channels, and apply the final scalp average reference
@@ -66,9 +67,10 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %     are on the MATLAB path. Figures are shown by default; use
 %     'ExtraPlotVisible', false for silent/batch runs. Disable entirely with
 %     'RunExtraFinalPlots', false.
-%   - By default, automatically rejects ICLabel Muscle/Eye components with
-%     probability >= 0.90. Enable manual review with 'ManualICAReject', true.
-%     Change threshold with 'AutoICARejectThreshold', 0.90.
+%   - The preregistered default ICLabel policy automatically rejects Eye,
+%     Muscle, and Channel Noise components with probability >= 0.90 and
+%     logs non-rejected components from 0.80 to < 0.90 for review. Enable
+%     interactive manual removal with 'ManualICAReject', true.
 %   - Positive amplitudes are plotted above zero.
 %   - The script writes both a text diary log and a structured CSV log.
 
@@ -232,7 +234,8 @@ addParameter(p, 'ArtifactPeakToPeakThresholdUv', 150, @(x) isnumeric(x) && issca
 % Manual / automatic ICA
 addParameter(p, 'AutoICAReject', true, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'AutoICARejectThreshold', 0.90, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
-addParameter(p, 'AutoICARejectClasses', {'Muscle','Eye'}, @(x) iscellstr(x) || isstring(x) || ischar(x));
+addParameter(p, 'AutoICARejectClasses', {'Eye','Muscle','Channel Noise'}, @(x) iscellstr(x) || isstring(x) || ischar(x));
+addParameter(p, 'ICAReviewLowerThreshold', 0.80, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
 addParameter(p, 'ManualICAReject', false, @(x) islogical(x) || isnumeric(x));
 addParameter(p, 'ComponentsToRemove', [], @(x) isnumeric(x));
 
@@ -312,6 +315,13 @@ end
 cfg.ManualICAReject = logical(cfg.ManualICAReject);
 cfg.AutoICAReject = logical(cfg.AutoICAReject);
 cfg.AutoICARejectThreshold = double(cfg.AutoICARejectThreshold);
+cfg.ICAReviewLowerThreshold = double(cfg.ICAReviewLowerThreshold);
+
+if cfg.ICAReviewLowerThreshold >= cfg.AutoICARejectThreshold
+    error(['ICAReviewLowerThreshold (%.2f) must be lower than ', ...
+        'AutoICARejectThreshold (%.2f).'], ...
+        cfg.ICAReviewLowerThreshold, cfg.AutoICARejectThreshold);
+end
 
 if ischar(cfg.AutoICARejectClasses)
     cfg.AutoICARejectClasses = {cfg.AutoICARejectClasses};
@@ -719,15 +729,26 @@ logStep('iclabel', 'OK', 'Saved ICLabel table', '', iclabelCsv);
 fprintf('\n\n================ STAGE 7: ICA COMPONENT SELECTION ================\n');
 
 autoComponents = [];
+reviewComponents = [];
 autoSelectionTable = table();
 autoSelectionCsv = '';
+reviewSelectionTable = table();
+reviewSelectionCsv = '';
 
 if cfg.AutoICAReject
-    [autoComponents, autoSelectionTable] = localGetICLabelAutoRejectComponents( ...
-        EEG_ica, cfg.AutoICARejectClasses, cfg.AutoICARejectThreshold);
+    [autoComponents, reviewComponents, autoSelectionTable] = ...
+        localGetICLabelAutoRejectComponents(EEG_ica, ...
+        cfg.AutoICARejectClasses, cfg.AutoICARejectThreshold, ...
+        cfg.ICAReviewLowerThreshold);
     autoSelectionCsv = fullfile(outDir, sprintf('%s_AutoICASelectionTable.csv', participantID));
     writetable(autoSelectionTable, autoSelectionCsv);
     logStep('ica_component_selection', 'OK', 'Auto ICA selection table saved', mat2str(autoComponents), autoSelectionCsv);
+
+    reviewSelectionTable = autoSelectionTable(autoSelectionTable.ReviewFlag, :);
+    reviewSelectionCsv = fullfile(outDir, sprintf('%s_ICAComponentsForReview.csv', participantID));
+    writetable(reviewSelectionTable, reviewSelectionCsv);
+    logStep('ica_component_selection', 'OK', ...
+        'ICA review-band component table saved', mat2str(reviewComponents), reviewSelectionCsv);
 end
 
 providedComponents = cfg.ComponentsToRemove(:)';
@@ -745,6 +766,8 @@ if cfg.ManualICAReject
 
     fprintf('\nAutomatically selected ICs:\n');
     disp(autoComponents);
+    fprintf('\nICs in the review band (not automatically removed):\n');
+    disp(reviewComponents);
 
     additionalManualComponents = input('Enter any additional ICs to remove, e.g. [1 2 3], or [] for none: ');
     manualComponents = additionalManualComponents(:)';
@@ -761,7 +784,10 @@ componentDecisionTable = table( ...
     logical(cfg.AutoICAReject), ...
     cfg.AutoICARejectThreshold, ...
     string(strjoin(string(cfg.AutoICARejectClasses), ', ')), ...
+    cfg.ICAReviewLowerThreshold, ...
+    cfg.AutoICARejectThreshold, ...
     string(mat2str(autoComponents)), ...
+    string(mat2str(reviewComponents)), ...
     string(mat2str(providedComponents)), ...
     string(mat2str(manualComponents)), ...
     string(mat2str(componentsToRemove)), ...
@@ -771,7 +797,10 @@ componentDecisionTable = table( ...
         'AutoICAReject', ...
         'AutoICARejectThreshold', ...
         'AutoICARejectClasses', ...
+        'ICAReviewLowerThresholdInclusive', ...
+        'ICAReviewUpperThresholdExclusive', ...
         'AutoComponents', ...
+        'ReviewComponents', ...
         'ProvidedComponentsToRemove', ...
         'ManualComponents', ...
         'FinalComponentsToRemove', ...
@@ -782,9 +811,13 @@ writetable(componentDecisionTable, componentDecisionCsv);
 
 fprintf('\nAutomatic ICLabel rejection enabled: %s\n', mat2str(cfg.AutoICAReject));
 fprintf('Classes: %s\n', strjoin(cfg.AutoICARejectClasses, ', '));
-fprintf('Threshold: %.2f\n', cfg.AutoICARejectThreshold);
+fprintf('Automatic rejection threshold: >= %.2f\n', cfg.AutoICARejectThreshold);
+fprintf('Review band: >= %.2f and < %.2f\n', ...
+    cfg.ICAReviewLowerThreshold, cfg.AutoICARejectThreshold);
 fprintf('\nAutomatically selected ICs:\n');
 disp(autoComponents);
+fprintf('\nICs logged for review (not automatically removed):\n');
+disp(reviewComponents);
 fprintf('\nProvided ComponentsToRemove:\n');
 disp(providedComponents);
 fprintf('\nAdditional manual ICs:\n');
@@ -1227,6 +1260,11 @@ finalQcSummary = table( ...
     nIcaChansUsed, ...
     icaPcaDimUsed, ...
     numel(componentsToRemove), ...
+    numel(autoComponents), ...
+    numel(reviewComponents), ...
+    cfg.AutoICARejectThreshold, ...
+    cfg.ICAReviewLowerThreshold, ...
+    string(strjoin(string(cfg.AutoICARejectClasses), ', ')), ...
     string(lineNoiseQCStatus), ...
     EEG_S1.trials, ...
     numel(rejectIdx), ...
@@ -1251,6 +1289,11 @@ finalQcSummary = table( ...
         'NScalpChannelsUsedForICA', ...
         'ICAPcaDimUsed', ...
         'NICAComponentsRemoved', ...
+        'NICAComponentsAutoRejected', ...
+        'NICAComponentsFlaggedForReview', ...
+        'ICAAutoRejectThreshold', ...
+        'ICAReviewLowerThresholdInclusive', ...
+        'ICAArtifactClasses', ...
         'LineNoiseQCStatus', ...
         'NEpochsBeforeArtifactRejection', ...
         'NEpochsRejected', ...
@@ -1384,9 +1427,11 @@ report.bdfEventCodeInventoryCsv = bdfEventCodeInventoryCsv;
 report.cfg = cfg;
 report.componentsToRemove = componentsToRemove;
 report.autoICAComponentsToRemove = autoComponents;
+report.icaComponentsFlaggedForReview = reviewComponents;
 report.providedICAComponentsToRemove = providedComponents;
 report.manualICAComponentsToRemove = manualComponents;
 report.autoICASelectionTableCsv = autoSelectionCsv;
+report.icaComponentsForReviewCsv = reviewSelectionCsv;
 report.icaComponentDecisionCsv = componentDecisionCsv;
 report.flaggedBadScalpChannels = cellstr(flaggedBadScalpLabels);
 report.flaggedBadScalpChannelIndices = flaggedBadScalpIndices;
@@ -2037,7 +2082,9 @@ pctCol = classMat(:, colIdx) * 100;
 end
 
 
-function [autoComponents, autoSelectionTable] = localGetICLabelAutoRejectComponents(EEG, classesToReject, threshold)
+function [autoComponents, reviewComponents, autoSelectionTable] = ...
+    localGetICLabelAutoRejectComponents(EEG, classesToReject, ...
+    rejectThreshold, reviewLowerThreshold)
 
 if ~isfield(EEG.etc, 'ic_classification') || ...
         ~isfield(EEG.etc.ic_classification, 'ICLabel') || ...
@@ -2060,29 +2107,46 @@ for c = 1:numel(classesToReject)
 end
 
 rejectMask = false(nIC, 1);
-reasons = strings(nIC, 1);
-thrPct = threshold * 100;
+rejectReasons = strings(nIC, 1);
+reviewMask = false(nIC, 1);
+reviewReasons = strings(nIC, 1);
+rejectPct = rejectThreshold * 100;
+reviewLowerPct = reviewLowerThreshold * 100;
 
 for i = 1:nIC
-    reasonParts = strings(0, 1);
+    rejectParts = strings(0, 1);
+    reviewParts = strings(0, 1);
     for c = 1:numel(classesToReject)
         prob = classMat(i, rejectCols(c));
-        if prob >= threshold
+        if prob >= rejectThreshold
             rejectMask(i) = true;
-            reasonParts(end+1) = sprintf('%s >= %.0f%%', classesToReject{c}, thrPct); %#ok<AGROW>
+            rejectParts(end+1) = sprintf('%s >= %.0f%%', ...
+                classesToReject{c}, rejectPct); %#ok<AGROW>
+        elseif prob >= reviewLowerThreshold
+            reviewParts(end+1) = sprintf('%s %.0f-<%.0f%%', ...
+                classesToReject{c}, reviewLowerPct, rejectPct); %#ok<AGROW>
         end
     end
     if rejectMask(i)
-        reasons(i) = strjoin(reasonParts, '; ');
-    else
-        reasons(i) = "";
+        rejectReasons(i) = strjoin(rejectParts, '; ');
+    elseif ~isempty(reviewParts)
+        reviewMask(i) = true;
+        reviewReasons(i) = strjoin(reviewParts, '; ');
     end
 end
 
 autoComponents = find(rejectMask)';
+reviewComponents = find(reviewMask)';
 autoSelectionTable = localMakeICLabelTable(EEG);
 autoSelectionTable.AutoReject = rejectMask;
-autoSelectionTable.AutoRejectReason = reasons;
+autoSelectionTable.AutoRejectReason = rejectReasons;
+autoSelectionTable.ReviewFlag = reviewMask;
+autoSelectionTable.ReviewReason = reviewReasons;
+autoSelectionTable.PolicyClasses = repmat( ...
+    string(strjoin(string(classesToReject), ', ')), nIC, 1);
+autoSelectionTable.AutoRejectThreshold = repmat(rejectThreshold, nIC, 1);
+autoSelectionTable.ReviewLowerThresholdInclusive = repmat(reviewLowerThreshold, nIC, 1);
+autoSelectionTable.ReviewUpperThresholdExclusive = repmat(rejectThreshold, nIC, 1);
 
 end
 
@@ -2140,7 +2204,7 @@ end
 if ~isempty(char(cfg.LocRespVar))
 varMap.LocRespVar = char(cfg.LocRespVar);
 else
-varMap.LocRespVar = localFindVar(vars, ["locResp","locResponse","localisationResp","localizationResp","locChoice","q2","Q2","q2Resp","q2Response"], false, 'localisation response');
+varMap.LocRespVar = localFindVar(vars, ["locResp","locResponse","resp2","localisationResp","localizationResp","locChoice","q2","Q2","q2Resp","q2Response"], false, 'localisation response');
 end
 
 if ~isempty(char(cfg.IsChangeVar))
@@ -2420,9 +2484,19 @@ end
 function localWarnLegacyTriggerCodes(eventNums, cfg)
 
 offset = cfg.PracticeTriggerOffset;
-legacyMain = [12, 32, 52:54];
-legacyPractice = [12, 32, 52:54] + offset;
-legacyMetadata = [65:69, 70:82, 90:109];
+activeMain = [cfg.MainS1Code, cfg.MainS2Code, cfg.MainQ1Code, ...
+    cfg.MainPASBase + (1:4), cfg.MainQ2Code, ...
+    cfg.MainLocBase + (1:4), cfg.MainTrialEndCode];
+activePractice = activeMain + offset;
+
+% Only warn about deprecated codes that are not part of the trigger
+% scheme configured for this run. This prevents valid codes such as the
+% ascending-v3 trial-end code 71 from being mislabelled as legacy metadata
+% and also keeps the warning correct when trigger parameters are overridden.
+legacyMain = setdiff([12, 32, 52:54], activeMain);
+legacyPractice = setdiff([12, 32, 52:54] + offset, activePractice);
+legacyMetadata = setdiff([65:69, 70:82, 90:109], ...
+    [activeMain, activePractice]);
 
 present = unique(eventNums(isfinite(eventNums)));
 foundMain = intersect(present, legacyMain);
