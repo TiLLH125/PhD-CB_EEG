@@ -1,647 +1,975 @@
->> CB_EEG_RunFullPreprocessingPipeline_v3
-Enter participant ID(s), separated by commas or spaces: LUKE01
+>> CB_4xGratings_v3_Orientation
+Enter Participant ID (e.g., S001): TEST
+Instruction PNG assets validated: C:\Users\hrl310\Documents\MATLAB\Instruction Assets
+LOC key mapping: numpad7=1, numpad9=2, numpad1=3, numpad3=4
+LOC Num Lock-off aliases: Home=1, PageUp=2, End=3, PageDown=4
+PAS key mapping: q=1, w=2, e=3, r=4
+LOC KbName codes: [103 36 105 33 97 35 99 34]
+PAS KbName codes: [81 87 69 82]
+Behaviour/checkpoint CSV: C:\Users\hrl310\Documents\MATLAB\data\CB_4xGratings_v3_Orientation_TEST_FullRun_20260814_155928.csv
+IOPort-Info: Configuration for device COM7:
+IOPort-Info: Current baud rate is 57600
+IOPort-Info: Baud rate changed to 115200
+EEG serial trigger enabled on COM7 @ 115200 baud.
 
+
+PTB-INFO: This is Psychtoolbox-3 for Microsoft Windows, under Matlab 64-Bit Intel (Version 3.0.22 - Build date: May 24 2025).
+PTB-INFO: OS support status: Windows 11 (Version 11.0) is not supported.
+PTB-INFO: For information about paid support and other commercial services, please type 'PsychPaidSupportAndServices'.
+PTB-INFO: Most parts of the Psychtoolbox distribution are licensed to you under terms of the MIT license, with some
+PTB-INFO: restrictions. See file 'License.txt' in the Psychtoolbox root folder for the exact licensing conditions.
+PTB-INFO: Psychtoolbox and its prebuilt mex files are distributed in the hope that they will be useful, but WITHOUT
+PTB-INFO: ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+PTB-INFO: The detected endline of the vertical blank interval is equal or lower than the startline. This indicates
+PTB-INFO: that i couldn't detect the duration of the vertical blank interval and won't be able to correct timestamps
+PTB-INFO: for it. This will introduce a very small and constant offset (typically << 1 msec). Read 'help BeampositionQueries'
+PTB-INFO: for how to correct this, should you really require that last few microseconds of precision.
+PTB-INFO: Btw. this can also mean that your systems beamposition queries are slightly broken. It may help timing precision to
+PTB-INFO: enable the beamposition workaround, as explained in 'help ConserveVRAMSettings', section 'kPsychUseBeampositionQueryWorkaround'.
+
+
+PTB-INFO: OpenGL-Renderer is ATI Technologies Inc. :: AMD Radeon RX 6500M :: 4.6.0 Compatibility Profile Context 24.6.1.240619
+PTB-INFO: Screen 2 : Window 10 : VBL startline = 1080 : VBL Endline = 1079
+PTB-INFO: Measured monitor refresh interval from beamposition = 8.333396 ms [119.999099 Hz].
+PTB-INFO: Beamposition queries are supported, but disabled. Using basic timestamping as fallback:
+PTB-INFO: Timestamps returned by Screen('Flip') will be therefore less robust and accurate.
+PTB-INFO: Measured monitor refresh interval from VBLsync = 8.342086 ms [119.874094 Hz]. (50 valid samples taken, stddev=0.058336 ms.)
+PTB-INFO: Reported monitor refresh interval from operating system = 8.333333 ms [120.000000 Hz].
+PTB-INFO: ==============================================================================================================================
+PTB-INFO: WINDOWS DWM DESKTOP COMPOSITOR IS ACTIVE. On this Windows-10 or later system, Psychtoolbox can no longer reliably detect if
+PTB-INFO: this will cause trouble for timing and integrity of visual stimuli or not. You might be just fine, or you could be in trouble.
+PTB-INFO: Use external measurement equipment and independent procedures to verify reliability of timing if you care about proper timing.
+PTB-INFO: ==============================================================================================================================
+Reached: OpenWindow OK
+Display geometry (viewpixx): pxPerCm=36.158 | pxPerDeg=37.866 | square=3.50deg->133px | spacing=2.30deg->87px | fix=0.37deg->14px | fixLW=0.08deg->3px
+
+Fixed orientation-magnitude run
+Protocol version: Orientation_PASLOC_v2
+Run profile: pilotBroad
+Random seed: 196576038
+Total trials: 240
+Blocks: 6
+Trials/block: 40
+Change/block: 30
+No-change/block: 10
+Total change: 180
+Total no-change: 60
+Change magnitudes: [11.25 22.5 33.75 45 67.5 90] deg
+Change counts by magnitude: [30 30 30 30 30 30]
+Question order: PAS>Localisation
+Awareness rule: PAS1=no_awareness;PAS2-4=awareness
+Question trigger scheme: Q1_PAS_30-34;Q2_Localisation_50-54
+S1_frames: 72 (~601 ms at 119.9 Hz)
+ISI_frames: 18 (~150 ms at 119.9 Hz)
+S2_frames: 72 (~601 ms at 119.9 Hz)
+Gap_frames: 24 (~200 ms at 119.9 Hz)
+Compact operator monitoring: ON
+
+--->>> Added Titta to the path...
+
+Tobii/Titta initialized with tracker profile: IS4_Large_Peripheral
+174150943609: START SETUP (both eyes)
+174213872749: STOP SETUP (both eyes)
+174213907816: START CALIBRATION ROUTINE (both eyes), calibration no. 1
+174213923395: POINT ON 1 (192 972)
+174213923395: POINT READY 1 (192 972)
+174214724111: POINT COLLECTING 1 (192 972, in tracker space: 0.100 0.900)
+174215556310: POINT COLLECTED 1 (192 972, in tracker space: 0.100 0.900)
+174215562526: POINT ON 2 (1728 972)
+174216371867: POINT READY 2 (1728 972)
+174217181274: POINT COLLECTING 2 (1728 972, in tracker space: 0.900 0.900)
+174217847485: POINT COLLECTED 2 (1728 972, in tracker space: 0.900 0.900)
+174217855302: POINT ON 3 (960 540)
+174218322051: POINT READY 3 (960 540)
+174219130832: POINT COLLECTING 3 (960 540, in tracker space: 0.500 0.500)
+174219805683: POINT COLLECTED 3 (960 540, in tracker space: 0.500 0.500)
+174219813727: POINT ON 4 (1728 108)
+174220280419: POINT READY 4 (1728 108)
+174221089212: POINT COLLECTING 4 (1728 108, in tracker space: 0.900 0.100)
+174221763956: POINT COLLECTED 4 (1728 108, in tracker space: 0.900 0.100)
+174221772105: POINT ON 5 (192 108)
+174222580427: POINT READY 5 (192 108)
+174223389566: POINT COLLECTING 5 (192 108, in tracker space: 0.100 0.100)
+174224122350: POINT COLLECTED 5 (192 108, in tracker space: 0.100 0.100)
+174224130422: POINT OFF 5
+174226997822: CALIBRATION SUCCEEDED (both eyes), calibration no. 1
+174226998132: STOP CALIBRATION ROUTINE (both eyes), calibration no. 1
+174226998846: START VALIDATION ROUTINE (both eyes), calibration no. 1, validation no. 1
+174227011082: POINT ON 1 (960 864)
+174227580468: POINT READY 1 (960 864)
+174228389550: POINT COLLECTING 1 (960 864, in tracker space: 0.500 0.800)
+174228898352: POINT COLLECTED 1 (960 864, in tracker space: 0.500 0.800)
+174228905430: POINT ON 2 (960 216)
+174229247155: POINT READY 2 (960 216)
+174230055880: POINT COLLECTING 2 (960 216, in tracker space: 0.500 0.200)
+174230564968: POINT COLLECTED 2 (960 216, in tracker space: 0.500 0.200)
+174230572091: POINT ON 3 (384 540)
+174230922179: POINT READY 3 (384 540)
+174231730727: POINT COLLECTING 3 (384 540, in tracker space: 0.200 0.500)
+174232239558: POINT COLLECTED 3 (384 540, in tracker space: 0.200 0.500)
+174232247102: POINT ON 4 (1536 540)
+174232855421: POINT READY 4 (1536 540)
+174233663989: POINT COLLECTING 4 (1536 540, in tracker space: 0.800 0.500)
+174234172499: POINT COLLECTED 4 (1536 540, in tracker space: 0.800 0.500)
+174234180532: POINT OFF 4
+174234181890: STOP VALIDATION ROUTINE (both eyes), calibration no. 1, validation no. 1
+174234207539: CALIBRATION 1 Data Quality (computed from validation 1):
+point	acc (°)	accX (°)	accY (°)	STD (°)	RMS (°)	data loss (%)
+left eye:
+1 @ (960,864)	0.8109	0.2217	0.7800	1.6832	0.8145	20.0
+2 @ (960,216)	0.5513	-0.3430	0.4316	0.1814	0.0765	0.0
+3 @ (384,540)	0.3039	-0.1958	-0.2324	0.1079	0.0744	0.0
+4 @ (1536,540)	0.5927	-0.5839	-0.1016	0.0973	0.0912	0.0
+   average   	0.5647	-0.2252	0.2194	0.5174	0.2641	5.0
+right eye:
+1 @ (960,864)	0.8225	-0.5593	0.6031	1.2950	0.3865	22.2
+2 @ (960,216)	0.7190	-0.4495	0.5613	0.1628	0.0666	0.0
+3 @ (384,540)	0.7855	-0.3065	0.7232	0.1275	0.0709	0.0
+4 @ (1536,540)	0.2430	-0.2281	0.0837	0.1242	0.0701	0.0
+   average   	0.6425	-0.3859	0.4928	0.4274	0.1485	5.6
+174235585877: CALIBRATION (both eyes) APPLIED: no. 1
+Tobii calibration completed.
+
+Fixed design initialized: no QUEST+, no adaptive duration.
+Main change trial inventory:
+  11.25 deg: 30 change trials
+  22.5 deg: 30 change trials
+  33.75 deg: 30 change trials
+  45 deg: 30 change trials
+  67.5 deg: 30 change trials
+  90 deg: 30 change trials
+Prevalidated blockwise design inventory:
+  Block 01: C=30 NC=10 | mag=[5 5 5 5 5 5] | quad=[8 7 8 7] | cellRange=1-2
+  Block 02: C=30 NC=10 | mag=[5 5 5 5 5 5] | quad=[7 8 7 8] | cellRange=1-2
+  Block 03: C=30 NC=10 | mag=[5 5 5 5 5 5] | quad=[7 8 7 8] | cellRange=1-2
+  Block 04: C=30 NC=10 | mag=[5 5 5 5 5 5] | quad=[8 7 8 7] | cellRange=1-2
+  Block 05: C=30 NC=10 | mag=[5 5 5 5 5 5] | quad=[7 8 7 8] | cellRange=1-2
+  Block 06: C=30 NC=10 | mag=[5 5 5 5 5 5] | quad=[8 7 8 7] | cellRange=1-2
+  Global magnitude totals: [30 30 30 30 30 30]
+  Global quadrant totals: [45 45 45 45]
+  Global magnitude x quadrant counts:
+     7     8     8     7
+     8     7     7     8
+     7     8     8     7
+     8     7     7     8
+     7     8     8     7
+     8     7     7     8
+
+Tobii gaze recording started.
+  screen=2 res=1920x1080 hz=119.874 timestamp=20260814_155928
+
+174236508704: CBV3_RUN_START label=runStart context=experiment trial=NA block=NA eventTime=174236.508704 participantID=TEST timestamp=20260814_155928 protocolVersion=Orientation_PASLOC_v2 runProfile=pilotBroad randomSeed=196576038 screen=2 res=1920x1080 hz=119.874 nTotal=240 trialsPerBlock=40 eegEnabled=1 magnitudesDeg=[11.25 22.5 33.75 45 67.5 90] magnitudeCounts=[30 30 30 30 30 30] questionOrder=PAS>Localisation awarenessRule=PAS1=no_awareness;PAS2-4=awareness eegQuestionTriggerScheme=Q1_PAS_30-34;Q2_Localisation_50-54 S1ms=601 ISIms=150 S2ms=601 gapMs=200
+174236672989: CBV3_FLIP label=instruction_grey_prompt context=instruction trial=NA block=NA eventTime=174236.672989 scheduled=0 when=NA stimOnset=174236.672989 flipTimestamp=174236.673001 missed=0.002980
+174246681942: CBV3_FLIP label=instruction_active context=instruction trial=NA block=NA eventTime=174246.681942 scheduled=0 when=NA stimOnset=174246.681942 flipTimestamp=174246.681956 missed=0.005123
+174247092093: CBV3_FLIP label=trial_overview_grey context=trial_overview trial=NA block=NA eventTime=174247.092093 scheduled=0 when=NA stimOnset=174247.092093 flipTimestamp=174247.092108 missed=-0.000279
+174257097168: CBV3_FLIP label=trial_overview_active context=trial_overview trial=NA block=NA eventTime=174257.097168 scheduled=0 when=NA stimOnset=174257.097168 flipTimestamp=174257.097179 missed=0.001245
+174257566952: CBV3_FLIP label=practice1_intro_grey context=practice1_intro trial=NA block=NA eventTime=174257.566952 scheduled=0 when=NA stimOnset=174257.566952 flipTimestamp=174257.566964 missed=0.000959
+174267575669: CBV3_FLIP label=practice1_intro_active context=practice1_intro trial=NA block=NA eventTime=174267.575669 scheduled=0 when=NA stimOnset=174267.575669 flipTimestamp=174267.575682 missed=0.004887
+174268012708: CBV3_FLIP label=practice1_begin context=practice1_begin trial=NA block=NA eventTime=174268.012708 scheduled=0 when=NA stimOnset=174268.012708 flipTimestamp=174268.012718 missed=-0.006760
+
+===================== PRACTICE BLOCK 1 =====================
+10 trials | STD=4 EASY=3 NCH=3 | feedback=ON
 ============================================================
-CB EEG FULL PREPROCESSING PIPELINE
-Participant: LUKE01
-Started: 11-Aug-2026 12:13:15
-Output folder:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315
+174268723359: CBV3_FLIP label=FixOn context=Practice Block 1 trial=1 block=NA eventTime=174268.723359 scheduled=1 when=174268.722065 stimOnset=174268.723359 flipTimestamp=174268.723371 missed=-0.008437
+174270578455: CBV3_FLIP label=S1 context=Practice Block 1 trial=1 block=NA eventTime=174270.578455 scheduled=1 when=174270.571131 stimOnset=174270.578455 flipTimestamp=174270.578469 missed=0.001484
+174271179317: CBV3_FLIP label=ISI context=Practice Block 1 trial=1 block=NA eventTime=174271.179316 scheduled=1 when=174271.174914 stimOnset=174271.179316 flipTimestamp=174271.179332 missed=-0.001437
+174271328565: CBV3_FLIP label=S2 context=Practice Block 1 trial=1 block=NA eventTime=174271.328565 scheduled=1 when=174271.325303 stimOnset=174271.328565 flipTimestamp=174271.328581 missed=-0.002578
+174271929796: CBV3_FLIP label=Gap context=Practice Block 1 trial=1 block=NA eventTime=174271.929796 scheduled=1 when=174271.925024 stimOnset=174271.929796 flipTimestamp=174271.929814 missed=-0.001067
+174272130520: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=1 block=NA eventTime=174272.130520 scheduled=1 when=174272.125835 stimOnset=174272.130520 flipTimestamp=174272.130537 missed=-0.001154
+174273408165: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=1 block=NA eventTime=174273.408165 pas=3 keyCode=69 rtMs=1277.645 trialType=EASY
+174273416942: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=1 block=NA eventTime=174273.416942 scheduled=1 when=174273.415063 stimOnset=174273.416942 flipTimestamp=174273.416955 missed=0.000072
+174274528090: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=1 block=NA eventTime=174274.528090 loc=2 keyCode=105 rtMs=1111.148 trialType=EASY
+174274540325: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=1 block=NA eventTime=174274.540325 scheduled=1 when=174274.538902 stimOnset=174274.540325 flipTimestamp=174274.540337 missed=-0.004467
+174275111604: CBV3_FLIP label=ITI context=Practice Block 1 trial=1 block=NA eventTime=174275.111604 scheduled=1 when=174275.109501 stimOnset=174275.111604 flipTimestamp=174275.111613 missed=-0.005994
+P1  01/10 | EASY 90.00deg TGT=TR | PAS=3  LOC=TR OK | SEEING      | QC:S1>1ms
+174276126949: CBV3_FLIP label=FixOn context=Practice Block 1 trial=2 block=NA eventTime=174276.126949 scheduled=1 when=174276.125664 stimOnset=174276.126949 flipTimestamp=174276.126959 missed=-0.004058
+174277871951: CBV3_FLIP label=S1 context=Practice Block 1 trial=2 block=NA eventTime=174277.871951 scheduled=1 when=174277.866274 stimOnset=174277.871951 flipTimestamp=174277.871970 missed=-0.000162
+174278474643: CBV3_FLIP label=ISI context=Practice Block 1 trial=2 block=NA eventTime=174278.474643 scheduled=1 when=174278.468410 stimOnset=174278.474643 flipTimestamp=174278.474658 missed=0.000393
+174278622188: CBV3_FLIP label=S2 context=Practice Block 1 trial=2 block=NA eventTime=174278.622188 scheduled=1 when=174278.620629 stimOnset=174278.622188 flipTimestamp=174278.622203 missed=-0.004281
+174279223123: CBV3_FLIP label=Gap context=Practice Block 1 trial=2 block=NA eventTime=174279.223122 scheduled=1 when=174279.218647 stimOnset=174279.223122 flipTimestamp=174279.223137 missed=-0.001364
+174279421360: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=2 block=NA eventTime=174279.421360 scheduled=1 when=174279.419162 stimOnset=174279.421360 flipTimestamp=174279.421376 missed=-0.003641
+174279664249: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=2 block=NA eventTime=174279.664249 pas=2 keyCode=87 rtMs=242.889 trialType=STD
+174279672720: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=2 block=NA eventTime=174279.672720 scheduled=1 when=174279.669993 stimOnset=174279.672720 flipTimestamp=174279.672737 missed=-0.000571
+174279904668: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=2 block=NA eventTime=174279.904668 loc=2 keyCode=105 rtMs=231.948 trialType=STD
+174279913246: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=2 block=NA eventTime=174279.913246 scheduled=1 when=174279.912374 stimOnset=174279.913246 flipTimestamp=174279.913256 missed=-0.003063
+174280248014: CBV3_FLIP label=ITI context=Practice Block 1 trial=2 block=NA eventTime=174280.248014 scheduled=1 when=174280.245088 stimOnset=174280.248014 flipTimestamp=174280.248033 missed=-0.000583
+P1  02/10 | STD  45.00deg TGT=TR | PAS=2  LOC=TR OK | SEEING     
+174281257647: CBV3_FLIP label=FixOn context=Practice Block 1 trial=3 block=NA eventTime=174281.257647 scheduled=1 when=174281.255805 stimOnset=174281.257647 flipTimestamp=174281.257659 missed=-0.001428
+174283070207: CBV3_FLIP label=S1 context=Practice Block 1 trial=3 block=NA eventTime=174283.070207 scheduled=1 when=174283.063709 stimOnset=174283.070207 flipTimestamp=174283.070223 missed=0.000658
+174283672729: CBV3_FLIP label=ISI context=Practice Block 1 trial=3 block=NA eventTime=174283.672729 scheduled=1 when=174283.666666 stimOnset=174283.672729 flipTimestamp=174283.672744 missed=0.000224
+174283823295: CBV3_FLIP label=S2 context=Practice Block 1 trial=3 block=NA eventTime=174283.823295 scheduled=1 when=174283.818716 stimOnset=174283.823295 flipTimestamp=174283.823315 missed=-0.001260
+174284422693: CBV3_FLIP label=Gap context=Practice Block 1 trial=3 block=NA eventTime=174284.422693 scheduled=1 when=174284.419754 stimOnset=174284.422693 flipTimestamp=174284.422708 missed=-0.002901
+174284623688: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=3 block=NA eventTime=174284.623688 scheduled=1 when=174284.618732 stimOnset=174284.623688 flipTimestamp=174284.623706 missed=-0.000883
+174284832053: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=3 block=NA eventTime=174284.832053 pas=1 keyCode=81 rtMs=208.365 trialType=STD
+174284839148: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=3 block=NA eventTime=174284.839148 scheduled=1 when=174284.837966 stimOnset=174284.839148 flipTimestamp=174284.839160 missed=-0.003103
+174285087953: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=3 block=NA eventTime=174285.087953 loc=1 keyCode=103 rtMs=248.805 trialType=STD
+174285097397: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=3 block=NA eventTime=174285.097397 scheduled=1 when=174285.095691 stimOnset=174285.097397 flipTimestamp=174285.097406 missed=-0.002024
+174285670620: CBV3_FLIP label=ITI context=Practice Block 1 trial=3 block=NA eventTime=174285.670620 scheduled=1 when=174285.668696 stimOnset=174285.670620 flipTimestamp=174285.670630 missed=-0.004049
+P1  03/10 | STD  45.00deg TGT=BR | PAS=1  LOC=TL X  | BLIND      
+174286678975: CBV3_FLIP label=FixOn context=Practice Block 1 trial=4 block=NA eventTime=174286.678975 scheduled=1 when=174286.677567 stimOnset=174286.678975 flipTimestamp=174286.678985 missed=-0.002706
+174287997439: CBV3_FLIP label=S1 context=Practice Block 1 trial=4 block=NA eventTime=174287.997439 scheduled=1 when=174287.992854 stimOnset=174287.997439 flipTimestamp=174287.997455 missed=-0.001254
+174288599606: CBV3_FLIP label=ISI context=Practice Block 1 trial=4 block=NA eventTime=174288.599606 scheduled=1 when=174288.593898 stimOnset=174288.599606 flipTimestamp=174288.599627 missed=-0.000132
+174288747132: CBV3_FLIP label=S2 context=Practice Block 1 trial=4 block=NA eventTime=174288.747132 scheduled=1 when=174288.745593 stimOnset=174288.747132 flipTimestamp=174288.747148 missed=-0.004300
+174289349447: CBV3_FLIP label=Gap context=Practice Block 1 trial=4 block=NA eventTime=174289.349447 scheduled=1 when=174289.343591 stimOnset=174289.349447 flipTimestamp=174289.349465 missed=0.000016
+174289550091: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=4 block=NA eventTime=174289.550091 scheduled=1 when=174289.545486 stimOnset=174289.550091 flipTimestamp=174289.550106 missed=-0.001235
+174289728135: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=4 block=NA eventTime=174289.728135 pas=1 keyCode=81 rtMs=178.044 trialType=NCH
+174289736476: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=4 block=NA eventTime=174289.736476 scheduled=1 when=174289.734207 stimOnset=174289.736476 flipTimestamp=174289.736494 missed=-0.007152
+174289920007: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=4 block=NA eventTime=174289.920007 loc=1 keyCode=103 rtMs=183.531 trialType=NCH
+174289928097: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=4 block=NA eventTime=174289.928097 scheduled=1 when=174289.926658 stimOnset=174289.928097 flipTimestamp=174289.928106 missed=-0.001915
+174290311004: CBV3_FLIP label=ITI context=Practice Block 1 trial=4 block=NA eventTime=174290.311004 scheduled=1 when=174290.309223 stimOnset=174290.311004 flipTimestamp=174290.311013 missed=-0.002498
+P1  04/10 | NCH        -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174291321324: CBV3_FLIP label=FixOn context=Practice Block 1 trial=5 block=NA eventTime=174291.321324 scheduled=1 when=174291.319781 stimOnset=174291.321324 flipTimestamp=174291.321333 missed=-0.000741
+174293041450: CBV3_FLIP label=S1 context=Practice Block 1 trial=5 block=NA eventTime=174293.041450 scheduled=1 when=174293.035622 stimOnset=174293.041450 flipTimestamp=174293.041465 missed=-0.000012
+174293643656: CBV3_FLIP label=ISI context=Practice Block 1 trial=5 block=NA eventTime=174293.643656 scheduled=1 when=174293.637909 stimOnset=174293.643656 flipTimestamp=174293.643671 missed=-0.000093
+174293794266: CBV3_FLIP label=S2 context=Practice Block 1 trial=5 block=NA eventTime=174293.794266 scheduled=1 when=174293.789642 stimOnset=174293.794266 flipTimestamp=174293.794282 missed=-0.001215
+174294395348: CBV3_FLIP label=Gap context=Practice Block 1 trial=5 block=NA eventTime=174294.395348 scheduled=1 when=174294.390726 stimOnset=174294.395348 flipTimestamp=174294.395363 missed=-0.001217
+174294592790: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=5 block=NA eventTime=174294.592790 scheduled=1 when=174294.591387 stimOnset=174294.592790 flipTimestamp=174294.592805 missed=-0.004436
+174294816094: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=5 block=NA eventTime=174294.816094 pas=1 keyCode=81 rtMs=223.304 trialType=NCH
+174294826473: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=5 block=NA eventTime=174294.826473 scheduled=1 when=174294.824560 stimOnset=174294.826473 flipTimestamp=174294.826483 missed=-0.001564
+174295008029: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=5 block=NA eventTime=174295.008029 loc=1 keyCode=103 rtMs=181.556 trialType=NCH
+174295022248: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=5 block=NA eventTime=174295.022248 scheduled=1 when=174295.020226 stimOnset=174295.022248 flipTimestamp=174295.022256 missed=-0.006104
+174295367241: CBV3_FLIP label=ITI context=Practice Block 1 trial=5 block=NA eventTime=174295.367241 scheduled=1 when=174295.365263 stimOnset=174295.367241 flipTimestamp=174295.367251 missed=-0.007043
+P1  05/10 | NCH        -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174296378307: CBV3_FLIP label=FixOn context=Practice Block 1 trial=6 block=NA eventTime=174296.378307 scheduled=1 when=174296.376891 stimOnset=174296.378307 flipTimestamp=174296.378316 missed=-0.008337
+174297822013: CBV3_FLIP label=S1 context=Practice Block 1 trial=6 block=NA eventTime=174297.822013 scheduled=1 when=174297.817317 stimOnset=174297.822013 flipTimestamp=174297.822042 missed=-0.001143
+174298422907: CBV3_FLIP label=ISI context=Practice Block 1 trial=6 block=NA eventTime=174298.422907 scheduled=1 when=174298.418472 stimOnset=174298.422907 flipTimestamp=174298.422922 missed=-0.001405
+174298573529: CBV3_FLIP label=S2 context=Practice Block 1 trial=6 block=NA eventTime=174298.573529 scheduled=1 when=174298.568893 stimOnset=174298.573529 flipTimestamp=174298.573549 missed=-0.001204
+174299174583: CBV3_FLIP label=Gap context=Practice Block 1 trial=6 block=NA eventTime=174299.174583 scheduled=1 when=174299.169988 stimOnset=174299.174583 flipTimestamp=174299.174603 missed=-0.001244
+174299375231: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=6 block=NA eventTime=174299.375231 scheduled=1 when=174299.370622 stimOnset=174299.375231 flipTimestamp=174299.375248 missed=-0.001231
+174299631961: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=6 block=NA eventTime=174299.631961 pas=1 keyCode=81 rtMs=256.729 trialType=NCH
+174299639979: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=6 block=NA eventTime=174299.639978 scheduled=1 when=174299.638038 stimOnset=174299.639978 flipTimestamp=174299.639989 missed=-0.003868
+174299855970: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=6 block=NA eventTime=174299.855970 loc=1 keyCode=103 rtMs=215.991 trialType=NCH
+174299864506: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=6 block=NA eventTime=174299.864506 scheduled=1 when=174299.862682 stimOnset=174299.864506 flipTimestamp=174299.864519 missed=-0.002378
+174300310200: CBV3_FLIP label=ITI context=Practice Block 1 trial=6 block=NA eventTime=174300.310200 scheduled=1 when=174300.308549 stimOnset=174300.310200 flipTimestamp=174300.310212 missed=-0.006446
+P1  06/10 | NCH        -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174301317895: CBV3_FLIP label=FixOn context=Practice Block 1 trial=7 block=NA eventTime=174301.317895 scheduled=1 when=174301.316561 stimOnset=174301.317895 flipTimestamp=174301.317905 missed=-0.003366
+174302553218: CBV3_FLIP label=S1 context=Practice Block 1 trial=7 block=NA eventTime=174302.553218 scheduled=1 when=174302.548353 stimOnset=174302.553218 flipTimestamp=174302.553235 missed=-0.000974
+174303154567: CBV3_FLIP label=ISI context=Practice Block 1 trial=7 block=NA eventTime=174303.154567 scheduled=1 when=174303.149677 stimOnset=174303.154567 flipTimestamp=174303.154585 missed=-0.000950
+174303301925: CBV3_FLIP label=S2 context=Practice Block 1 trial=7 block=NA eventTime=174303.301925 scheduled=1 when=174303.300554 stimOnset=174303.301925 flipTimestamp=174303.301941 missed=-0.004468
+174303902976: CBV3_FLIP label=Gap context=Practice Block 1 trial=7 block=NA eventTime=174303.902976 scheduled=1 when=174303.898384 stimOnset=174303.902976 flipTimestamp=174303.902991 missed=-0.001248
+174304100430: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=7 block=NA eventTime=174304.100430 scheduled=1 when=174304.099015 stimOnset=174304.100430 flipTimestamp=174304.100446 missed=-0.004424
+174304224130: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=7 block=NA eventTime=174304.224130 pas=3 keyCode=69 rtMs=123.700 trialType=EASY
+174304232074: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=7 block=NA eventTime=174304.232074 scheduled=1 when=174304.230385 stimOnset=174304.232074 flipTimestamp=174304.232095 missed=-0.003498
+174305728076: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=7 block=NA eventTime=174305.728076 loc=4 keyCode=99 rtMs=1496.002 trialType=EASY
+174305736635: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=7 block=NA eventTime=174305.736635 scheduled=1 when=174305.735015 stimOnset=174305.736635 flipTimestamp=174305.736644 missed=-0.007025
+174306406198: CBV3_FLIP label=ITI context=Practice Block 1 trial=7 block=NA eventTime=174306.406198 scheduled=1 when=174306.404380 stimOnset=174306.406198 flipTimestamp=174306.406211 missed=-0.007814
+P1  07/10 | EASY 90.00deg TGT=BL | PAS=3  LOC=BR X  | SENSING    
+174307415302: CBV3_FLIP label=FixOn context=Practice Block 1 trial=8 block=NA eventTime=174307.415302 scheduled=1 when=174307.413944 stimOnset=174307.415302 flipTimestamp=174307.415312 missed=-0.001957
+174309331269: CBV3_FLIP label=S1 context=Practice Block 1 trial=8 block=NA eventTime=174309.331269 scheduled=1 when=174309.329811 stimOnset=174309.331269 flipTimestamp=174309.331285 missed=-0.004382
+174309933641: CBV3_FLIP label=ISI context=Practice Block 1 trial=8 block=NA eventTime=174309.933641 scheduled=1 when=174309.927728 stimOnset=174309.933641 flipTimestamp=174309.933657 missed=0.000073
+174310081081: CBV3_FLIP label=S2 context=Practice Block 1 trial=8 block=NA eventTime=174310.081081 scheduled=1 when=174310.079627 stimOnset=174310.081081 flipTimestamp=174310.081095 missed=-0.004385
+174310681923: CBV3_FLIP label=Gap context=Practice Block 1 trial=8 block=NA eventTime=174310.681923 scheduled=1 when=174310.677540 stimOnset=174310.681923 flipTimestamp=174310.681939 missed=-0.001456
+174310879519: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=8 block=NA eventTime=174310.879519 scheduled=1 when=174310.877962 stimOnset=174310.879519 flipTimestamp=174310.879535 missed=-0.004283
+174311024025: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=8 block=NA eventTime=174311.024025 pas=2 keyCode=87 rtMs=144.506 trialType=STD
+174311031119: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=8 block=NA eventTime=174311.031119 scheduled=1 when=174311.029521 stimOnset=174311.031119 flipTimestamp=174311.031131 missed=-0.000226
+174311247983: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=8 block=NA eventTime=174311.247983 loc=1 keyCode=103 rtMs=216.864 trialType=STD
+174311257594: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=8 block=NA eventTime=174311.257594 scheduled=1 when=174311.255522 stimOnset=174311.257594 flipTimestamp=174311.257604 missed=-0.000429
+174311638276: CBV3_FLIP label=ITI context=Practice Block 1 trial=8 block=NA eventTime=174311.638276 scheduled=1 when=174311.636404 stimOnset=174311.638276 flipTimestamp=174311.638287 missed=-0.004723
+P1  08/10 | STD  45.00deg TGT=TL | PAS=2  LOC=TL OK | SEEING     
+174312647374: CBV3_FLIP label=FixOn context=Practice Block 1 trial=9 block=NA eventTime=174312.647374 scheduled=1 when=174312.645155 stimOnset=174312.647374 flipTimestamp=174312.647383 missed=-0.001963
+174314509231: CBV3_FLIP label=S1 context=Practice Block 1 trial=9 block=NA eventTime=174314.509231 scheduled=1 when=174314.503488 stimOnset=174314.509231 flipTimestamp=174314.509248 missed=-0.000097
+174315110008: CBV3_FLIP label=ISI context=Practice Block 1 trial=9 block=NA eventTime=174315.110008 scheduled=1 when=174315.105690 stimOnset=174315.110008 flipTimestamp=174315.110023 missed=-0.001522
+174315258522: CBV3_FLIP label=S2 context=Practice Block 1 trial=9 block=NA eventTime=174315.258522 scheduled=1 when=174315.255994 stimOnset=174315.258522 flipTimestamp=174315.258538 missed=-0.003311
+174315860614: CBV3_FLIP label=Gap context=Practice Block 1 trial=9 block=NA eventTime=174315.860614 scheduled=1 when=174315.854981 stimOnset=174315.860614 flipTimestamp=174315.860634 missed=-0.000207
+174316059282: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=9 block=NA eventTime=174316.059282 scheduled=1 when=174316.056653 stimOnset=174316.059282 flipTimestamp=174316.059299 missed=-0.003210
+174316144018: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=9 block=NA eventTime=174316.144018 pas=3 keyCode=69 rtMs=84.736 trialType=EASY
+174316150731: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=9 block=NA eventTime=174316.150731 scheduled=1 when=174316.149102 stimOnset=174316.150731 flipTimestamp=174316.150746 missed=-0.001982
+174316352000: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=9 block=NA eventTime=174316.352000 loc=4 keyCode=99 rtMs=201.269 trialType=EASY
+174316360107: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=9 block=NA eventTime=174316.360107 scheduled=1 when=174316.359201 stimOnset=174316.360107 flipTimestamp=174316.360120 missed=-0.000844
+174316645641: CBV3_FLIP label=ITI context=Practice Block 1 trial=9 block=NA eventTime=174316.645641 scheduled=1 when=174316.644768 stimOnset=174316.645641 flipTimestamp=174316.645651 missed=-0.008107
+P1  09/10 | EASY 90.00deg TGT=BR | PAS=3  LOC=BR OK | SEEING     
+174317654330: CBV3_FLIP label=FixOn context=Practice Block 1 trial=10 block=NA eventTime=174317.654330 scheduled=1 when=174317.652356 stimOnset=174317.654330 flipTimestamp=174317.654346 missed=-0.002372
+174319181251: CBV3_FLIP label=S1 context=Practice Block 1 trial=10 block=NA eventTime=174319.181251 scheduled=1 when=174319.176761 stimOnset=174319.181251 flipTimestamp=174319.181267 missed=-0.001350
+174319780689: CBV3_FLIP label=ISI context=Practice Block 1 trial=10 block=NA eventTime=174319.780689 scheduled=1 when=174319.777710 stimOnset=174319.780689 flipTimestamp=174319.780705 missed=-0.002860
+174319929122: CBV3_FLIP label=S2 context=Practice Block 1 trial=10 block=NA eventTime=174319.929122 scheduled=1 when=174319.926676 stimOnset=174319.929122 flipTimestamp=174319.929140 missed=-0.003393
+174320531679: CBV3_FLIP label=Gap context=Practice Block 1 trial=10 block=NA eventTime=174320.531679 scheduled=1 when=174320.525581 stimOnset=174320.531679 flipTimestamp=174320.531694 missed=0.000258
+174320732252: CBV3_FLIP label=Q1_PAS context=Practice Block 1 trial=10 block=NA eventTime=174320.732252 scheduled=1 when=174320.727718 stimOnset=174320.732252 flipTimestamp=174320.732267 missed=-0.001305
+174320799997: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 1 trial=10 block=NA eventTime=174320.799997 pas=4 keyCode=82 rtMs=67.745 trialType=STD
+174320806492: CBV3_FLIP label=Q2_Loc context=Practice Block 1 trial=10 block=NA eventTime=174320.806492 scheduled=1 when=174320.805006 stimOnset=174320.806492 flipTimestamp=174320.806503 missed=-0.002506
+174321039967: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 1 trial=10 block=NA eventTime=174321.039967 loc=3 keyCode=97 rtMs=233.475 trialType=STD
+174321048077: CBV3_FLIP label=practice_feedback context=Practice Block 1 trial=10 block=NA eventTime=174321.048077 scheduled=1 when=174321.047092 stimOnset=174321.048077 flipTimestamp=174321.048087 missed=-0.002004
+174321333536: CBV3_FLIP label=ITI context=Practice Block 1 trial=10 block=NA eventTime=174321.333536 scheduled=1 when=174321.332732 stimOnset=174321.333536 flipTimestamp=174321.333546 missed=-0.008182
+P1  10/10 | STD  45.00deg TGT=BL | PAS=4  LOC=BL OK | SEEING     
+
+================ PRACTICE BLOCK 1 SUMMARY ================
+Trials: 10 | STD=4 EASY=3 NCH=3
+Change outcomes: BLIND=1 SENSING=1 SEEING=5
+Catch outcomes : CR=3 FA=0
+PAS [1 2 3 4] : [4 2 3 1]
+LOC [1 2 3 4] : [5 2 1 2]
+PAS1 LOC       : [4 0 0 0]
+Missing        : PAS=0 LOC=0
+Classification : pass (informational only)
 ============================================================
-
-[2026-08-11 12:13:15] pipeline                 START    Pipeline started | LUKE01 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315
-[2026-08-11 12:13:15] input                    OK       Resolved BDF file | C:\Users\hrl310\Documents\EEGData_HL\LUKE01.bdf
-[2026-08-11 12:13:15] input                    OK       Resolved FullRun CSV | C:\Users\hrl310\Documents\EEGData_HL\CB_4xGratings_LUKE01_FullRun_20260714_151017.csv
-
-
-================ STAGE 2: RAW BDF IMPORT ================
-sopen mode is "OVERFLOWDETECTION:OFF"
-Reading data in BDF format...
-eeg_checkset note: upper time limit (xmax) adjusted so (xmax-xmin)*srate+1 = number of frames
-Importing data events...
-eeg_checkset note: creating the original event table (EEG.urevent)
-Raw channels: 72
-Raw points:   6369280
-Raw srate:    2048.0 Hz
-Saving dataset...
-[2026-08-11 12:13:33] raw_import               OK       Imported raw BDF | 72 channels | LUKE01_raw.set
-
-
-================ STAGE 3: DOWNSAMPLE ================
-resampling data 512.0000 Hz
-1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 
-resampling event latencies...
-resampling finished
-Saving dataset...
-Downsampled to 512.0 Hz
-[2026-08-11 12:13:45] downsample               OK       Downsampled continuous data | 512.0 Hz | LUKE01_ds512.set
-readlocs(): 'BESA' format assumed from file extension
-BESA header detected, skipping three lines...
-Readlocs: BESA spherical coords. converted, now deleting BESA fields
-          to avoid confusion (these fields can be exported, though)
-64 channel with the same label found and imported
-Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
-
-
-================ STAGE 3b: BAD SCALP-CHANNEL QC CHECK ================
-Removing 8 channel(s)...
-readlocs(): 'BESA' format assumed from file extension
-BESA header detected, skipping three lines...
-Readlocs: BESA spherical coords. converted, now deleting BESA fields
-          to avoid confusion (these fields can be exported, though)
-64 channel with the same label found and imported
-Running Clean RawData diagnostic pass: Downsampled flatline check on temporary copy ... done. Flagged 0 channel(s).
-Running Clean RawData diagnostic pass: Downsampled line-noise warning check on temporary copy ... done. Flagged 19 channel(s).
-[2026-08-11 12:14:10] bad_channel_check        OK       Initial flatline and line-noise channel QC completed | 0 flatline; 19 line-noise warning(s) | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_InitialChannelQC_Table.csv
-
-
-================ STAGE 4: ICA-TRAINING DATASET ================
-pop_eegfiltnew() - performing 1691 point bandpass filtering.
-pop_eegfiltnew() - transition band width: 0.999763313609467 Hz
-pop_eegfiltnew() - passband edge(s): [1 30] Hz
-pop_eegfiltnew() - cutoff frequency(ies) (-6 dB): [0.500118343195266 30.4998816568047] Hz
-pop_eegfiltnew() - filtering the data (zero-phase, non-causal)
-firfilt(): |====================| 100%, ETE 00:00
-Removing 8 channel(s)...
-readlocs(): 'BESA' format assumed from file extension
-BESA header detected, skipping three lines...
-Readlocs: BESA spherical coords. converted, now deleting BESA fields
-          to avoid confusion (these fields can be exported, though)
-64 channel with the same label found and imported
-Running Clean RawData diagnostic pass: Filtered pre-ICA correlation check on temporary copy ... done. Flagged 2 channel(s) (P1, PO3).
-
-Final scalp channels excluded from ICA and ERP preprocessing (2):
-    "P1"    "PO3"
-
-[2026-08-11 12:14:43] bad_channel_decision     OK       Final bad scalp-channel decision completed | 2 excluded; 62 retained | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BadChannelDecisionTable.csv
-
-Line-noise QC: Downsampled_512Hz
-  Median 50 Hz ratio, all scalp channels: 1.81 dB
-  Worst scalp channel: O2, 4.05 dB
-  Worst flagged line-noise channel: O2, 4.05 dB
-  Note: Broadband/downsampled data at 512 Hz before stage-specific low-pass
-[2026-08-11 12:14:58] line_noise_qc            OK       Line-noise QC completed for Downsampled_512Hz | median=1.81 dB; worst=O2 4.05 dB
-Removing 2 channel(s)...
-Re-referencing data
-readlocs(): 'BESA' format assumed from file extension
-BESA header detected, skipping three lines...
-Readlocs: BESA spherical coords. converted, now deleting BESA fields
-          to avoid confusion (these fields can be exported, though)
-62 channel with the same label found and imported
-Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
-Saving dataset...
-[2026-08-11 12:15:01] ica_training_dataset     OK       Created 1-30 Hz average-referenced ICA-training dataset using retained scalp channels | 62 scalp channels; PCA 61 | LUKE01_ds512_bp1to30_avgref_ICAtraining.set
-
-
-================ STAGE 5: PICARD ICA ================
-Running picard ICA on 62 scalp channels with PCA 61...
-
-Warning: you have used PCA to reduce dimensionality so ICA
-         is not modeling the entire data, only the PCA-reduced data.
-Warning: fixing rank computation inconsistency (62 vs 61) most likely because running under Linux 64-bit Matlab, taking the minimum
-Attempting to convert data matrix to double precision for more accurate ICA results.
-Decreasing data dimension from 62 to 61 using PCA...
-iteration 1, gradient norm = 0.716161 loss = 86.7383
-iteration 2, gradient norm = 0.368244 loss = 86.5099
-iteration 3, gradient norm = 0.685312 loss = 86.304
-iteration 4, gradient norm = 1.01652 loss = 85.9346
-iteration 5, gradient norm = 0.972768 loss = 85.6823
-iteration 6, gradient norm = 0.906902 loss = 85.6065
-iteration 7, gradient norm = 0.586759 loss = 85.1919
-iteration 8, gradient norm = 0.661911 loss = 84.2856
-iteration 9, gradient norm = 0.564199 loss = 83.7277
-iteration 10, gradient norm = 0.550901 loss = 82.8014
-iteration 11, gradient norm = 0.439422 loss = 82.3105
-iteration 12, gradient norm = 0.526352 loss = 82.2036
-iteration 13, gradient norm = 0.532405 loss = 81.7135
-iteration 14, gradient norm = 0.137633 loss = 81.5489
-iteration 15, gradient norm = 0.195065 loss = 81.4287
-iteration 16, gradient norm = 0.255783 loss = 81.3716
-iteration 17, gradient norm = 0.210641 loss = 81.2997
-iteration 18, gradient norm = 0.166304 loss = 81.2325
-iteration 19, gradient norm = 0.109578 loss = 81.1894
-iteration 20, gradient norm = 0.107688 loss = 81.154
-iteration 21, gradient norm = 0.148876 loss = 81.1121
-iteration 22, gradient norm = 0.140318 loss = 81.0878
-iteration 23, gradient norm = 0.0733091 loss = 81.0611
-iteration 24, gradient norm = 0.046005 loss = 81.037
-iteration 25, gradient norm = 0.0386412 loss = 81.0263
-iteration 26, gradient norm = 0.0611176 loss = 81.02
-iteration 27, gradient norm = 0.0368161 loss = 81.0121
-iteration 28, gradient norm = 0.0630769 loss = 81.0063
-iteration 29, gradient norm = 0.0588575 loss = 80.9989
-iteration 30, gradient norm = 0.0465392 loss = 80.996
-iteration 31, gradient norm = 0.0429497 loss = 80.9894
-iteration 32, gradient norm = 0.0373209 loss = 80.9802
-iteration 33, gradient norm = 0.0215733 loss = 80.9757
-iteration 34, gradient norm = 0.0120042 loss = 80.974
-iteration 35, gradient norm = 0.0142711 loss = 80.9728
-iteration 36, gradient norm = 0.00926039 loss = 80.9719
-iteration 37, gradient norm = 0.00462721 loss = 80.9712
-iteration 38, gradient norm = 0.00318899 loss = 80.971
-iteration 39, gradient norm = 0.0121009 loss = 80.9708
-iteration 40, gradient norm = 0.0090075 loss = 80.97
-iteration 41, gradient norm = 0.00344458 loss = 80.9699
-iteration 42, gradient norm = 0.00594233 loss = 80.9696
-iteration 43, gradient norm = 0.00231851 loss = 80.9695
-iteration 44, gradient norm = 0.00139058 loss = 80.9694
-iteration 45, gradient norm = 0.00217789 loss = 80.9694
-iteration 46, gradient norm = 0.0020364 loss = 80.9694
-iteration 47, gradient norm = 0.00169693 loss = 80.9694
-iteration 48, gradient norm = 0.00071117 loss = 80.9694
-iteration 49, gradient norm = 0.000693096 loss = 80.9694
-iteration 50, gradient norm = 0.000679832 loss = 80.9693
-iteration 51, gradient norm = 0.000222083 loss = 80.9693
-iteration 52, gradient norm = 0.000126101 loss = 80.9693
-iteration 53, gradient norm = 8.48943e-05 loss = 80.9693
-iteration 54, gradient norm = 5.24526e-05 loss = 80.9693
-iteration 55, gradient norm = 3.2794e-05 loss = 80.9693
-iteration 56, gradient norm = 3.65864e-05 loss = 80.9693
-iteration 57, gradient norm = 1.14683e-05 loss = 80.9693
-iteration 58, gradient norm = 1.64631e-05 loss = 80.9693
-iteration 59, gradient norm = 1.86624e-05 loss = 80.9693
-iteration 60, gradient norm = 5.47458e-06 loss = 80.9693
-iteration 61, gradient norm = 6.55899e-06 loss = 80.9693
-iteration 62, gradient norm = 3.08175e-06 loss = 80.9693
-iteration 63, gradient norm = 3.45933e-06 loss = 80.9693
-iteration 64, gradient norm = 3.13627e-06 loss = 80.9693
-iteration 65, gradient norm = 8.36832e-07 loss = 80.9693
-iteration 66, gradient norm = 3.90176e-07 loss = 80.9693
-iteration 67, gradient norm = 2.72025e-07 loss = 80.9693
-iteration 68, gradient norm = 2.10075e-07 loss = 80.9693
-iteration 69, gradient norm = 1.41625e-07 loss = 80.9693
-iteration 70, gradient norm = 9.83006e-08 loss = 80.9693
-iteration 71, gradient norm = 7.30808e-08 loss = 80.9693
-iteration 72, gradient norm = 6.085e-08 loss = 80.9693
-iteration 73, gradient norm = 6.25681e-08 loss = 80.9693
-iteration 74, gradient norm = 3.29556e-08 loss = 80.9693
-iteration 75, gradient norm = 1.58229e-08 loss = 80.9693
-Scaling components to RMS microvolt
-eeg_checkset: recomputing the ICA activation matrix ...
-
-ICA finished in 4.14 minutes.
-icaweights size: [61 x 62]
-icawinv size:    [62 x 61]
-icachansind:     62 channels
-Saving dataset...
-[2026-08-11 12:19:11] picard_ica               OK       Picard ICA completed | 4.14 min | LUKE01_ds512_bp1to30_avgref_PicardICA_pca61.set
-[2026-08-11 12:19:12] picard_ica               OK       ICA dimensions | weights 61x62; icawinv 62x61 | LUKE01_ds512_bp1to30_avgref_PicardICA_pca61.set
-
-
-================ STAGE 6: ICLABEL ================
-readlocs(): 'BESA' format assumed from file extension
-BESA header detected, skipping three lines...
-Readlocs: BESA spherical coords. converted, now deleting BESA fields
-          to avoid confusion (these fields can be exported, though)
-62 channel with the same label found and imported
-Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
-ICLabel: extracting features...
-ICLabel: calculating labels...
-ICLabel: saving results...
-Saving dataset...
-
-First 25 ICLabel classifications:
-    IC    BestClass    BestPct    BrainPct    MusclePct       EyePct       HeartPct     LineNoisePct    ChannelNoisePct    OtherPct 
-    __    _________    _______    ________    __________    __________    __________    ____________    _______________    _________
-
-     1    "Eye"        98.104     0.60511        0.16517        98.104       0.26309      0.016877          0.038912         0.80672
-     2    "Eye"        99.198     0.14159       0.076481        99.198       0.21177     0.0087727          0.018211         0.34533
-     3    "Brain"      99.973      99.973      0.0019716     0.0002116    0.00069725      0.017211        0.00021781       0.0069645
-     4    "Brain"       93.28       93.28        0.24504     0.0072149        5.5599       0.20658          0.069871         0.63129
-     5    "Other"      57.735      2.5358         36.423       0.20067        1.4279       0.71401           0.96332          57.735
-     6    "Brain"      97.891      97.891        0.17612      0.015622       0.10621       0.14193          0.041447          1.6276
-     7    "Brain"      99.258      99.258       0.012947     0.0031615      0.022493       0.50771         0.0028145         0.19321
-     8    "Brain"      99.965      99.965     0.00067701    0.00029164     0.0012567      0.020093        0.00015081        0.012658
-     9    "Brain"      99.422      99.422      0.0048428     0.0045607     0.0076149       0.31462         0.0011473         0.24517
-    10    "Brain"      98.871      98.871       0.020153     0.0058657      0.054449      0.075977          0.022337         0.95023
-    11    "Muscle"     54.314       3.365         54.314         5.271        0.2988       0.64907            26.775          9.3268
-    12    "Other"      51.015      10.704         2.3397        1.2806        1.6903         1.666            31.304          51.015
-    13    "Muscle"      81.99      5.1231          81.99       0.26245      0.032383       0.12461           0.10114          12.366
-    14    "Other"      37.291      1.1695         23.392        20.337       0.22259        4.1789            13.409          37.291
-    15    "Other"      78.363        5.38         1.3196        1.1115       0.61474        1.6401            11.571          78.363
-    16    "Muscle"      34.08      5.2827          34.08        23.436       0.61945        0.5258            3.9554            32.1
-    17    "Brain"      98.094      98.094       0.038218      0.086798       0.21768       0.37951          0.048156          1.1355
-    18    "Other"      61.704      17.785         7.9713       0.82505       0.76667       0.24037            10.708          61.704
-    19    "Brain"      94.759      94.759        0.20968      0.093674         1.211       0.68447          0.079315          2.9629
-    20    "Other"      54.109      9.3217         11.717        16.072        1.0311       0.77072            6.9784          54.109
-    21    "Other"      51.454       8.722         36.709       0.33532        1.0889      0.045437            1.6454          51.454
-    22    "Muscle"      49.55      10.605          49.55       0.18995       0.16578      0.038186            1.5748          37.877
-    23    "Other"       39.11      5.0963         26.205        21.515       0.84778        1.7513            5.4748           39.11
-    24    "Muscle"      60.57      14.186          60.57       0.42501       0.21094      0.067751           0.49931          24.042
-    25    "Other"      73.684      6.0765         16.291       0.63528       0.66022       0.16265            2.4905          73.684
-
-[2026-08-11 12:19:26] iclabel                  OK       ICLabel completed | 61 ICs | LUKE01_ds512_bp1to30_avgref_PicardICA_pca61_ICLabel.set
-[2026-08-11 12:19:26] iclabel                  OK       Saved ICLabel table | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ICLabel_Table.csv
-
-
-================ STAGE 7: ICA COMPONENT SELECTION ================
-[2026-08-11 12:19:26] ica_component_selection  OK       Auto ICA selection table saved | [1 2] | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_AutoICASelectionTable.csv
-
-Automatic ICLabel rejection enabled: true
-Classes: Muscle, Eye
-Threshold: 0.90
-
-Automatically selected ICs:
-     1     2
-
-
-Provided ComponentsToRemove:
-
-Additional manual ICs:
-
-Final components selected for removal:
-     1     2
-
-[2026-08-11 12:19:26] ica_component_selection  OK       ICA components selected for removal | [1 2] | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ICAComponentsToRemove.csv
-
-
-================ STAGE 8: ERP-ANALYSIS DATASET ================
-pop_eegfiltnew() - performing 16897 point bandpass filtering.
-pop_eegfiltnew() - transition band width: 0.1 Hz
-pop_eegfiltnew() - passband edge(s): [0.1 20] Hz
-pop_eegfiltnew() - cutoff frequency(ies) (-6 dB): [0.05 20.05] Hz
-pop_eegfiltnew() - filtering the data (zero-phase, non-causal)
-firfilt(): |====================| 100%, ETE 00:00
-Removing 2 channel(s)...
-Re-referencing data
-readlocs(): 'BESA' format assumed from file extension
-BESA header detected, skipping three lines...
-Readlocs: BESA spherical coords. converted, now deleting BESA fields
-          to avoid confusion (these fields can be exported, though)
-62 channel with the same label found and imported
-Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
-Saving dataset...
-[2026-08-11 12:19:44] erp_dataset              OK       Created 0.1-20 Hz average-referenced ERP-analysis dataset using retained scalp channels | 62 scalp channels | LUKE01_ds512_bp0p1to20_avgref.set
-
-
-================ STAGE 9: ICA TRANSFER AND COMPONENT REMOVAL ================
-Scaling components to RMS microvolt
-eeg_checkset: recomputing the ICA activation matrix ...
-Saving dataset...
-Computing projection and removing 2 components ....
-[2026-08-11 12:19:46] clear_ica_fields         OK       Cleared ICA fields from final cleaned continuous dataset after component removal
-Interpolating 2 channels...
-Re-referencing data
-readlocs(): 'BESA' format assumed from file extension
-BESA header detected, skipping three lines...
-Readlocs: BESA spherical coords. converted, now deleting BESA fields
-          to avoid confusion (these fields can be exported, though)
-64 channel with the same label found and imported
-Channel lookup: no location for EXG1,EXG2,EXG3,EXG4,EXG5,EXG6,EXG7,EXG8
-[2026-08-11 12:19:49] channel_interpolation    OK       Restored the original montage and applied the final scalp average reference | 2 scalp channel(s) interpolated; applied=true
-Saving dataset...
-[2026-08-11 12:19:50] ica_transfer             OK       Transferred Picard ICA weights to ERP dataset | LUKE01_ds512_bp0p1to20_avgref_PicardICAtransferred.set
-[2026-08-11 12:19:50] component_removal        OK       Removed selected ICA components from ERP dataset | [1 2] | LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed.set
-
-Line-noise QC: FinalERPclean_0p1to20Hz
-  Median 50 Hz ratio, all scalp channels: -0.63 dB
-  Worst scalp channel: FC2, 1.88 dB
-  Worst flagged line-noise channel: CPz, 1.57 dB
-  Note: 50 Hz expected to be strongly attenuated by the 20 Hz low-pass; final data are post-ICA and interpolated
-[2026-08-11 12:19:59] line_noise_qc            OK       Line-noise QC completed for FinalERPclean_0p1to20Hz | median=-0.63 dB; worst=FC2 1.88 dB
-[2026-08-11 12:19:59] line_noise_qc            OK       Saved line-noise QC table and summary | 2 stage table(s) | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Table.csv
-
-
-================ STAGE 10: EVENT MATCHING ================
-Behavioural FullRun rows: 600
-
-Behaviour variables:
-    PASVar    LocCorrectVar    LocRespVar    IsChangeVar
-    ______    _____________    __________    ___________
-
-    "pas"     "locCorrect"         ""        "isChange" 
-
-[2026-08-11 12:20:01] event_matching           OK       Behaviour variable map inferred | PAS=pas; LocCorrect=locCorrect; LocResp=; IsChange=isChange | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BehaviourVariableMap.csv
-Saved BDF event code inventory: C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BdfEventCodeInventory.csv
-Warning: BDF contains legacy metadata trigger code(s) 71; these are not used in ascending v3. 
-
-Ascending v3 trigger scheme reference:
-  Main:    S1=21 S2=23 Q1=31 PAS=[41 42 43 44] Q2=51 LOC=[61 62 63 64] trialEnd=71
-  Practice (+100): S1=121 S2=123 Q1=131 PAS=[141 142 143 144] Q2=151 LOC=[161 162 163 164] trialEnd=171
-Practice +100 S1-defined EEG trials: 20
-Main base-code S1-defined EEG trials: 600
-
-PAS mismatches EEG main triggers vs CSV: 0
-LOC response mismatch check skipped: no loc response column identified.
-[2026-08-11 12:20:01] event_matching           OK       Practice +100 trigger family validated | 20 trials; expected 20 = 2 x 10 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PracticePlus100TriggerAudit.csv
-[2026-08-11 12:20:01] event_matching           OK       Main base-code trigger family matched to FullRun CSV | 600 trials; expected 600 = 12 x 50 | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_MainTriggerAudit.csv
-[2026-08-11 12:20:01] event_matching           OK       PAS mismatches EEG main triggers vs CSV | 0
-[2026-08-11 12:20:01] event_matching           OK       LOC mismatches EEG main triggers vs CSV | NaN
-
-
-================ STAGE 11: ADD S1/S2 OUTCOME CODES ================
-
-Behavioural outcome counts before artefact rejection:
-       Outcome       GroupCount
-    _____________    __________
-
-    "Blind"             185    
-    "NoChange_CR"       109    
-    "NoChange_FA"        35    
-    "Seeing"            197    
-    "Sensing"            74    
-
-Warning: converting all event types to strings
-eeg_checkset note: event field format 'cb_outcome' made uniform
-eeg_checkset note: event field format 'cb_lock' made uniform
-Saving dataset...
-[2026-08-11 12:20:05] s1s2_coding              OK       Added synthetic S1/S2 outcome codes | 600 S1 + 600 S2 | LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed_S1S2coded.set
-
-
-================ STAGE 12: EPOCH S1/S2 ================
-pop_epoch():600 epochs selected
-Epoching...
-pop_epoch():600 epochs generated
-pop_epoch(): time limits have been adjusted to [-0.199 1.400] to fit data points limits
-pop_epoch(): checking epochs for data discontinuity
-Warning: Do you also want to remove the single-trial ERP baseline, make sure to do so in the EEGLAB menu. 
-pop_rmbase(): Removing baseline...
-pop_epoch():600 epochs selected
-Epoching...
-pop_epoch():600 epochs generated
-pop_epoch(): time limits have been adjusted to [-0.900 0.801] to fit data points limits
-pop_epoch(): checking epochs for data discontinuity
-Warning: Do you also want to remove the single-trial ERP baseline, make sure to do so in the EEGLAB menu. 
-Saving dataset...
-Saving dataset...
-S1 epochs: 600 | -199.2 to 1398.4 ms
-S2 epochs: 600 | -900.4 to 798.8 ms
-[2026-08-11 12:20:18] epoching                 OK       Created S1 epochs with S1 baseline | 600 epochs | LUKE01_ERP_S1locked_m200to1400_S1base.set
-[2026-08-11 12:20:18] epoching                 OK       Created S2 epochs with trial-wise S1 baseline | 600 epochs | LUKE01_ERP_S2locked_m900to800_S1base.set
-
-
-================ STAGE 13: JOINT ARTEFACT REJECTION ================
-S1 bad epochs:    22 / 600
-S2 bad epochs:    22 / 600
-Union rejected:   27 / 600
-Remaining epochs: 573 / 600
-Removing 27 trial(s)...
-Pop_select: removing 259 unreferenced events
-Removing 27 trial(s)...
-Pop_select: removing 231 unreferenced events
-Saving dataset...
-Saving dataset...
-
-Condition counts before artefact rejection:
-      Condition      Code     N 
-    _____________    ____    ___
-
-    "Blind"          201     185
-    "Sensing"        202      74
-    "Seeing"         203     197
-    "NoChange_CR"    211     109
-    "NoChange_FA"    212      35
-
-
-Condition counts after artefact rejection:
-      Condition      Code     N 
-    _____________    ____    ___
-
-    "Blind"          201     178
-    "Sensing"        202      72
-    "Seeing"         203     188
-    "NoChange_CR"    211     102
-    "NoChange_FA"    212      33
-
-[2026-08-11 12:20:28] artifact_rejection       OK       Joint S1/S2 artefact rejection complete | 27 rejected; 573 kept | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_EpochArtifactRejectionReport.csv
-[2026-08-11 12:20:28] artifact_rejection       OK       Saved AR-clean S1 dataset | LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set
-[2026-08-11 12:20:28] artifact_rejection       OK       Saved AR-clean S2 dataset | LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
-[2026-08-11 12:20:29] final_qc                 OK       Saved final participant QC summary | 2 channels interpolated; 4.5% epochs rejected | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_FinalQCSummary.csv
-
-
-================ STAGE 14: ROI PLOTTING ================
-
-S1 OccipitalROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S2 OccipitalROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S1 PosteriorROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S2 PosteriorROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S1 ParietalROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S2 ParietalROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S1 CentralROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S2 CentralROI
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S1 PO7PO8
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-
-S2 PO7PO8
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-  Ignored no-change/other epochs: 135
-[2026-08-11 12:20:41] roi_plotting             OK       Generated S1/S2 ROI plots | 10 plot rows | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_ROI_Plots\LUKE01_ROIPlotFiles.csv
-
-
-================ STAGE 15: EXTRA FINAL ERP AND TOPOGRAPHY PLOTS ================
-
-Loading S1 dataset:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set
-pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set ...
-Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.fdt'...
-
-Loading S2 dataset:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
-pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set ...
-Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.fdt'...
-
-Creating central ROI trial-trace plot.
-Central ROI channels: Cz, CPz, Pz
-
-Central ROI trial-trace plot complete.
-Plot folder:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots
-PNG:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY.png
-FIG:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY.fig
-Summary CSV:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY_Summary.csv
-[2026-08-11 12:20:49] extra_final_plots        OK       Generated central ROI trial-trace plots | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_S1S2_TrialTraces_WithAverages_AutoY.png
-
-Loading S1 dataset:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set
-pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set ...
-Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.fdt'...
-
-Loading S2 dataset:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
-pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set ...
-Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.fdt'...
-
-Creating B/S/S overlay central ROI trial-trace plot.
-Central ROI channels: Cz, CPz, Pz
-
-Central ROI B/S/S overlay plot complete.
-Plot folder:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots
-PNG:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY.png
-FIG:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY.fig
-Summary CSV:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY_Summary.csv
-[2026-08-11 12:21:01] extra_final_plots        OK       Generated central ROI B/S/S overlay trial-trace plot | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CentralROI_TrialTracePlots\LUKE01_CentralROI_BSS_Overlay_S1S2_TrialTraces_WithAverages_AutoY.png
-
-Loading S2 dataset:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set
-pop_loadset(): loading file C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set ...
-Reading float file 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_S2locked_m900to800_S1base_ARclean.fdt'...
-
-S2 epoch counts:
-  Blind:   178
-  Sensing: 72
-  Seeing:  188
-
-VAN window: 150-250 ms
-  Symmetric colour scale: -10.109 to 10.109 uV
-
-LP window: 400-600 ms
-  Symmetric colour scale: -6.483 to 6.483 uV
-Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
-Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
-Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
-Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
-Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
-Warning: Unable to set 'Position', 'InnerPosition', 'OuterPosition', or 'PositionConstraint' for objects in a TiledChartLayout 
-
-S2 VAN/LP condition topomap figure complete.
-Plot folder:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps
-PNG:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps\LUKE01_S2locked_Topomaps_VAN150to250_LP400to600_BSSConditionMeans.png
-FIG:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps\LUKE01_S2locked_Topomaps_VAN150to250_LP400to600_BSSConditionMeans.fig
-[2026-08-11 12:21:07] extra_final_plots        OK       Generated S2 VAN/LP topomaps | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_Topomaps\LUKE01_S2locked_Topomaps_VAN150to250_LP400to600_BSSConditionMeans.png
-[2026-08-11 12:21:07] pipeline                 DONE     Pipeline completed successfully | C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_FinalPipelineReport.mat
-
+174322447566: CBV3_FLIP label=practice2_intro_grey context=practice2_intro trial=NA block=NA eventTime=174322.447566 scheduled=0 when=NA stimOnset=174322.447566 flipTimestamp=174322.447582 missed=0.002864
+174332456576: CBV3_FLIP label=practice2_intro_active context=practice2_intro trial=NA block=NA eventTime=174332.456576 scheduled=0 when=NA stimOnset=174332.456576 flipTimestamp=174332.456590 missed=0.005180
+174335242016: CBV3_FLIP label=practice2_begin context=practice2_begin trial=NA block=NA eventTime=174335.242016 scheduled=0 when=NA stimOnset=174335.242016 flipTimestamp=174335.242026 missed=-0.002485
+
+===================== PRACTICE BLOCK 2 =====================
+10 trials | STD=4 EASY=3 NCH=3 | feedback=OFF
 ============================================================
-PIPELINE COMPLETE
-Finished: 11-Aug-2026 12:21:07
-Output folder:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315
-Text log:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.txt
-CSV log:
-C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.csv
+174335947817: CBV3_FLIP label=FixOn context=Practice Block 2 trial=1 block=NA eventTime=174335.947817 scheduled=1 when=174335.945761 stimOnset=174335.947817 flipTimestamp=174335.947826 missed=-0.004945
+174337344389: CBV3_FLIP label=S1 context=Practice Block 2 trial=1 block=NA eventTime=174337.344389 scheduled=1 when=174337.336775 stimOnset=174337.344389 flipTimestamp=174337.344404 missed=0.001775
+174337945468: CBV3_FLIP label=ISI context=Practice Block 2 trial=1 block=NA eventTime=174337.945468 scheduled=1 when=174337.940848 stimOnset=174337.945468 flipTimestamp=174337.945485 missed=-0.001220
+174338092829: CBV3_FLIP label=S2 context=Practice Block 2 trial=1 block=NA eventTime=174338.092829 scheduled=1 when=174338.091455 stimOnset=174338.092829 flipTimestamp=174338.092855 missed=-0.004465
+174338693975: CBV3_FLIP label=Gap context=Practice Block 2 trial=1 block=NA eventTime=174338.693975 scheduled=1 when=174338.689288 stimOnset=174338.693975 flipTimestamp=174338.693991 missed=-0.001152
+174338891810: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=1 block=NA eventTime=174338.891810 scheduled=1 when=174338.890014 stimOnset=174338.891810 flipTimestamp=174338.891825 missed=-0.004044
+174339744096: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=1 block=NA eventTime=174339.744096 pas=4 keyCode=82 rtMs=852.286 trialType=STD
+174339752795: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=1 block=NA eventTime=174339.752795 scheduled=1 when=174339.750882 stimOnset=174339.752795 flipTimestamp=174339.752804 missed=0.000082
+174340399921: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=1 block=NA eventTime=174340.399921 loc=2 keyCode=105 rtMs=647.126 trialType=STD
+174340409596: CBV3_FLIP label=ITI context=Practice Block 2 trial=1 block=NA eventTime=174340.409596 scheduled=1 when=174340.408203 stimOnset=174340.409596 flipTimestamp=174340.409608 missed=-0.003892
+P2  01/10 | STD  45.00deg TGT=TR | PAS=4  LOC=TR OK | SEEING      | QC:S1>1ms
+174341418076: CBV3_FLIP label=FixOn context=Practice Block 2 trial=2 block=NA eventTime=174341.418075 scheduled=1 when=174341.416694 stimOnset=174341.418075 flipTimestamp=174341.418085 missed=-0.002582
+174343004900: CBV3_FLIP label=S1 context=Practice Block 2 trial=2 block=NA eventTime=174343.004900 scheduled=1 when=174342.998901 stimOnset=174343.004900 flipTimestamp=174343.004918 missed=0.000160
+174343606021: CBV3_FLIP label=ISI context=Practice Block 2 trial=2 block=NA eventTime=174343.606021 scheduled=1 when=174343.601359 stimOnset=174343.606021 flipTimestamp=174343.606035 missed=-0.001178
+174343756622: CBV3_FLIP label=S2 context=Practice Block 2 trial=2 block=NA eventTime=174343.756622 scheduled=1 when=174343.752007 stimOnset=174343.756622 flipTimestamp=174343.756638 missed=-0.001225
+174344358882: CBV3_FLIP label=Gap context=Practice Block 2 trial=2 block=NA eventTime=174344.358882 scheduled=1 when=174344.353081 stimOnset=174344.358882 flipTimestamp=174344.358897 missed=-0.000038
+174344559966: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=2 block=NA eventTime=174344.559966 scheduled=1 when=174344.554921 stimOnset=174344.559966 flipTimestamp=174344.559981 missed=-0.000795
+174344863929: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=2 block=NA eventTime=174344.863929 pas=4 keyCode=82 rtMs=303.963 trialType=EASY
+174344870395: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=2 block=NA eventTime=174344.870395 scheduled=1 when=174344.869591 stimOnset=174344.870395 flipTimestamp=174344.870404 missed=-0.008239
+174345263955: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=2 block=NA eventTime=174345.263955 loc=4 keyCode=99 rtMs=393.560 trialType=EASY
+174345271073: CBV3_FLIP label=ITI context=Practice Block 2 trial=2 block=NA eventTime=174345.271073 scheduled=1 when=174345.269489 stimOnset=174345.271073 flipTimestamp=174345.271089 missed=-0.001410
+P2  02/10 | EASY 90.00deg TGT=BR | PAS=4  LOC=BR OK | SEEING     
+174346279124: CBV3_FLIP label=FixOn context=Practice Block 2 trial=3 block=NA eventTime=174346.279124 scheduled=1 when=174346.277243 stimOnset=174346.279124 flipTimestamp=174346.279134 missed=-0.003011
+174348155304: CBV3_FLIP label=S1 context=Practice Block 2 trial=3 block=NA eventTime=174348.155304 scheduled=1 when=174348.151922 stimOnset=174348.155304 flipTimestamp=174348.155322 missed=-0.002457
+174348756268: CBV3_FLIP label=ISI context=Practice Block 2 trial=3 block=NA eventTime=174348.756268 scheduled=1 when=174348.751763 stimOnset=174348.756268 flipTimestamp=174348.756282 missed=-0.001335
+174348907269: CBV3_FLIP label=S2 context=Practice Block 2 trial=3 block=NA eventTime=174348.907269 scheduled=1 when=174348.902254 stimOnset=174348.907269 flipTimestamp=174348.907290 missed=-0.000824
+174349509528: CBV3_FLIP label=Gap context=Practice Block 2 trial=3 block=NA eventTime=174349.509528 scheduled=1 when=174349.503728 stimOnset=174349.509528 flipTimestamp=174349.509544 missed=-0.000040
+174349706994: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=3 block=NA eventTime=174349.706994 scheduled=1 when=174349.705567 stimOnset=174349.706994 flipTimestamp=174349.707010 missed=-0.004413
+174350064015: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=3 block=NA eventTime=174350.064015 pas=3 keyCode=69 rtMs=357.022 trialType=STD
+174350071068: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=3 block=NA eventTime=174350.071068 scheduled=1 when=174350.069278 stimOnset=174350.071068 flipTimestamp=174350.071078 missed=-0.004646
+174350543831: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=3 block=NA eventTime=174350.543831 loc=4 keyCode=99 rtMs=472.763 trialType=STD
+174350550110: CBV3_FLIP label=ITI context=Practice Block 2 trial=3 block=NA eventTime=174350.550110 scheduled=1 when=174350.549194 stimOnset=174350.550110 flipTimestamp=174350.550122 missed=-0.006468
+P2  03/10 | STD  45.00deg TGT=BR | PAS=3  LOC=BR OK | SEEING     
+174351557986: CBV3_FLIP label=FixOn context=Practice Block 2 trial=4 block=NA eventTime=174351.557986 scheduled=1 when=174351.556565 stimOnset=174351.557986 flipTimestamp=174351.558002 missed=-0.003184
+174352951661: CBV3_FLIP label=S1 context=Practice Block 2 trial=4 block=NA eventTime=174352.951661 scheduled=1 when=174352.946944 stimOnset=174352.951661 flipTimestamp=174352.951695 missed=-0.001122
+174353554205: CBV3_FLIP label=ISI context=Practice Block 2 trial=4 block=NA eventTime=174353.554205 scheduled=1 when=174353.548120 stimOnset=174353.554205 flipTimestamp=174353.554240 missed=0.000246
+174353702661: CBV3_FLIP label=S2 context=Practice Block 2 trial=4 block=NA eventTime=174353.702661 scheduled=1 when=174353.700192 stimOnset=174353.702661 flipTimestamp=174353.702678 missed=-0.003370
+174354304892: CBV3_FLIP label=Gap context=Practice Block 2 trial=4 block=NA eventTime=174354.304892 scheduled=1 when=174354.299120 stimOnset=174354.304892 flipTimestamp=174354.304912 missed=-0.000067
+174354505359: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=4 block=NA eventTime=174354.505358 scheduled=1 when=174354.500931 stimOnset=174354.505358 flipTimestamp=174354.505374 missed=-0.001412
+174354751946: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=4 block=NA eventTime=174354.751946 pas=1 keyCode=81 rtMs=246.587 trialType=NCH
+174354759435: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=4 block=NA eventTime=174354.759435 scheduled=1 when=174354.757369 stimOnset=174354.759435 flipTimestamp=174354.759451 missed=-0.006197
+174355119914: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=4 block=NA eventTime=174355.119914 loc=1 keyCode=103 rtMs=360.479 trialType=NCH
+174355126738: CBV3_FLIP label=ITI context=Practice Block 2 trial=4 block=NA eventTime=174355.126738 scheduled=1 when=174355.125779 stimOnset=174355.126738 flipTimestamp=174355.126755 missed=-0.001417
+P2  04/10 | NCH        -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174356134239: CBV3_FLIP label=FixOn context=Practice Block 2 trial=5 block=NA eventTime=174356.134239 scheduled=1 when=174356.132412 stimOnset=174356.134239 flipTimestamp=174356.134250 missed=-0.003560
+174358087847: CBV3_FLIP label=S1 context=Practice Block 2 trial=5 block=NA eventTime=174358.087847 scheduled=1 when=174358.082116 stimOnset=174358.087847 flipTimestamp=174358.087869 missed=-0.000109
+174358688909: CBV3_FLIP label=ISI context=Practice Block 2 trial=5 block=NA eventTime=174358.688909 scheduled=1 when=174358.684306 stimOnset=174358.688909 flipTimestamp=174358.688924 missed=-0.001237
+174358839213: CBV3_FLIP label=S2 context=Practice Block 2 trial=5 block=NA eventTime=174358.839213 scheduled=1 when=174358.834896 stimOnset=174358.839213 flipTimestamp=174358.839229 missed=-0.001522
+174359441434: CBV3_FLIP label=Gap context=Practice Block 2 trial=5 block=NA eventTime=174359.441434 scheduled=1 when=174359.435672 stimOnset=174359.441434 flipTimestamp=174359.441450 missed=-0.000078
+174359638957: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=5 block=NA eventTime=174359.638957 scheduled=1 when=174359.637473 stimOnset=174359.638957 flipTimestamp=174359.638973 missed=-0.004356
+174360175915: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=5 block=NA eventTime=174360.175915 pas=4 keyCode=82 rtMs=536.958 trialType=EASY
+174360181814: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=5 block=NA eventTime=174360.181814 scheduled=1 when=174360.180821 stimOnset=174360.181814 flipTimestamp=174360.181826 missed=-0.001046
+174360480099: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=5 block=NA eventTime=174360.480099 loc=3 keyCode=97 rtMs=298.284 trialType=EASY
+174360487742: CBV3_FLIP label=ITI context=Practice Block 2 trial=5 block=NA eventTime=174360.487742 scheduled=1 when=174360.485984 stimOnset=174360.487742 flipTimestamp=174360.487760 missed=-0.004398
+P2  05/10 | EASY 90.00deg TGT=BL | PAS=4  LOC=BL OK | SEEING     
+174361495461: CBV3_FLIP label=FixOn context=Practice Block 2 trial=6 block=NA eventTime=174361.495461 scheduled=1 when=174361.493553 stimOnset=174361.495461 flipTimestamp=174361.495469 missed=-0.003342
+174363219772: CBV3_FLIP label=S1 context=Practice Block 2 trial=6 block=NA eventTime=174363.219772 scheduled=1 when=174363.218102 stimOnset=174363.219772 flipTimestamp=174363.219787 missed=-0.004169
+174363821003: CBV3_FLIP label=ISI context=Practice Block 2 trial=6 block=NA eventTime=174363.821002 scheduled=1 when=174363.816232 stimOnset=174363.821002 flipTimestamp=174363.821017 missed=-0.001069
+174363971438: CBV3_FLIP label=S2 context=Practice Block 2 trial=6 block=NA eventTime=174363.971438 scheduled=1 when=174363.966989 stimOnset=174363.971438 flipTimestamp=174363.971459 missed=-0.001390
+174364572606: CBV3_FLIP label=Gap context=Practice Block 2 trial=6 block=NA eventTime=174364.572606 scheduled=1 when=174364.567897 stimOnset=174364.572606 flipTimestamp=174364.572623 missed=-0.001131
+174364770389: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=6 block=NA eventTime=174364.770389 scheduled=1 when=174364.768645 stimOnset=174364.770389 flipTimestamp=174364.770404 missed=-0.004095
+174365023909: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=6 block=NA eventTime=174365.023909 pas=4 keyCode=82 rtMs=253.520 trialType=STD
+174365031394: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=6 block=NA eventTime=174365.031394 scheduled=1 when=174365.029297 stimOnset=174365.031394 flipTimestamp=174365.031403 missed=-0.007610
+174365375952: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=6 block=NA eventTime=174365.375951 loc=1 keyCode=103 rtMs=344.558 trialType=STD
+174365384455: CBV3_FLIP label=ITI context=Practice Block 2 trial=6 block=NA eventTime=174365.384455 scheduled=1 when=174365.383084 stimOnset=174365.384455 flipTimestamp=174365.384466 missed=-0.007317
+P2  06/10 | STD  45.00deg TGT=TL | PAS=4  LOC=TL OK | SEEING     
+174366391576: CBV3_FLIP label=FixOn context=Practice Block 2 trial=7 block=NA eventTime=174366.391576 scheduled=1 when=174366.390174 stimOnset=174366.391576 flipTimestamp=174366.391586 missed=-0.003940
+174368036679: CBV3_FLIP label=S1 context=Practice Block 2 trial=7 block=NA eventTime=174368.036679 scheduled=1 when=174368.030796 stimOnset=174368.036679 flipTimestamp=174368.036695 missed=0.000043
+174368637754: CBV3_FLIP label=ISI context=Practice Block 2 trial=7 block=NA eventTime=174368.637754 scheduled=1 when=174368.633138 stimOnset=174368.637754 flipTimestamp=174368.637773 missed=-0.001223
+174368785641: CBV3_FLIP label=S2 context=Practice Block 2 trial=7 block=NA eventTime=174368.785641 scheduled=1 when=174368.783741 stimOnset=174368.785641 flipTimestamp=174368.785658 missed=-0.003939
+174369383950: CBV3_FLIP label=Gap context=Practice Block 2 trial=7 block=NA eventTime=174369.383950 scheduled=1 when=174369.382100 stimOnset=174369.383950 flipTimestamp=174369.383965 missed=-0.003990
+174369582053: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=7 block=NA eventTime=174369.582053 scheduled=1 when=174369.579989 stimOnset=174369.582053 flipTimestamp=174369.582073 missed=-0.003776
+174370031966: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=7 block=NA eventTime=174370.031966 pas=3 keyCode=69 rtMs=449.914 trialType=STD
+174370037584: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=7 block=NA eventTime=174370.037584 scheduled=1 when=174370.036890 stimOnset=174370.037584 flipTimestamp=174370.037595 missed=-0.004952
+174370367851: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=7 block=NA eventTime=174370.367851 loc=3 keyCode=97 rtMs=330.267 trialType=STD
+174370374295: CBV3_FLIP label=ITI context=Practice Block 2 trial=7 block=NA eventTime=174370.374295 scheduled=1 when=174370.373472 stimOnset=174370.374295 flipTimestamp=174370.374306 missed=-0.006984
+P2  07/10 | STD  45.00deg TGT=BL | PAS=3  LOC=BL OK | SEEING     
+174371382074: CBV3_FLIP label=FixOn context=Practice Block 2 trial=8 block=NA eventTime=174371.382074 scheduled=1 when=174371.380277 stimOnset=174371.382074 flipTimestamp=174371.382084 missed=-0.003281
+174372635173: CBV3_FLIP label=S1 context=Practice Block 2 trial=8 block=NA eventTime=174372.635173 scheduled=1 when=174372.629216 stimOnset=174372.635173 flipTimestamp=174372.635189 missed=0.000118
+174373236170: CBV3_FLIP label=ISI context=Practice Block 2 trial=8 block=NA eventTime=174373.236170 scheduled=1 when=174373.231633 stimOnset=174373.236170 flipTimestamp=174373.236184 missed=-0.001303
+174373385055: CBV3_FLIP label=S2 context=Practice Block 2 trial=8 block=NA eventTime=174373.385055 scheduled=1 when=174373.382156 stimOnset=174373.385055 flipTimestamp=174373.385069 missed=-0.002941
+174373986176: CBV3_FLIP label=Gap context=Practice Block 2 trial=8 block=NA eventTime=174373.986176 scheduled=1 when=174373.981514 stimOnset=174373.986176 flipTimestamp=174373.986191 missed=-0.001177
+174374186769: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=8 block=NA eventTime=174374.186769 scheduled=1 when=174374.182215 stimOnset=174374.186769 flipTimestamp=174374.186785 missed=-0.001285
+174374351964: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=8 block=NA eventTime=174374.351964 pas=1 keyCode=81 rtMs=165.195 trialType=NCH
+174374359683: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=8 block=NA eventTime=174374.359683 scheduled=1 when=174374.357569 stimOnset=174374.359683 flipTimestamp=174374.359696 missed=-0.003939
+174374703903: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=8 block=NA eventTime=174374.703903 loc=1 keyCode=103 rtMs=344.220 trialType=NCH
+174374710067: CBV3_FLIP label=ITI context=Practice Block 2 trial=8 block=NA eventTime=174374.710067 scheduled=1 when=174374.709219 stimOnset=174374.710067 flipTimestamp=174374.710091 missed=-0.001652
+P2  08/10 | NCH        -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174375717614: CBV3_FLIP label=FixOn context=Practice Block 2 trial=9 block=NA eventTime=174375.717614 scheduled=1 when=174375.716302 stimOnset=174375.717614 flipTimestamp=174375.717624 missed=-0.003514
+174376862113: CBV3_FLIP label=S1 context=Practice Block 2 trial=9 block=NA eventTime=174376.862113 scheduled=1 when=174376.856309 stimOnset=174376.862113 flipTimestamp=174376.862128 missed=-0.000036
+174377463227: CBV3_FLIP label=ISI context=Practice Block 2 trial=9 block=NA eventTime=174377.463227 scheduled=1 when=174377.458572 stimOnset=174377.463227 flipTimestamp=174377.463243 missed=-0.001184
+174377613568: CBV3_FLIP label=S2 context=Practice Block 2 trial=9 block=NA eventTime=174377.613568 scheduled=1 when=174377.609214 stimOnset=174377.613568 flipTimestamp=174377.613584 missed=-0.001485
+174378214951: CBV3_FLIP label=Gap context=Practice Block 2 trial=9 block=NA eventTime=174378.214951 scheduled=1 when=174378.210027 stimOnset=174378.214951 flipTimestamp=174378.214968 missed=-0.000916
+174378415437: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=9 block=NA eventTime=174378.415437 scheduled=1 when=174378.410990 stimOnset=174378.415437 flipTimestamp=174378.415452 missed=-0.001393
+174378591998: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=9 block=NA eventTime=174378.591998 pas=3 keyCode=69 rtMs=176.561 trialType=EASY
+174378598628: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=9 block=NA eventTime=174378.598628 scheduled=1 when=174378.597188 stimOnset=174378.598628 flipTimestamp=174378.598640 missed=-0.002003
+174378927936: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=9 block=NA eventTime=174378.927936 loc=1 keyCode=103 rtMs=329.309 trialType=EASY
+174378935656: CBV3_FLIP label=ITI context=Practice Block 2 trial=9 block=NA eventTime=174378.935656 scheduled=1 when=174378.933931 stimOnset=174378.935656 flipTimestamp=174378.935667 missed=-0.006666
+P2  09/10 | EASY 90.00deg TGT=TL | PAS=3  LOC=TL OK | SEEING     
+174379943087: CBV3_FLIP label=FixOn context=Practice Block 2 trial=10 block=NA eventTime=174379.943087 scheduled=1 when=174379.941713 stimOnset=174379.943087 flipTimestamp=174379.943097 missed=-0.003630
+174381086621: CBV3_FLIP label=S1 context=Practice Block 2 trial=10 block=NA eventTime=174381.086621 scheduled=1 when=174381.081782 stimOnset=174381.086621 flipTimestamp=174381.086636 missed=-0.001000
+174381689183: CBV3_FLIP label=ISI context=Practice Block 2 trial=10 block=NA eventTime=174381.689183 scheduled=1 when=174381.683081 stimOnset=174381.689183 flipTimestamp=174381.689200 missed=0.000263
+174381839800: CBV3_FLIP label=S2 context=Practice Block 2 trial=10 block=NA eventTime=174381.839800 scheduled=1 when=174381.835169 stimOnset=174381.839800 flipTimestamp=174381.839824 missed=-0.001209
+174382441263: CBV3_FLIP label=Gap context=Practice Block 2 trial=10 block=NA eventTime=174382.441263 scheduled=1 when=174382.436259 stimOnset=174382.441263 flipTimestamp=174382.441283 missed=-0.000835
+174382642336: CBV3_FLIP label=Q1_PAS context=Practice Block 2 trial=10 block=NA eventTime=174382.642336 scheduled=1 when=174382.637302 stimOnset=174382.642336 flipTimestamp=174382.642356 missed=-0.000806
+174383135892: CBV3_PAS_RESP label=Q1_PAS context=Practice Block 2 trial=10 block=NA eventTime=174383.135892 pas=3 keyCode=69 rtMs=493.557 trialType=NCH
+174383143005: CBV3_FLIP label=Q2_Loc context=Practice Block 2 trial=10 block=NA eventTime=174383.143005 scheduled=1 when=174383.140987 stimOnset=174383.143005 flipTimestamp=174383.143018 missed=-0.001524
+174383487988: CBV3_LOC_RESP label=Q2_Loc context=Practice Block 2 trial=10 block=NA eventTime=174383.487988 loc=2 keyCode=105 rtMs=344.983 trialType=NCH
+174383495198: CBV3_FLIP label=ITI context=Practice Block 2 trial=10 block=NA eventTime=174383.495198 scheduled=1 when=174383.493448 stimOnset=174383.495198 flipTimestamp=174383.495209 missed=-0.008185
+P2  10/10 | NCH        -- TGT=-- | PAS=3  LOC=TR -- | FA         
+
+================ PRACTICE BLOCK 2 SUMMARY ================
+Trials: 10 | STD=4 EASY=3 NCH=3
+Change outcomes: BLIND=0 SENSING=0 SEEING=7
+Catch outcomes : CR=2 FA=1
+PAS [1 2 3 4] : [2 0 4 4]
+LOC [1 2 3 4] : [4 2 2 2]
+PAS1 LOC       : [2 0 0 0]
+Missing        : PAS=0 LOC=0
+Classification : not_applicable (informational only)
 ============================================================
+Saved practice flow CSV: C:\Users\hrl310\Documents\MATLAB\data\CB_4xGratings_v3_Orientation_TEST_PracticeFlow_20260814_155928.csv
+Saved practice flow MAT: C:\Users\hrl310\Documents\MATLAB\data\CB_4xGratings_v3_Orientation_TEST_PracticeFlow_20260814_155928.mat
+174384727874: CBV3_FLIP label=main_intro_grey context=main_intro trial=NA block=NA eventTime=174384.727874 scheduled=0 when=NA stimOnset=174384.727874 flipTimestamp=174384.727902 missed=0.004721
+174394736803: CBV3_FLIP label=main_intro_active context=main_intro trial=NA block=NA eventTime=174394.736803 scheduled=0 when=NA stimOnset=174394.736803 flipTimestamp=174394.736817 missed=0.005099
+174395288725: CBV3_FLIP label=main_begin context=main_begin trial=NA block=NA eventTime=174395.288725 scheduled=0 when=NA stimOnset=174395.288725 flipTimestamp=174395.288733 missed=-0.000324
+
+========================= MAIN RUN =========================
+Profile=pilotBroad | 240 trials | 6 blocks x 40 | change/no-change per block=30/10
+Compact fields: block trial | run progress | condition/target | PAS/LOC | outcome
+============================================================
+174395863720: CBV3_FLIP label=FixOn context=main_trial trial=1 block=1 eventTime=174395.863720 scheduled=1 when=174395.862321 stimOnset=174395.863720 flipTimestamp=174395.863730 missed=-0.002277
+174395863720: CBV3_TRIAL_META label=trialMeta context=main_trial trial=1 block=1 eventTime=174395.863720 isChange=1 magnitudeDeg=90.00 direction=1 label=M90p0 changeQuad=4 startOriDeg=56.250000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174397500445: CBV3_FLIP label=S1 context=main_trial trial=1 block=1 eventTime=174397.500445 scheduled=1 when=174397.494598 stimOnset=174397.500445 flipTimestamp=174397.500459 missed=0.000008
+174398103076: CBV3_FLIP label=ISI context=main_trial trial=1 block=1 eventTime=174398.103076 scheduled=1 when=174398.096904 stimOnset=174398.103076 flipTimestamp=174398.103095 missed=0.000332
+174398253789: CBV3_FLIP label=S2 context=main_trial trial=1 block=1 eventTime=174398.253789 scheduled=1 when=174398.249062 stimOnset=174398.253789 flipTimestamp=174398.253805 missed=-0.001113
+174398855981: CBV3_FLIP label=Gap context=main_trial trial=1 block=1 eventTime=174398.855981 scheduled=1 when=174398.850248 stimOnset=174398.855981 flipTimestamp=174398.855998 missed=-0.000106
+174399056674: CBV3_FLIP label=Q1_PAS context=main_trial trial=1 block=1 eventTime=174399.056674 scheduled=1 when=174399.052020 stimOnset=174399.056674 flipTimestamp=174399.056691 missed=-0.001185
+174399279987: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=1 block=1 eventTime=174399.279987 pas=4 keyCode=82 rtMs=223.313
+174399286695: CBV3_FLIP label=Q2_Loc context=main_trial trial=1 block=1 eventTime=174399.286695 scheduled=1 when=174399.285536 stimOnset=174399.286695 flipTimestamp=174399.286707 missed=-0.005226
+174399535904: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=1 block=1 eventTime=174399.535904 loc=4 keyCode=99 rtMs=249.209
+174399542948: CBV3_FLIP label=ITI context=main_trial trial=1 block=1 eventTime=174399.542948 scheduled=1 when=174399.541320 stimOnset=174399.542948 flipTimestamp=174399.542958 missed=-0.004020
+B01 001/040 | RUN 001/240 | CHG 90.00deg TGT=BR | PAS=4  LOC=BR OK | SEEING     
+174400554881: CBV3_FLIP label=FixOn context=main_trial trial=2 block=1 eventTime=174400.554881 scheduled=1 when=174400.552771 stimOnset=174400.554881 flipTimestamp=174400.554897 missed=-0.007470
+174400554881: CBV3_TRIAL_META label=trialMeta context=main_trial trial=2 block=1 eventTime=174400.554881 isChange=1 magnitudeDeg=67.50 direction=1 label=M67p5 changeQuad=2 startOriDeg=168.750000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174402066423: CBV3_FLIP label=S1 context=main_trial trial=2 block=1 eventTime=174402.066423 scheduled=1 when=174402.060628 stimOnset=174402.066423 flipTimestamp=174402.066438 missed=-0.000045
+174402667497: CBV3_FLIP label=ISI context=main_trial trial=2 block=1 eventTime=174402.667497 scheduled=1 when=174402.662882 stimOnset=174402.667497 flipTimestamp=174402.667514 missed=-0.001224
+174402819393: CBV3_FLIP label=S2 context=main_trial trial=2 block=1 eventTime=174402.819393 scheduled=1 when=174402.813484 stimOnset=174402.819393 flipTimestamp=174402.819410 missed=0.000070
+174403420455: CBV3_FLIP label=Gap context=main_trial trial=2 block=1 eventTime=174403.420455 scheduled=1 when=174403.415852 stimOnset=174403.420455 flipTimestamp=174403.420470 missed=-0.001237
+174403618033: CBV3_FLIP label=Q1_PAS context=main_trial trial=2 block=1 eventTime=174403.618033 scheduled=1 when=174403.616494 stimOnset=174403.618033 flipTimestamp=174403.618048 missed=-0.004300
+174404911880: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=2 block=1 eventTime=174404.911880 pas=3 keyCode=69 rtMs=1293.846
+174404919856: CBV3_FLIP label=Q2_Loc context=main_trial trial=2 block=1 eventTime=174404.919856 scheduled=1 when=174404.918028 stimOnset=174404.919856 flipTimestamp=174404.919870 missed=-0.001211
+174405343833: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=2 block=1 eventTime=174405.343833 loc=2 keyCode=105 rtMs=423.977
+174405350923: CBV3_FLIP label=ITI context=main_trial trial=2 block=1 eventTime=174405.350923 scheduled=1 when=174405.349937 stimOnset=174405.350923 flipTimestamp=174405.350933 missed=-0.004390
+B01 002/040 | RUN 002/240 | CHG 67.50deg TGT=TR | PAS=3  LOC=TR OK | SEEING     
+174406360131: CBV3_FLIP label=FixOn context=main_trial trial=3 block=1 eventTime=174406.360131 scheduled=1 when=174406.358664 stimOnset=174406.360131 flipTimestamp=174406.360142 missed=-0.001853
+174406360131: CBV3_TRIAL_META label=trialMeta context=main_trial trial=3 block=1 eventTime=174406.360131 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174408313993: CBV3_FLIP label=S1 context=main_trial trial=3 block=1 eventTime=174408.313993 scheduled=1 when=174408.308008 stimOnset=174408.313993 flipTimestamp=174408.314009 missed=0.000145
+174408916709: CBV3_FLIP label=ISI context=main_trial trial=3 block=1 eventTime=174408.916709 scheduled=1 when=174408.910452 stimOnset=174408.916709 flipTimestamp=174408.916725 missed=0.000418
+174409065160: CBV3_FLIP label=S2 context=main_trial trial=3 block=1 eventTime=174409.065160 scheduled=1 when=174409.062696 stimOnset=174409.065160 flipTimestamp=174409.065176 missed=-0.003375
+174409666575: CBV3_FLIP label=Gap context=main_trial trial=3 block=1 eventTime=174409.666575 scheduled=1 when=174409.661619 stimOnset=174409.666575 flipTimestamp=174409.666591 missed=-0.000884
+174409867009: CBV3_FLIP label=Q1_PAS context=main_trial trial=3 block=1 eventTime=174409.867009 scheduled=1 when=174409.862614 stimOnset=174409.867009 flipTimestamp=174409.867024 missed=-0.001445
+174410063795: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=3 block=1 eventTime=174410.063794 pas=1 keyCode=81 rtMs=196.786
+174410071393: CBV3_FLIP label=Q2_Loc context=main_trial trial=3 block=1 eventTime=174410.071393 scheduled=1 when=174410.069463 stimOnset=174410.071393 flipTimestamp=174410.071404 missed=-0.005837
+174410367817: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=3 block=1 eventTime=174410.367817 loc=1 keyCode=103 rtMs=296.424
+174410374372: CBV3_FLIP label=ITI context=main_trial trial=3 block=1 eventTime=174410.374372 scheduled=1 when=174410.373540 stimOnset=174410.374372 flipTimestamp=174410.374383 missed=-0.007347
+B01 003/040 | RUN 003/240 | NCH       -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174411383275: CBV3_FLIP label=FixOn context=main_trial trial=4 block=1 eventTime=174411.383275 scheduled=1 when=174411.381889 stimOnset=174411.383275 flipTimestamp=174411.383286 missed=-0.002157
+174411383275: CBV3_TRIAL_META label=trialMeta context=main_trial trial=4 block=1 eventTime=174411.383275 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174412559658: CBV3_FLIP label=S1 context=main_trial trial=4 block=1 eventTime=174412.559658 scheduled=1 when=174412.555338 stimOnset=174412.559658 flipTimestamp=174412.559674 missed=-0.001520
+174413162032: CBV3_FLIP label=ISI context=main_trial trial=4 block=1 eventTime=174413.162032 scheduled=1 when=174413.156117 stimOnset=174413.162032 flipTimestamp=174413.162048 missed=0.000075
+174413312462: CBV3_FLIP label=S2 context=main_trial trial=4 block=1 eventTime=174413.312462 scheduled=1 when=174413.308018 stimOnset=174413.312462 flipTimestamp=174413.312478 missed=-0.001396
+174413914707: CBV3_FLIP label=Gap context=main_trial trial=4 block=1 eventTime=174413.914707 scheduled=1 when=174413.908921 stimOnset=174413.914707 flipTimestamp=174413.914723 missed=-0.000053
+174414115467: CBV3_FLIP label=Q1_PAS context=main_trial trial=4 block=1 eventTime=174414.115467 scheduled=1 when=174414.110746 stimOnset=174414.115467 flipTimestamp=174414.115483 missed=-0.001119
+174414303744: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=4 block=1 eventTime=174414.303744 pas=1 keyCode=81 rtMs=188.276
+174414310611: CBV3_FLIP label=Q2_Loc context=main_trial trial=4 block=1 eventTime=174414.310611 scheduled=1 when=174414.309306 stimOnset=174414.310611 flipTimestamp=174414.310621 missed=-0.006735
+174414575807: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=4 block=1 eventTime=174414.575807 loc=1 keyCode=103 rtMs=265.196
+174414583283: CBV3_FLIP label=ITI context=main_trial trial=4 block=1 eventTime=174414.583283 scheduled=1 when=174414.580971 stimOnset=174414.583283 flipTimestamp=174414.583292 missed=-0.004286
+B01 004/040 | RUN 004/240 | NCH       -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174415593767: CBV3_FLIP label=FixOn context=main_trial trial=5 block=1 eventTime=174415.593767 scheduled=1 when=174415.592501 stimOnset=174415.593767 flipTimestamp=174415.593778 missed=-0.000577
+174415593767: CBV3_TRIAL_META label=trialMeta context=main_trial trial=5 block=1 eventTime=174415.593767 isChange=1 magnitudeDeg=33.75 direction=-1 label=M33p75 changeQuad=2 startOriDeg=112.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174417555786: CBV3_FLIP label=S1 context=main_trial trial=5 block=1 eventTime=174417.555786 scheduled=1 when=174417.549986 stimOnset=174417.555786 flipTimestamp=174417.555806 missed=-0.000040
+174418158318: CBV3_FLIP label=ISI context=main_trial trial=5 block=1 eventTime=174418.158318 scheduled=1 when=174418.152245 stimOnset=174418.158318 flipTimestamp=174418.158333 missed=0.000234
+174418309917: CBV3_FLIP label=S2 context=main_trial trial=5 block=1 eventTime=174418.309917 scheduled=1 when=174418.304305 stimOnset=174418.309917 flipTimestamp=174418.309939 missed=-0.000227
+174418908918: CBV3_FLIP label=Gap context=main_trial trial=5 block=1 eventTime=174418.908918 scheduled=1 when=174418.906376 stimOnset=174418.908918 flipTimestamp=174418.908933 missed=-0.003298
+174419110636: CBV3_FLIP label=Q1_PAS context=main_trial trial=5 block=1 eventTime=174419.110636 scheduled=1 when=174419.104957 stimOnset=174419.110636 flipTimestamp=174419.110656 missed=-0.000160
+174419887816: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=5 block=1 eventTime=174419.887816 pas=2 keyCode=87 rtMs=777.180
+174419896929: CBV3_FLIP label=Q2_Loc context=main_trial trial=5 block=1 eventTime=174419.896929 scheduled=1 when=174419.894912 stimOnset=174419.896929 flipTimestamp=174419.896940 missed=-0.007874
+174420287744: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=5 block=1 eventTime=174420.287743 loc=2 keyCode=105 rtMs=390.815
+174420296752: CBV3_FLIP label=ITI context=main_trial trial=5 block=1 eventTime=174420.296752 scheduled=1 when=174420.294728 stimOnset=174420.296752 flipTimestamp=174420.296762 missed=-0.002265
+B01 005/040 | RUN 005/240 | CHG 33.75deg TGT=TR | PAS=2  LOC=TR OK | SEEING     
+174421310110: CBV3_FLIP label=FixOn context=main_trial trial=6 block=1 eventTime=174421.310109 scheduled=1 when=174421.308865 stimOnset=174421.310109 flipTimestamp=174421.310120 missed=-0.006045
+174421310110: CBV3_TRIAL_META label=trialMeta context=main_trial trial=6 block=1 eventTime=174421.310109 isChange=1 magnitudeDeg=33.75 direction=1 label=M33p75 changeQuad=4 startOriDeg=33.750000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174422788151: CBV3_FLIP label=S1 context=main_trial trial=6 block=1 eventTime=174422.788151 scheduled=1 when=174422.782488 stimOnset=174422.788151 flipTimestamp=174422.788166 missed=-0.000176
+174423391154: CBV3_FLIP label=ISI context=main_trial trial=6 block=1 eventTime=174423.391154 scheduled=1 when=174423.384610 stimOnset=174423.391154 flipTimestamp=174423.391173 missed=0.000705
+174423539721: CBV3_FLIP label=S2 context=main_trial trial=6 block=1 eventTime=174423.539721 scheduled=1 when=174423.537141 stimOnset=174423.539721 flipTimestamp=174423.539737 missed=-0.003259
+174424142238: CBV3_FLIP label=Gap context=main_trial trial=6 block=1 eventTime=174424.142238 scheduled=1 when=174424.136181 stimOnset=174424.142238 flipTimestamp=174424.142254 missed=0.000218
+174424342766: CBV3_FLIP label=Q1_PAS context=main_trial trial=6 block=1 eventTime=174424.342766 scheduled=1 when=174424.338277 stimOnset=174424.342766 flipTimestamp=174424.342780 missed=-0.001351
+174427887771: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=6 block=1 eventTime=174427.887771 pas=2 keyCode=87 rtMs=3545.005
+174427895099: CBV3_FLIP label=Q2_Loc context=main_trial trial=6 block=1 eventTime=174427.895099 scheduled=1 when=174427.893433 stimOnset=174427.895099 flipTimestamp=174427.895114 missed=-0.003064
+174428287779: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=6 block=1 eventTime=174428.287779 loc=4 keyCode=99 rtMs=392.680
+174428295369: CBV3_FLIP label=ITI context=main_trial trial=6 block=1 eventTime=174428.295369 scheduled=1 when=174428.293429 stimOnset=174428.295369 flipTimestamp=174428.295384 missed=-0.001818
+B01 006/040 | RUN 006/240 | CHG 33.75deg TGT=BR | PAS=2  LOC=BR OK | SEEING     
+174429304006: CBV3_FLIP label=FixOn context=main_trial trial=7 block=1 eventTime=174429.304006 scheduled=1 when=174429.302575 stimOnset=174429.304006 flipTimestamp=174429.304016 missed=-0.002424
+174429304006: CBV3_TRIAL_META label=trialMeta context=main_trial trial=7 block=1 eventTime=174429.304006 isChange=1 magnitudeDeg=67.50 direction=1 label=M67p5 changeQuad=1 startOriDeg=11.250000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174431099448: CBV3_FLIP label=S1 context=main_trial trial=7 block=1 eventTime=174431.099448 scheduled=1 when=174431.093383 stimOnset=174431.099448 flipTimestamp=174431.099463 missed=0.000225
+174431701684: CBV3_FLIP label=ISI context=main_trial trial=7 block=1 eventTime=174431.701684 scheduled=1 when=174431.695907 stimOnset=174431.701684 flipTimestamp=174431.701699 missed=-0.000063
+174431849811: CBV3_FLIP label=S2 context=main_trial trial=7 block=1 eventTime=174431.849811 scheduled=1 when=174431.847670 stimOnset=174431.849811 flipTimestamp=174431.849827 missed=-0.003699
+174432452133: CBV3_FLIP label=Gap context=main_trial trial=7 block=1 eventTime=174432.452133 scheduled=1 when=174432.446270 stimOnset=174432.452133 flipTimestamp=174432.452148 missed=0.000023
+174432652743: CBV3_FLIP label=Q1_PAS context=main_trial trial=7 block=1 eventTime=174432.652743 scheduled=1 when=174432.648172 stimOnset=174432.652743 flipTimestamp=174432.652761 missed=-0.001269
+174433327780: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=7 block=1 eventTime=174433.327780 pas=4 keyCode=82 rtMs=675.038
+174433334814: CBV3_FLIP label=Q2_Loc context=main_trial trial=7 block=1 eventTime=174433.334814 scheduled=1 when=174433.333080 stimOnset=174433.334814 flipTimestamp=174433.334826 missed=-0.003648
+174433663798: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=7 block=1 eventTime=174433.663798 loc=1 keyCode=103 rtMs=328.984
+174433670996: CBV3_FLIP label=ITI context=main_trial trial=7 block=1 eventTime=174433.670996 scheduled=1 when=174433.669318 stimOnset=174433.670996 flipTimestamp=174433.671006 missed=-0.007513
+B01 007/040 | RUN 007/240 | CHG 67.50deg TGT=TL | PAS=4  LOC=TL OK | SEEING     
+174434679908: CBV3_FLIP label=FixOn context=main_trial trial=8 block=1 eventTime=174434.679907 scheduled=1 when=174434.677821 stimOnset=174434.679907 flipTimestamp=174434.679917 missed=-0.002149
+174434679908: CBV3_TRIAL_META label=trialMeta context=main_trial trial=8 block=1 eventTime=174434.679907 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174435757943: CBV3_FLIP label=S1 context=main_trial trial=8 block=1 eventTime=174435.757943 scheduled=1 when=174435.751866 stimOnset=174435.757943 flipTimestamp=174435.757959 missed=0.000238
+174436360479: CBV3_FLIP label=ISI context=main_trial trial=8 block=1 eventTime=174436.360479 scheduled=1 when=174436.354402 stimOnset=174436.360479 flipTimestamp=174436.360495 missed=0.000238
+174436511388: CBV3_FLIP label=S2 context=main_trial trial=8 block=1 eventTime=174436.511388 scheduled=1 when=174436.506466 stimOnset=174436.511388 flipTimestamp=174436.511407 missed=-0.000917
+174437112441: CBV3_FLIP label=Gap context=main_trial trial=8 block=1 eventTime=174437.112441 scheduled=1 when=174437.107847 stimOnset=174437.112441 flipTimestamp=174437.112457 missed=-0.001246
+174437312884: CBV3_FLIP label=Q1_PAS context=main_trial trial=8 block=1 eventTime=174437.312884 scheduled=1 when=174437.308480 stimOnset=174437.312884 flipTimestamp=174437.312900 missed=-0.001436
+174438095841: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=8 block=1 eventTime=174438.095841 pas=2 keyCode=87 rtMs=782.958
+174438102299: CBV3_FLIP label=Q2_Loc context=main_trial trial=8 block=1 eventTime=174438.102299 scheduled=1 when=174438.100772 stimOnset=174438.102299 flipTimestamp=174438.102310 missed=-0.004751
+174438799778: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=8 block=1 eventTime=174438.799778 loc=3 keyCode=97 rtMs=697.479
+174438807399: CBV3_FLIP label=ITI context=main_trial trial=8 block=1 eventTime=174438.807399 scheduled=1 when=174438.805669 stimOnset=174438.807399 flipTimestamp=174438.807411 missed=-0.005645
+B01 008/040 | RUN 008/240 | NCH       -- TGT=-- | PAS=2  LOC=BL -- | FA         
+174439816112: CBV3_FLIP label=FixOn context=main_trial trial=9 block=1 eventTime=174439.816111 scheduled=1 when=174439.814795 stimOnset=174439.816111 flipTimestamp=174439.816121 missed=-0.002349
+174439816112: CBV3_TRIAL_META label=trialMeta context=main_trial trial=9 block=1 eventTime=174439.816111 isChange=1 magnitudeDeg=11.25 direction=-1 label=M11p25 changeQuad=2 startOriDeg=157.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174441778257: CBV3_FLIP label=S1 context=main_trial trial=9 block=1 eventTime=174441.778257 scheduled=1 when=174441.772331 stimOnset=174441.778257 flipTimestamp=174441.778273 missed=0.000087
+174442380455: CBV3_FLIP label=ISI context=main_trial trial=9 block=1 eventTime=174442.380455 scheduled=1 when=174442.374716 stimOnset=174442.380455 flipTimestamp=174442.380470 missed=-0.000100
+174442530947: CBV3_FLIP label=S2 context=main_trial trial=9 block=1 eventTime=174442.530947 scheduled=1 when=174442.526442 stimOnset=174442.530947 flipTimestamp=174442.530961 missed=-0.001334
+174443131769: CBV3_FLIP label=Gap context=main_trial trial=9 block=1 eventTime=174443.131769 scheduled=1 when=174443.127406 stimOnset=174443.131769 flipTimestamp=174443.131788 missed=-0.001477
+174443332200: CBV3_FLIP label=Q1_PAS context=main_trial trial=9 block=1 eventTime=174443.332200 scheduled=1 when=174443.327808 stimOnset=174443.332200 flipTimestamp=174443.332220 missed=-0.001448
+174444031784: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=9 block=1 eventTime=174444.031784 pas=1 keyCode=81 rtMs=699.584
+174444039598: CBV3_FLIP label=Q2_Loc context=main_trial trial=9 block=1 eventTime=174444.039597 scheduled=1 when=174444.037741 stimOnset=174444.039597 flipTimestamp=174444.039608 missed=-0.003348
+174444271693: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=9 block=1 eventTime=174444.271693 loc=1 keyCode=103 rtMs=232.096
+174444279046: CBV3_FLIP label=ITI context=main_trial trial=9 block=1 eventTime=174444.279046 scheduled=1 when=174444.277633 stimOnset=174444.279046 flipTimestamp=174444.279055 missed=-0.004141
+B01 009/040 | RUN 009/240 | CHG 11.25deg TGT=TR | PAS=1  LOC=TL X  | BLIND      
+174445287058: CBV3_FLIP label=FixOn context=main_trial trial=10 block=1 eventTime=174445.287058 scheduled=1 when=174445.285657 stimOnset=174445.287058 flipTimestamp=174445.287073 missed=-0.003049
+174445287058: CBV3_TRIAL_META label=trialMeta context=main_trial trial=10 block=1 eventTime=174445.287058 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174446822474: CBV3_FLIP label=S1 context=main_trial trial=10 block=1 eventTime=174446.822474 scheduled=1 when=174446.817831 stimOnset=174446.822474 flipTimestamp=174446.822493 missed=-0.001196
+174447424841: CBV3_FLIP label=ISI context=main_trial trial=10 block=1 eventTime=174447.424840 scheduled=1 when=174447.418934 stimOnset=174447.424840 flipTimestamp=174447.424856 missed=0.000067
+174447572365: CBV3_FLIP label=S2 context=main_trial trial=10 block=1 eventTime=174447.572364 scheduled=1 when=174447.570827 stimOnset=174447.572364 flipTimestamp=174447.572383 missed=-0.004302
+174448173499: CBV3_FLIP label=Gap context=main_trial trial=10 block=1 eventTime=174448.173499 scheduled=1 when=174448.168824 stimOnset=174448.173499 flipTimestamp=174448.173514 missed=-0.001164
+174448372115: CBV3_FLIP label=Q1_PAS context=main_trial trial=10 block=1 eventTime=174448.372115 scheduled=1 when=174448.369538 stimOnset=174448.372115 flipTimestamp=174448.372131 missed=-0.003262
+174451999717: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=10 block=1 eventTime=174451.999717 pas=3 keyCode=69 rtMs=3627.602
+174452007059: CBV3_FLIP label=Q2_Loc context=main_trial trial=10 block=1 eventTime=174452.007059 scheduled=1 when=174452.005376 stimOnset=174452.007059 flipTimestamp=174452.007071 missed=-0.003874
+174452911971: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=10 block=1 eventTime=174452.911971 loc=2 keyCode=105 rtMs=904.912
+174452918701: CBV3_FLIP label=ITI context=main_trial trial=10 block=1 eventTime=174452.918701 scheduled=1 when=174452.916861 stimOnset=174452.918701 flipTimestamp=174452.918713 missed=-0.007656
+B01 010/040 | RUN 010/240 | NCH       -- TGT=-- | PAS=3  LOC=TR -- | FA         
+174453927537: CBV3_FLIP label=FixOn context=main_trial trial=11 block=1 eventTime=174453.927537 scheduled=1 when=174453.925969 stimOnset=174453.927537 flipTimestamp=174453.927553 missed=-0.002224
+174453927537: CBV3_TRIAL_META label=trialMeta context=main_trial trial=11 block=1 eventTime=174453.927537 isChange=1 magnitudeDeg=11.25 direction=1 label=M11p25 changeQuad=3 startOriDeg=135 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174455439003: CBV3_FLIP label=S1 context=main_trial trial=11 block=1 eventTime=174455.439003 scheduled=1 when=174455.433284 stimOnset=174455.439003 flipTimestamp=174455.439019 missed=-0.000121
+174456040061: CBV3_FLIP label=ISI context=main_trial trial=11 block=1 eventTime=174456.040061 scheduled=1 when=174456.035462 stimOnset=174456.040061 flipTimestamp=174456.040081 missed=-0.001240
+174456187703: CBV3_FLIP label=S2 context=main_trial trial=11 block=1 eventTime=174456.187703 scheduled=1 when=174456.186048 stimOnset=174456.187703 flipTimestamp=174456.187718 missed=-0.004184
+174456788680: CBV3_FLIP label=Gap context=main_trial trial=11 block=1 eventTime=174456.788680 scheduled=1 when=174456.784162 stimOnset=174456.788680 flipTimestamp=174456.788699 missed=-0.001321
+174456989165: CBV3_FLIP label=Q1_PAS context=main_trial trial=11 block=1 eventTime=174456.989165 scheduled=1 when=174456.984719 stimOnset=174456.989165 flipTimestamp=174456.989182 missed=-0.001394
+174457151726: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=11 block=1 eventTime=174457.151726 pas=1 keyCode=81 rtMs=162.561
+174457159418: CBV3_FLIP label=Q2_Loc context=main_trial trial=11 block=1 eventTime=174457.159417 scheduled=1 when=174457.157376 stimOnset=174457.159417 flipTimestamp=174457.159434 missed=-0.006600
+174457375674: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=11 block=1 eventTime=174457.375674 loc=1 keyCode=103 rtMs=216.256
+174457382974: CBV3_FLIP label=ITI context=main_trial trial=11 block=1 eventTime=174457.382974 scheduled=1 when=174457.381507 stimOnset=174457.382974 flipTimestamp=174457.382984 missed=-0.003348
+B01 011/040 | RUN 011/240 | CHG 11.25deg TGT=BL | PAS=1  LOC=TL X  | BLIND      
+174458390976: CBV3_FLIP label=FixOn context=main_trial trial=12 block=1 eventTime=174458.390976 scheduled=1 when=174458.389270 stimOnset=174458.390976 flipTimestamp=174458.390991 missed=-0.003059
+174458390976: CBV3_TRIAL_META label=trialMeta context=main_trial trial=12 block=1 eventTime=174458.390976 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174459901793: CBV3_FLIP label=S1 context=main_trial trial=12 block=1 eventTime=174459.901793 scheduled=1 when=174459.896722 stimOnset=174459.901793 flipTimestamp=174459.901812 missed=-0.000769
+174460504211: CBV3_FLIP label=ISI context=main_trial trial=12 block=1 eventTime=174460.504211 scheduled=1 when=174460.498252 stimOnset=174460.504211 flipTimestamp=174460.504229 missed=0.000119
+174460651532: CBV3_FLIP label=S2 context=main_trial trial=12 block=1 eventTime=174460.651532 scheduled=1 when=174460.650198 stimOnset=174460.651532 flipTimestamp=174460.651547 missed=-0.004505
+174461252788: CBV3_FLIP label=Gap context=main_trial trial=12 block=1 eventTime=174461.252788 scheduled=1 when=174461.247991 stimOnset=174461.252788 flipTimestamp=174461.252804 missed=-0.001042
+174461450384: CBV3_FLIP label=Q1_PAS context=main_trial trial=12 block=1 eventTime=174461.450384 scheduled=1 when=174461.448827 stimOnset=174461.450384 flipTimestamp=174461.450402 missed=-0.004282
+174461679742: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=12 block=1 eventTime=174461.679742 pas=1 keyCode=81 rtMs=229.358
+174461687017: CBV3_FLIP label=Q2_Loc context=main_trial trial=12 block=1 eventTime=174461.687017 scheduled=1 when=174461.685038 stimOnset=174461.687017 flipTimestamp=174461.687027 missed=-0.006956
+174461887981: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=12 block=1 eventTime=174461.887981 loc=1 keyCode=103 rtMs=200.965
+174461895176: CBV3_FLIP label=ITI context=main_trial trial=12 block=1 eventTime=174461.895176 scheduled=1 when=174461.893662 stimOnset=174461.895176 flipTimestamp=174461.895196 missed=-0.002061
+B01 012/040 | RUN 012/240 | NCH       -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174462903226: CBV3_FLIP label=FixOn context=main_trial trial=13 block=1 eventTime=174462.903226 scheduled=1 when=174462.901805 stimOnset=174462.903226 flipTimestamp=174462.903241 missed=-0.003011
+174462903226: CBV3_TRIAL_META label=trialMeta context=main_trial trial=13 block=1 eventTime=174462.903226 isChange=1 magnitudeDeg=90.00 direction=1 label=M90p0 changeQuad=1 startOriDeg=112.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174464456528: CBV3_FLIP label=S1 context=main_trial trial=13 block=1 eventTime=174464.456528 scheduled=1 when=174464.450683 stimOnset=174464.456528 flipTimestamp=174464.456543 missed=0.000006
+174465057969: CBV3_FLIP label=ISI context=main_trial trial=13 block=1 eventTime=174465.057969 scheduled=1 when=174465.052987 stimOnset=174465.057969 flipTimestamp=174465.057984 missed=-0.000857
+174465205337: CBV3_FLIP label=S2 context=main_trial trial=13 block=1 eventTime=174465.205337 scheduled=1 when=174465.203956 stimOnset=174465.205337 flipTimestamp=174465.205354 missed=-0.004458
+174465807719: CBV3_FLIP label=Gap context=main_trial trial=13 block=1 eventTime=174465.807719 scheduled=1 when=174465.801796 stimOnset=174465.807719 flipTimestamp=174465.807734 missed=0.000083
+174466008022: CBV3_FLIP label=Q1_PAS context=main_trial trial=13 block=1 eventTime=174466.008022 scheduled=1 when=174466.003758 stimOnset=174466.008022 flipTimestamp=174466.008040 missed=-0.001575
+174466751695: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=13 block=1 eventTime=174466.751695 pas=2 keyCode=87 rtMs=743.673
+174466758794: CBV3_FLIP label=Q2_Loc context=main_trial trial=13 block=1 eventTime=174466.758794 scheduled=1 when=174466.756757 stimOnset=174466.758794 flipTimestamp=174466.758805 missed=-0.001684
+174467007716: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=13 block=1 eventTime=174467.007716 loc=1 keyCode=103 rtMs=248.922
+174467014452: CBV3_FLIP label=ITI context=main_trial trial=13 block=1 eventTime=174467.014452 scheduled=1 when=174467.012604 stimOnset=174467.014452 flipTimestamp=174467.014462 missed=-0.004615
+B01 013/040 | RUN 013/240 | CHG 90.00deg TGT=TL | PAS=2  LOC=TL OK | SEEING     
+174468023912: CBV3_FLIP label=FixOn context=main_trial trial=14 block=1 eventTime=174468.023912 scheduled=1 when=174468.022039 stimOnset=174468.023912 flipTimestamp=174468.023923 missed=-0.001601
+174468023912: CBV3_TRIAL_META label=trialMeta context=main_trial trial=14 block=1 eventTime=174468.023912 isChange=1 magnitudeDeg=33.75 direction=-1 label=M33p75 changeQuad=1 startOriDeg=67.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174469543834: CBV3_FLIP label=S1 context=main_trial trial=14 block=1 eventTime=174469.543834 scheduled=1 when=174469.538001 stimOnset=174469.543834 flipTimestamp=174469.543850 missed=-0.000006
+174470146079: CBV3_FLIP label=ISI context=main_trial trial=14 block=1 eventTime=174470.146079 scheduled=1 when=174470.140293 stimOnset=174470.146079 flipTimestamp=174470.146094 missed=-0.000054
+174470293469: CBV3_FLIP label=S2 context=main_trial trial=14 block=1 eventTime=174470.293469 scheduled=1 when=174470.292065 stimOnset=174470.293469 flipTimestamp=174470.293485 missed=-0.004436
+174470894417: CBV3_FLIP label=Gap context=main_trial trial=14 block=1 eventTime=174470.894417 scheduled=1 when=174470.889928 stimOnset=174470.894417 flipTimestamp=174470.894432 missed=-0.001350
+174471091983: CBV3_FLIP label=Q1_PAS context=main_trial trial=14 block=1 eventTime=174471.091983 scheduled=1 when=174471.090456 stimOnset=174471.091983 flipTimestamp=174471.092000 missed=-0.004312
+174471551757: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=14 block=1 eventTime=174471.551757 pas=2 keyCode=87 rtMs=459.774
+174471559334: CBV3_FLIP label=Q2_Loc context=main_trial trial=14 block=1 eventTime=174471.559334 scheduled=1 when=174471.557361 stimOnset=174471.559334 flipTimestamp=174471.559344 missed=-0.001475
+174471759778: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=14 block=1 eventTime=174471.759778 loc=1 keyCode=103 rtMs=200.444
+174471766678: CBV3_FLIP label=ITI context=main_trial trial=14 block=1 eventTime=174471.766678 scheduled=1 when=174471.764656 stimOnset=174471.766678 flipTimestamp=174471.766687 missed=-0.002876
+B01 014/040 | RUN 014/240 | CHG 33.75deg TGT=TL | PAS=2  LOC=TL OK | SEEING     
+174472773909: CBV3_FLIP label=FixOn context=main_trial trial=15 block=1 eventTime=174472.773909 scheduled=1 when=174472.772549 stimOnset=174472.773909 flipTimestamp=174472.773918 missed=-0.003830
+174472773909: CBV3_TRIAL_META label=trialMeta context=main_trial trial=15 block=1 eventTime=174472.773909 isChange=1 magnitudeDeg=33.75 direction=-1 label=M33p75 changeQuad=4 startOriDeg=157.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174474292636: CBV3_FLIP label=S1 context=main_trial trial=15 block=1 eventTime=174474.292636 scheduled=1 when=174474.287997 stimOnset=174474.292636 flipTimestamp=174474.292651 missed=-0.001201
+174474894678: CBV3_FLIP label=ISI context=main_trial trial=15 block=1 eventTime=174474.894678 scheduled=1 when=174474.889095 stimOnset=174474.894678 flipTimestamp=174474.894694 missed=-0.000257
+174475045363: CBV3_FLIP label=S2 context=main_trial trial=15 block=1 eventTime=174475.045363 scheduled=1 when=174475.040665 stimOnset=174475.045363 flipTimestamp=174475.045376 missed=-0.001141
+174475647784: CBV3_FLIP label=Gap context=main_trial trial=15 block=1 eventTime=174475.647784 scheduled=1 when=174475.641822 stimOnset=174475.647784 flipTimestamp=174475.647813 missed=0.000123
+174475848502: CBV3_FLIP label=Q1_PAS context=main_trial trial=15 block=1 eventTime=174475.848502 scheduled=1 when=174475.843823 stimOnset=174475.848502 flipTimestamp=174475.848517 missed=-0.001161
+174476543819: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=15 block=1 eventTime=174476.543819 pas=3 keyCode=69 rtMs=695.317
+174476551166: CBV3_FLIP label=Q2_Loc context=main_trial trial=15 block=1 eventTime=174476.551166 scheduled=1 when=174476.549425 stimOnset=174476.551166 flipTimestamp=174476.551177 missed=-0.008081
+174476783714: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=15 block=1 eventTime=174476.783714 loc=4 keyCode=99 rtMs=232.548
+174476790627: CBV3_FLIP label=ITI context=main_trial trial=15 block=1 eventTime=174476.790627 scheduled=1 when=174476.788771 stimOnset=174476.790627 flipTimestamp=174476.790638 missed=-0.004128
+B01 015/040 | RUN 015/240 | CHG 33.75deg TGT=BR | PAS=3  LOC=BR OK | SEEING     
+174477799824: CBV3_FLIP label=FixOn context=main_trial trial=16 block=1 eventTime=174477.799824 scheduled=1 when=174477.797059 stimOnset=174477.799824 flipTimestamp=174477.799842 missed=-0.001864
+174477799824: CBV3_TRIAL_META label=trialMeta context=main_trial trial=16 block=1 eventTime=174477.799824 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174479593857: CBV3_FLIP label=S1 context=main_trial trial=16 block=1 eventTime=174479.593857 scheduled=1 when=174479.589202 stimOnset=174479.593857 flipTimestamp=174479.593885 missed=-0.001185
+174480194878: CBV3_FLIP label=ISI context=main_trial trial=16 block=1 eventTime=174480.194878 scheduled=1 when=174480.190316 stimOnset=174480.194878 flipTimestamp=174480.194894 missed=-0.001278
+174480345443: CBV3_FLIP label=S2 context=main_trial trial=16 block=1 eventTime=174480.345443 scheduled=1 when=174480.340864 stimOnset=174480.345443 flipTimestamp=174480.345458 missed=-0.001261
+174480947474: CBV3_FLIP label=Gap context=main_trial trial=16 block=1 eventTime=174480.947474 scheduled=1 when=174480.941902 stimOnset=174480.947474 flipTimestamp=174480.947490 missed=-0.000268
+174481148178: CBV3_FLIP label=Q1_PAS context=main_trial trial=16 block=1 eventTime=174481.148178 scheduled=1 when=174481.143513 stimOnset=174481.148178 flipTimestamp=174481.148194 missed=-0.001174
+174484063770: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=16 block=1 eventTime=174484.063770 pas=2 keyCode=87 rtMs=2915.592
+174484070902: CBV3_FLIP label=Q2_Loc context=main_trial trial=16 block=1 eventTime=174484.070902 scheduled=1 when=174484.069185 stimOnset=174484.070902 flipTimestamp=174484.070911 missed=-0.007017
+174485087612: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=16 block=1 eventTime=174485.087612 loc=2 keyCode=105 rtMs=1016.711
+174485094440: CBV3_FLIP label=ITI context=main_trial trial=16 block=1 eventTime=174485.094440 scheduled=1 when=174485.092938 stimOnset=174485.094440 flipTimestamp=174485.094450 missed=-0.004206
+B01 016/040 | RUN 016/240 | NCH       -- TGT=-- | PAS=2  LOC=TR -- | FA         
+174486101808: CBV3_FLIP label=FixOn context=main_trial trial=17 block=1 eventTime=174486.101808 scheduled=1 when=174486.101101 stimOnset=174486.101808 flipTimestamp=174486.101819 missed=-0.003693
+174486101808: CBV3_TRIAL_META label=trialMeta context=main_trial trial=17 block=1 eventTime=174486.101808 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174487187937: CBV3_FLIP label=S1 context=main_trial trial=17 block=1 eventTime=174487.187937 scheduled=1 when=174487.182109 stimOnset=174487.187937 flipTimestamp=174487.187957 missed=-0.000011
+174487789216: CBV3_FLIP label=ISI context=main_trial trial=17 block=1 eventTime=174487.789216 scheduled=1 when=174487.784396 stimOnset=174487.789216 flipTimestamp=174487.789234 missed=-0.001019
+174487936649: CBV3_FLIP label=S2 context=main_trial trial=17 block=1 eventTime=174487.936649 scheduled=1 when=174487.935203 stimOnset=174487.936649 flipTimestamp=174487.936665 missed=-0.004393
+174488537560: CBV3_FLIP label=Gap context=main_trial trial=17 block=1 eventTime=174488.537560 scheduled=1 when=174488.533108 stimOnset=174488.537560 flipTimestamp=174488.537579 missed=-0.001387
+174488737795: CBV3_FLIP label=Q1_PAS context=main_trial trial=17 block=1 eventTime=174488.737794 scheduled=1 when=174488.733599 stimOnset=174488.737794 flipTimestamp=174488.737812 missed=-0.001644
+174491215767: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=17 block=1 eventTime=174491.215767 pas=1 keyCode=81 rtMs=2477.973
+174491222332: CBV3_FLIP label=Q2_Loc context=main_trial trial=17 block=1 eventTime=174491.222332 scheduled=1 when=174491.220605 stimOnset=174491.222332 flipTimestamp=174491.222345 missed=-0.003073
+174491535702: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=17 block=1 eventTime=174491.535702 loc=1 keyCode=103 rtMs=313.370
+174491542932: CBV3_FLIP label=ITI context=main_trial trial=17 block=1 eventTime=174491.542932 scheduled=1 when=174491.540982 stimOnset=174491.542932 flipTimestamp=174491.542946 missed=-0.006410
+B01 017/040 | RUN 017/240 | NCH       -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174492549736: CBV3_FLIP label=FixOn context=main_trial trial=18 block=1 eventTime=174492.549736 scheduled=1 when=174492.548926 stimOnset=174492.549736 flipTimestamp=174492.549747 missed=-0.004256
+174492549736: CBV3_TRIAL_META label=trialMeta context=main_trial trial=18 block=1 eventTime=174492.549736 isChange=1 magnitudeDeg=90.00 direction=1 label=M90p0 changeQuad=3 startOriDeg=33.750000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174494443968: CBV3_FLIP label=S1 context=main_trial trial=18 block=1 eventTime=174494.443968 scheduled=1 when=174494.439219 stimOnset=174494.443968 flipTimestamp=174494.443983 missed=-0.001090
+174495046170: CBV3_FLIP label=ISI context=main_trial trial=18 block=1 eventTime=174495.046170 scheduled=1 when=174495.040427 stimOnset=174495.046170 flipTimestamp=174495.046185 missed=-0.000097
+174495194731: CBV3_FLIP label=S2 context=main_trial trial=18 block=1 eventTime=174495.194731 scheduled=1 when=174495.192157 stimOnset=174495.194731 flipTimestamp=174495.194747 missed=-0.003265
+174495796999: CBV3_FLIP label=Gap context=main_trial trial=18 block=1 eventTime=174495.796999 scheduled=1 when=174495.791190 stimOnset=174495.796999 flipTimestamp=174495.797015 missed=-0.000031
+174495999573: CBV3_FLIP label=Q1_PAS context=main_trial trial=18 block=1 eventTime=174495.999573 scheduled=1 when=174495.993038 stimOnset=174495.999573 flipTimestamp=174495.999588 missed=0.000695
+174499343595: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=18 block=1 eventTime=174499.343595 pas=2 keyCode=87 rtMs=3344.022
+174499350464: CBV3_FLIP label=Q2_Loc context=main_trial trial=18 block=1 eventTime=174499.350464 scheduled=1 when=174499.349486 stimOnset=174499.350464 flipTimestamp=174499.350489 missed=-0.004296
+174499663688: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=18 block=1 eventTime=174499.663688 loc=3 keyCode=97 rtMs=313.225
+174499669780: CBV3_FLIP label=ITI context=main_trial trial=18 block=1 eventTime=174499.669780 scheduled=1 when=174499.668934 stimOnset=174499.669780 flipTimestamp=174499.669790 missed=-0.007694
+B01 018/040 | RUN 018/240 | CHG 90.00deg TGT=BL | PAS=2  LOC=BL OK | SEEING     
+174500677456: CBV3_FLIP label=FixOn context=main_trial trial=19 block=1 eventTime=174500.677456 scheduled=1 when=174500.675579 stimOnset=174500.677456 flipTimestamp=174500.677471 missed=-0.003384
+174500677456: CBV3_TRIAL_META label=trialMeta context=main_trial trial=19 block=1 eventTime=174500.677456 isChange=1 magnitudeDeg=45.00 direction=-1 label=M45p0 changeQuad=4 startOriDeg=78.750000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174502518264: CBV3_FLIP label=S1 context=main_trial trial=19 block=1 eventTime=174502.518264 scheduled=1 when=174502.516886 stimOnset=174502.518264 flipTimestamp=174502.518282 missed=-0.004461
+174503120533: CBV3_FLIP label=ISI context=main_trial trial=19 block=1 eventTime=174503.120533 scheduled=1 when=174503.114723 stimOnset=174503.120533 flipTimestamp=174503.120551 missed=-0.000030
+174503268029: CBV3_FLIP label=S2 context=main_trial trial=19 block=1 eventTime=174503.268028 scheduled=1 when=174503.266519 stimOnset=174503.268028 flipTimestamp=174503.268044 missed=-0.004330
+174503870181: CBV3_FLIP label=Gap context=main_trial trial=19 block=1 eventTime=174503.870181 scheduled=1 when=174503.864488 stimOnset=174503.870181 flipTimestamp=174503.870196 missed=-0.000146
+174504067775: CBV3_FLIP label=Q1_PAS context=main_trial trial=19 block=1 eventTime=174504.067775 scheduled=1 when=174504.066220 stimOnset=174504.067775 flipTimestamp=174504.067791 missed=-0.004284
+174505215618: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=19 block=1 eventTime=174505.215618 pas=4 keyCode=82 rtMs=1147.842
+174505222869: CBV3_FLIP label=Q2_Loc context=main_trial trial=19 block=1 eventTime=174505.222869 scheduled=1 when=174505.221211 stimOnset=174505.222869 flipTimestamp=174505.222883 missed=-0.006125
+174505503671: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=19 block=1 eventTime=174505.503671 loc=4 keyCode=99 rtMs=280.802
+174505510318: CBV3_FLIP label=ITI context=main_trial trial=19 block=1 eventTime=174505.510318 scheduled=1 when=174505.508598 stimOnset=174505.510318 flipTimestamp=174505.510327 missed=-0.006193
+B01 019/040 | RUN 019/240 | CHG 45.00deg TGT=BR | PAS=4  LOC=BR OK | SEEING     
+174506517105: CBV3_FLIP label=FixOn context=main_trial trial=20 block=1 eventTime=174506.517105 scheduled=1 when=174506.516323 stimOnset=174506.517105 flipTimestamp=174506.517114 missed=-0.004274
+174506517105: CBV3_TRIAL_META label=trialMeta context=main_trial trial=20 block=1 eventTime=174506.517105 isChange=1 magnitudeDeg=67.50 direction=-1 label=M67p5 changeQuad=2 startOriDeg=146.250000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174508420850: CBV3_FLIP label=S1 context=main_trial trial=20 block=1 eventTime=174508.420850 scheduled=1 when=174508.414929 stimOnset=174508.420850 flipTimestamp=174508.420870 missed=0.000081
+174509022042: CBV3_FLIP label=ISI context=main_trial trial=20 block=1 eventTime=174509.022042 scheduled=1 when=174509.017309 stimOnset=174509.022042 flipTimestamp=174509.022069 missed=-0.001107
+174509169717: CBV3_FLIP label=S2 context=main_trial trial=20 block=1 eventTime=174509.169717 scheduled=1 when=174509.168028 stimOnset=174509.169717 flipTimestamp=174509.169732 missed=-0.004151
+174509770990: CBV3_FLIP label=Gap context=main_trial trial=20 block=1 eventTime=174509.770990 scheduled=1 when=174509.766176 stimOnset=174509.770990 flipTimestamp=174509.771006 missed=-0.001025
+174509971874: CBV3_FLIP label=Q1_PAS context=main_trial trial=20 block=1 eventTime=174509.971874 scheduled=1 when=174509.967029 stimOnset=174509.971874 flipTimestamp=174509.971896 missed=-0.000995
+174510799641: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=20 block=1 eventTime=174510.799641 pas=2 keyCode=87 rtMs=827.767
+174510805402: CBV3_FLIP label=Q2_Loc context=main_trial trial=20 block=1 eventTime=174510.805402 scheduled=1 when=174510.804608 stimOnset=174510.805402 flipTimestamp=174510.805414 missed=-0.002348
+174511007592: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=20 block=1 eventTime=174511.007592 loc=2 keyCode=105 rtMs=202.190
+174511014012: CBV3_FLIP label=ITI context=main_trial trial=20 block=1 eventTime=174511.014012 scheduled=1 when=174511.012499 stimOnset=174511.014012 flipTimestamp=174511.014024 missed=-0.001611
+B01 020/040 | RUN 020/240 | CHG 67.50deg TGT=TR | PAS=2  LOC=TR OK | SEEING     
+174512021306: CBV3_FLIP label=FixOn context=main_trial trial=21 block=1 eventTime=174512.021306 scheduled=1 when=174512.019896 stimOnset=174512.021306 flipTimestamp=174512.021316 missed=-0.003767
+174512021306: CBV3_TRIAL_META label=trialMeta context=main_trial trial=21 block=1 eventTime=174512.021306 isChange=1 magnitudeDeg=22.50 direction=1 label=M22p5 changeQuad=1 startOriDeg=56.250000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174513041067: CBV3_FLIP label=S1 context=main_trial trial=21 block=1 eventTime=174513.041067 scheduled=1 when=174513.034869 stimOnset=174513.041067 flipTimestamp=174513.041083 missed=0.000358
+174513642078: CBV3_FLIP label=ISI context=main_trial trial=21 block=1 eventTime=174513.642078 scheduled=1 when=174513.637526 stimOnset=174513.642078 flipTimestamp=174513.642094 missed=-0.001287
+174513792109: CBV3_FLIP label=S2 context=main_trial trial=21 block=1 eventTime=174513.792109 scheduled=1 when=174513.788065 stimOnset=174513.792109 flipTimestamp=174513.792130 missed=-0.001795
+174514393042: CBV3_FLIP label=Gap context=main_trial trial=21 block=1 eventTime=174514.393042 scheduled=1 when=174514.388568 stimOnset=174514.393042 flipTimestamp=174514.393062 missed=-0.001366
+174514590476: CBV3_FLIP label=Q1_PAS context=main_trial trial=21 block=1 eventTime=174514.590476 scheduled=1 when=174514.589081 stimOnset=174514.590476 flipTimestamp=174514.590491 missed=-0.004445
+174514959656: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=21 block=1 eventTime=174514.959656 pas=4 keyCode=82 rtMs=369.180
+174514966630: CBV3_FLIP label=Q2_Loc context=main_trial trial=21 block=1 eventTime=174514.966630 scheduled=1 when=174514.964694 stimOnset=174514.966630 flipTimestamp=174514.966646 missed=-0.000908
+174515551812: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=21 block=1 eventTime=174515.551812 loc=1 keyCode=103 rtMs=585.182
+174515559130: CBV3_FLIP label=ITI context=main_trial trial=21 block=1 eventTime=174515.559130 scheduled=1 when=174515.557275 stimOnset=174515.559130 flipTimestamp=174515.559141 missed=-0.001457
+B01 021/040 | RUN 021/240 | CHG 22.50deg TGT=TL | PAS=4  LOC=TL OK | SEEING     
+174516566881: CBV3_FLIP label=FixOn context=main_trial trial=22 block=1 eventTime=174516.566881 scheduled=1 when=174516.565178 stimOnset=174516.566881 flipTimestamp=174516.566891 missed=-0.003309
+174516566881: CBV3_TRIAL_META label=trialMeta context=main_trial trial=22 block=1 eventTime=174516.566881 isChange=1 magnitudeDeg=67.50 direction=-1 label=M67p5 changeQuad=3 startOriDeg=112.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174517877157: CBV3_FLIP label=S1 context=main_trial trial=22 block=1 eventTime=174517.877157 scheduled=1 when=174517.872418 stimOnset=174517.877157 flipTimestamp=174517.877173 missed=-0.001100
+174518478376: CBV3_FLIP label=ISI context=main_trial trial=22 block=1 eventTime=174518.478376 scheduled=1 when=174518.473617 stimOnset=174518.478376 flipTimestamp=174518.478392 missed=-0.001080
+174518625725: CBV3_FLIP label=S2 context=main_trial trial=22 block=1 eventTime=174518.625725 scheduled=1 when=174518.624362 stimOnset=174518.625725 flipTimestamp=174518.625741 missed=-0.004477
+174519227857: CBV3_FLIP label=Gap context=main_trial trial=22 block=1 eventTime=174519.227857 scheduled=1 when=174519.222184 stimOnset=174519.227857 flipTimestamp=174519.227873 missed=-0.000167
+174519425292: CBV3_FLIP label=Q1_PAS context=main_trial trial=22 block=1 eventTime=174519.425292 scheduled=1 when=174519.423896 stimOnset=174519.425292 flipTimestamp=174519.425311 missed=-0.004443
+174519615724: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=22 block=1 eventTime=174519.615724 pas=3 keyCode=69 rtMs=190.431
+174519621864: CBV3_FLIP label=Q2_Loc context=main_trial trial=22 block=1 eventTime=174519.621864 scheduled=1 when=174519.621055 stimOnset=174519.621864 flipTimestamp=174519.621877 missed=-0.005307
+174519855644: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=22 block=1 eventTime=174519.855644 loc=3 keyCode=97 rtMs=233.780
+174519862808: CBV3_FLIP label=ITI context=main_trial trial=22 block=1 eventTime=174519.862808 scheduled=1 when=174519.860552 stimOnset=174519.862808 flipTimestamp=174519.862820 missed=-0.002645
+B01 022/040 | RUN 022/240 | CHG 67.50deg TGT=BL | PAS=3  LOC=BL OK | SEEING     
+174520871258: CBV3_FLIP label=FixOn context=main_trial trial=23 block=1 eventTime=174520.871258 scheduled=1 when=174520.869337 stimOnset=174520.871258 flipTimestamp=174520.871273 missed=-0.002610
+174520871258: CBV3_TRIAL_META label=trialMeta context=main_trial trial=23 block=1 eventTime=174520.871258 isChange=1 magnitudeDeg=90.00 direction=1 label=M90p0 changeQuad=1 startOriDeg=135 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174522299410: CBV3_FLIP label=S1 context=main_trial trial=23 block=1 eventTime=174522.299410 scheduled=1 when=174522.293584 stimOnset=174522.299410 flipTimestamp=174522.299427 missed=-0.000013
+174522900397: CBV3_FLIP label=ISI context=main_trial trial=23 block=1 eventTime=174522.900397 scheduled=1 when=174522.895869 stimOnset=174522.900397 flipTimestamp=174522.900412 missed=-0.001312
+174523048681: CBV3_FLIP label=S2 context=main_trial trial=23 block=1 eventTime=174523.048681 scheduled=1 when=174523.046384 stimOnset=174523.048681 flipTimestamp=174523.048697 missed=-0.003542
+174523649899: CBV3_FLIP label=Gap context=main_trial trial=23 block=1 eventTime=174523.649899 scheduled=1 when=174523.645140 stimOnset=174523.649899 flipTimestamp=174523.649914 missed=-0.001081
+174523850861: CBV3_FLIP label=Q1_PAS context=main_trial trial=23 block=1 eventTime=174523.850861 scheduled=1 when=174523.845938 stimOnset=174523.850861 flipTimestamp=174523.850879 missed=-0.000916
+174524047681: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=23 block=1 eventTime=174524.047681 pas=3 keyCode=69 rtMs=196.820
+174524054170: CBV3_FLIP label=Q2_Loc context=main_trial trial=23 block=1 eventTime=174524.054170 scheduled=1 when=174524.052870 stimOnset=174524.054170 flipTimestamp=174524.054179 missed=-0.006912
+174524335690: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=23 block=1 eventTime=174524.335690 loc=1 keyCode=103 rtMs=281.520
+174524342356: CBV3_FLIP label=ITI context=main_trial trial=23 block=1 eventTime=174524.342356 scheduled=1 when=174524.341428 stimOnset=174524.342356 flipTimestamp=174524.342366 missed=-0.005455
+B01 023/040 | RUN 023/240 | CHG 90.00deg TGT=TL | PAS=3  LOC=TL OK | SEEING     
+174525349945: CBV3_FLIP label=FixOn context=main_trial trial=24 block=1 eventTime=174525.349945 scheduled=1 when=174525.348570 stimOnset=174525.349945 flipTimestamp=174525.349956 missed=-0.003472
+174525349945: CBV3_TRIAL_META label=trialMeta context=main_trial trial=24 block=1 eventTime=174525.349945 isChange=1 magnitudeDeg=22.50 direction=-1 label=M22p5 changeQuad=2 startOriDeg=168.750000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174527285708: CBV3_FLIP label=S1 context=main_trial trial=24 block=1 eventTime=174527.285708 scheduled=1 when=174527.281138 stimOnset=174527.285708 flipTimestamp=174527.285723 missed=-0.001270
+174527887003: CBV3_FLIP label=ISI context=main_trial trial=24 block=1 eventTime=174527.887003 scheduled=1 when=174527.882167 stimOnset=174527.887003 flipTimestamp=174527.887018 missed=-0.001003
+174528037443: CBV3_FLIP label=S2 context=main_trial trial=24 block=1 eventTime=174528.037443 scheduled=1 when=174528.032990 stimOnset=174528.037443 flipTimestamp=174528.037458 missed=-0.001386
+174528638632: CBV3_FLIP label=Gap context=main_trial trial=24 block=1 eventTime=174528.638632 scheduled=1 when=174528.633902 stimOnset=174528.638632 flipTimestamp=174528.638646 missed=-0.001110
+174528839313: CBV3_FLIP label=Q1_PAS context=main_trial trial=24 block=1 eventTime=174528.839313 scheduled=1 when=174528.834671 stimOnset=174528.839313 flipTimestamp=174528.839331 missed=-0.001197
+174529167733: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=24 block=1 eventTime=174529.167733 pas=2 keyCode=87 rtMs=328.420
+174529175208: CBV3_FLIP label=Q2_Loc context=main_trial trial=24 block=1 eventTime=174529.175208 scheduled=1 when=174529.173344 stimOnset=174529.175208 flipTimestamp=174529.175218 missed=-0.007799
+174529391604: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=24 block=1 eventTime=174529.391604 loc=2 keyCode=105 rtMs=216.396
+174529399244: CBV3_FLIP label=ITI context=main_trial trial=24 block=1 eventTime=174529.399243 scheduled=1 when=174529.397345 stimOnset=174529.399243 flipTimestamp=174529.399254 missed=-0.002869
+B01 024/040 | RUN 024/240 | CHG 22.50deg TGT=TR | PAS=2  LOC=TR OK | SEEING     
+174530407802: CBV3_FLIP label=FixOn context=main_trial trial=25 block=1 eventTime=174530.407801 scheduled=1 when=174530.405177 stimOnset=174530.407801 flipTimestamp=174530.407819 missed=-0.002503
+174530407802: CBV3_TRIAL_META label=trialMeta context=main_trial trial=25 block=1 eventTime=174530.407801 isChange=1 magnitudeDeg=45.00 direction=1 label=M45p0 changeQuad=3 startOriDeg=22.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174531776125: CBV3_FLIP label=S1 context=main_trial trial=25 block=1 eventTime=174531.776125 scheduled=1 when=174531.771733 stimOnset=174531.776125 flipTimestamp=174531.776140 missed=-0.001447
+174532378518: CBV3_FLIP label=ISI context=main_trial trial=25 block=1 eventTime=174532.378518 scheduled=1 when=174532.372584 stimOnset=174532.378518 flipTimestamp=174532.378551 missed=0.000095
+174532525917: CBV3_FLIP label=S2 context=main_trial trial=25 block=1 eventTime=174532.525917 scheduled=1 when=174532.524505 stimOnset=174532.525917 flipTimestamp=174532.525931 missed=-0.004427
+174533127127: CBV3_FLIP label=Gap context=main_trial trial=25 block=1 eventTime=174533.127127 scheduled=1 when=174533.122376 stimOnset=174533.127127 flipTimestamp=174533.127143 missed=-0.001088
+174533327638: CBV3_FLIP label=Q1_PAS context=main_trial trial=25 block=1 eventTime=174533.327638 scheduled=1 when=174533.323166 stimOnset=174533.327638 flipTimestamp=174533.327656 missed=-0.001367
+174533503618: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=25 block=1 eventTime=174533.503618 pas=3 keyCode=69 rtMs=175.979
+174533509382: CBV3_FLIP label=Q2_Loc context=main_trial trial=25 block=1 eventTime=174533.509382 scheduled=1 when=174533.508707 stimOnset=174533.509382 flipTimestamp=174533.509395 missed=-0.003450
+174533791587: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=25 block=1 eventTime=174533.791587 loc=3 keyCode=97 rtMs=282.204
+174533797715: CBV3_FLIP label=ITI context=main_trial trial=25 block=1 eventTime=174533.797715 scheduled=1 when=174533.796804 stimOnset=174533.797715 flipTimestamp=174533.797727 missed=-0.005308
+B01 025/040 | RUN 025/240 | CHG 45.00deg TGT=BL | PAS=3  LOC=BL OK | SEEING     
+174534805745: CBV3_FLIP label=FixOn context=main_trial trial=26 block=1 eventTime=174534.805745 scheduled=1 when=174534.804319 stimOnset=174534.805745 flipTimestamp=174534.805755 missed=-0.003032
+174534805745: CBV3_TRIAL_META label=trialMeta context=main_trial trial=26 block=1 eventTime=174534.805745 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174536242016: CBV3_FLIP label=S1 context=main_trial trial=26 block=1 eventTime=174536.242016 scheduled=1 when=174536.236412 stimOnset=174536.242016 flipTimestamp=174536.242030 missed=-0.000236
+174536842879: CBV3_FLIP label=ISI context=main_trial trial=26 block=1 eventTime=174536.842879 scheduled=1 when=174536.838475 stimOnset=174536.842879 flipTimestamp=174536.842895 missed=-0.001435
+174536990949: CBV3_FLIP label=S2 context=main_trial trial=26 block=1 eventTime=174536.990949 scheduled=1 when=174536.988866 stimOnset=174536.990949 flipTimestamp=174536.990966 missed=-0.003756
+174537592084: CBV3_FLIP label=Gap context=main_trial trial=26 block=1 eventTime=174537.592084 scheduled=1 when=174537.587409 stimOnset=174537.592084 flipTimestamp=174537.592100 missed=-0.001164
+174537789750: CBV3_FLIP label=Q1_PAS context=main_trial trial=26 block=1 eventTime=174537.789750 scheduled=1 when=174537.788123 stimOnset=174537.789750 flipTimestamp=174537.789767 missed=-0.004212
+174537999686: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=26 block=1 eventTime=174537.999686 pas=1 keyCode=81 rtMs=209.935
+174538007252: CBV3_FLIP label=Q2_Loc context=main_trial trial=26 block=1 eventTime=174538.007252 scheduled=1 when=174538.004924 stimOnset=174538.007252 flipTimestamp=174538.007261 missed=-0.001061
+174538271519: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=26 block=1 eventTime=174538.271519 loc=1 keyCode=103 rtMs=264.267
+174538277907: CBV3_FLIP label=ITI context=main_trial trial=26 block=1 eventTime=174538.277907 scheduled=1 when=174538.276520 stimOnset=174538.277907 flipTimestamp=174538.277918 missed=-0.006302
+B01 026/040 | RUN 026/240 | NCH       -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174539285936: CBV3_FLIP label=FixOn context=main_trial trial=27 block=1 eventTime=174539.285936 scheduled=1 when=174539.284580 stimOnset=174539.285936 flipTimestamp=174539.285945 missed=-0.003032
+174539285936: CBV3_TRIAL_META label=trialMeta context=main_trial trial=27 block=1 eventTime=174539.285936 isChange=1 magnitudeDeg=22.50 direction=-1 label=M22p5 changeQuad=1 startOriDeg=112.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174541164622: CBV3_FLIP label=S1 context=main_trial trial=27 block=1 eventTime=174541.164622 scheduled=1 when=174541.158734 stimOnset=174541.164622 flipTimestamp=174541.164638 missed=0.000048
+174541765991: CBV3_FLIP label=ISI context=main_trial trial=27 block=1 eventTime=174541.765991 scheduled=1 when=174541.761081 stimOnset=174541.765991 flipTimestamp=174541.766007 missed=-0.000929
+174541916655: CBV3_FLIP label=S2 context=main_trial trial=27 block=1 eventTime=174541.916655 scheduled=1 when=174541.911978 stimOnset=174541.916655 flipTimestamp=174541.916671 missed=-0.001162
+174542517719: CBV3_FLIP label=Gap context=main_trial trial=27 block=1 eventTime=174542.517719 scheduled=1 when=174542.513114 stimOnset=174542.517719 flipTimestamp=174542.517739 missed=-0.001235
+174542718868: CBV3_FLIP label=Q1_PAS context=main_trial trial=27 block=1 eventTime=174542.718868 scheduled=1 when=174542.713758 stimOnset=174542.718868 flipTimestamp=174542.718884 missed=-0.000729
+174542991655: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=27 block=1 eventTime=174542.991655 pas=3 keyCode=69 rtMs=272.787
+174542998802: CBV3_FLIP label=Q2_Loc context=main_trial trial=27 block=1 eventTime=174542.998802 scheduled=1 when=174542.996842 stimOnset=174542.998802 flipTimestamp=174542.998812 missed=-0.005366
+174543263662: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=27 block=1 eventTime=174543.263662 loc=1 keyCode=103 rtMs=264.860
+174543271198: CBV3_FLIP label=ITI context=main_trial trial=27 block=1 eventTime=174543.271198 scheduled=1 when=174543.269165 stimOnset=174543.271198 flipTimestamp=174543.271208 missed=-0.004561
+B01 027/040 | RUN 027/240 | CHG 22.50deg TGT=TL | PAS=3  LOC=TL OK | SEEING     
+174544279445: CBV3_FLIP label=FixOn context=main_trial trial=28 block=1 eventTime=174544.279445 scheduled=1 when=174544.277742 stimOnset=174544.279445 flipTimestamp=174544.279461 missed=-0.002814
+174544279445: CBV3_TRIAL_META label=trialMeta context=main_trial trial=28 block=1 eventTime=174544.279445 isChange=1 magnitudeDeg=45.00 direction=1 label=M45p0 changeQuad=2 startOriDeg=45 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174546116728: CBV3_FLIP label=S1 context=main_trial trial=28 block=1 eventTime=174546.116728 scheduled=1 when=174546.110533 stimOnset=174546.116728 flipTimestamp=174546.116750 missed=0.000356
+174546719076: CBV3_FLIP label=ISI context=main_trial trial=28 block=1 eventTime=174546.719076 scheduled=1 when=174546.713187 stimOnset=174546.719076 flipTimestamp=174546.719092 missed=0.000049
+174546869586: CBV3_FLIP label=S2 context=main_trial trial=28 block=1 eventTime=174546.869586 scheduled=1 when=174546.865063 stimOnset=174546.869586 flipTimestamp=174546.869602 missed=-0.001316
+174547470822: CBV3_FLIP label=Gap context=main_trial trial=28 block=1 eventTime=174547.470822 scheduled=1 when=174547.466045 stimOnset=174547.470822 flipTimestamp=174547.470838 missed=-0.001063
+174547671272: CBV3_FLIP label=Q1_PAS context=main_trial trial=28 block=1 eventTime=174547.671272 scheduled=1 when=174547.666861 stimOnset=174547.671272 flipTimestamp=174547.671288 missed=-0.001428
+174548367605: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=28 block=1 eventTime=174548.367605 pas=4 keyCode=82 rtMs=696.333
+174548374443: CBV3_FLIP label=Q2_Loc context=main_trial trial=28 block=1 eventTime=174548.374443 scheduled=1 when=174548.372721 stimOnset=174548.374443 flipTimestamp=174548.374452 missed=-0.007575
+174548959633: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=28 block=1 eventTime=174548.959633 loc=2 keyCode=105 rtMs=585.190
+174548966586: CBV3_FLIP label=ITI context=main_trial trial=28 block=1 eventTime=174548.966585 scheduled=1 when=174548.964826 stimOnset=174548.966585 flipTimestamp=174548.966594 missed=-0.001814
+B01 028/040 | RUN 028/240 | CHG 45.00deg TGT=TR | PAS=4  LOC=TR OK | SEEING     
+174549974454: CBV3_FLIP label=FixOn context=main_trial trial=29 block=1 eventTime=174549.974454 scheduled=1 when=174549.972423 stimOnset=174549.974454 flipTimestamp=174549.974464 missed=-0.003192
+174549974454: CBV3_TRIAL_META label=trialMeta context=main_trial trial=29 block=1 eventTime=174549.974454 isChange=1 magnitudeDeg=67.50 direction=1 label=M67p5 changeQuad=4 startOriDeg=56.250000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174551219024: CBV3_FLIP label=S1 context=main_trial trial=29 block=1 eventTime=174551.219023 scheduled=1 when=174551.213254 stimOnset=174551.219023 flipTimestamp=174551.219040 missed=-0.000070
+174551820675: CBV3_FLIP label=ISI context=main_trial trial=29 block=1 eventTime=174551.820675 scheduled=1 when=174551.815483 stimOnset=174551.820675 flipTimestamp=174551.820691 missed=-0.000647
+174551970968: CBV3_FLIP label=S2 context=main_trial trial=29 block=1 eventTime=174551.970968 scheduled=1 when=174551.966662 stimOnset=174551.970968 flipTimestamp=174551.970985 missed=-0.001533
+174552572065: CBV3_FLIP label=Gap context=main_trial trial=29 block=1 eventTime=174552.572065 scheduled=1 when=174552.567427 stimOnset=174552.572065 flipTimestamp=174552.572080 missed=-0.001202
+174552772539: CBV3_FLIP label=Q1_PAS context=main_trial trial=29 block=1 eventTime=174552.772539 scheduled=1 when=174552.768104 stimOnset=174552.772539 flipTimestamp=174552.772554 missed=-0.001405
+174552895583: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=29 block=1 eventTime=174552.895583 pas=3 keyCode=69 rtMs=123.044
+174552902177: CBV3_FLIP label=Q2_Loc context=main_trial trial=29 block=1 eventTime=174552.902177 scheduled=1 when=174552.901270 stimOnset=174552.902177 flipTimestamp=174552.902189 missed=-0.005503
+174553167636: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=29 block=1 eventTime=174553.167636 loc=4 keyCode=99 rtMs=265.459
+174553173896: CBV3_FLIP label=ITI context=main_trial trial=29 block=1 eventTime=174553.173896 scheduled=1 when=174553.173031 stimOnset=174553.173896 flipTimestamp=174553.173906 missed=-0.005239
+B01 029/040 | RUN 029/240 | CHG 67.50deg TGT=BR | PAS=3  LOC=BR OK | SEEING     
+174554180864: CBV3_FLIP label=FixOn context=main_trial trial=30 block=1 eventTime=174554.180864 scheduled=1 when=174554.179583 stimOnset=174554.180864 flipTimestamp=174554.180875 missed=-0.004093
+174554180864: CBV3_TRIAL_META label=trialMeta context=main_trial trial=30 block=1 eventTime=174554.180864 isChange=1 magnitudeDeg=11.25 direction=1 label=M11p25 changeQuad=1 startOriDeg=90 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174555354910: CBV3_FLIP label=S1 context=main_trial trial=30 block=1 eventTime=174555.354910 scheduled=1 when=174555.352927 stimOnset=174555.354910 flipTimestamp=174555.354928 missed=-0.003856
+174555955929: CBV3_FLIP label=ISI context=main_trial trial=30 block=1 eventTime=174555.955929 scheduled=1 when=174555.951369 stimOnset=174555.955929 flipTimestamp=174555.955944 missed=-0.001280
+174556105828: CBV3_FLIP label=S2 context=main_trial trial=30 block=1 eventTime=174556.105827 scheduled=1 when=174556.101916 stimOnset=174556.105827 flipTimestamp=174556.105846 missed=-0.001927
+174556707801: CBV3_FLIP label=Gap context=main_trial trial=30 block=1 eventTime=174556.707801 scheduled=1 when=174556.702287 stimOnset=174556.707801 flipTimestamp=174556.707817 missed=-0.000325
+174556905523: CBV3_FLIP label=Q1_PAS context=main_trial trial=30 block=1 eventTime=174556.905523 scheduled=1 when=174556.903840 stimOnset=174556.905523 flipTimestamp=174556.905538 missed=-0.004157
+174557759698: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=30 block=1 eventTime=174557.759698 pas=2 keyCode=87 rtMs=854.175
+174557765777: CBV3_FLIP label=Q2_Loc context=main_trial trial=30 block=1 eventTime=174557.765777 scheduled=1 when=174557.765020 stimOnset=174557.765777 flipTimestamp=174557.765787 missed=-0.008992
+174558015713: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=30 block=1 eventTime=174558.015712 loc=1 keyCode=103 rtMs=249.936
+174558022368: CBV3_FLIP label=ITI context=main_trial trial=30 block=1 eventTime=174558.022368 scheduled=1 when=174558.020592 stimOnset=174558.022368 flipTimestamp=174558.022380 missed=-0.003682
+B01 030/040 | RUN 030/240 | CHG 11.25deg TGT=TL | PAS=2  LOC=TL OK | SEEING     
+174559029901: CBV3_FLIP label=FixOn context=main_trial trial=31 block=1 eventTime=174559.029901 scheduled=1 when=174559.028595 stimOnset=174559.029901 flipTimestamp=174559.029910 missed=-0.003528
+174559029901: CBV3_TRIAL_META label=trialMeta context=main_trial trial=31 block=1 eventTime=174559.029901 isChange=1 magnitudeDeg=11.25 direction=-1 label=M11p25 changeQuad=3 startOriDeg=56.250000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174561008635: CBV3_FLIP label=S1 context=main_trial trial=31 block=1 eventTime=174561.008635 scheduled=1 when=174561.002805 stimOnset=174561.008635 flipTimestamp=174561.008651 missed=-0.000010
+174561609768: CBV3_FLIP label=ISI context=main_trial trial=31 block=1 eventTime=174561.609768 scheduled=1 when=174561.605094 stimOnset=174561.609768 flipTimestamp=174561.609785 missed=-0.001165
+174561760267: CBV3_FLIP label=S2 context=main_trial trial=31 block=1 eventTime=174561.760267 scheduled=1 when=174561.755755 stimOnset=174561.760267 flipTimestamp=174561.760283 missed=-0.001327
+174562361751: CBV3_FLIP label=Gap context=main_trial trial=31 block=1 eventTime=174562.361750 scheduled=1 when=174562.356726 stimOnset=174562.361750 flipTimestamp=174562.361776 missed=-0.000815
+174562562529: CBV3_FLIP label=Q1_PAS context=main_trial trial=31 block=1 eventTime=174562.562529 scheduled=1 when=174562.557790 stimOnset=174562.562529 flipTimestamp=174562.562544 missed=-0.001100
+174564479580: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=31 block=1 eventTime=174564.479580 pas=2 keyCode=87 rtMs=1917.051
+174564486582: CBV3_FLIP label=Q2_Loc context=main_trial trial=31 block=1 eventTime=174564.486582 scheduled=1 when=174564.484936 stimOnset=174564.486582 flipTimestamp=174564.486594 missed=-0.004637
+174564783584: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=31 block=1 eventTime=174564.783584 loc=2 keyCode=105 rtMs=297.001
+174564790895: CBV3_FLIP label=ITI context=main_trial trial=31 block=1 eventTime=174564.790895 scheduled=1 when=174564.789053 stimOnset=174564.790895 flipTimestamp=174564.790904 missed=-0.006013
+B01 031/040 | RUN 031/240 | CHG 11.25deg TGT=BL | PAS=2  LOC=TR X  | SENSING    
+174565798760: CBV3_FLIP label=FixOn context=main_trial trial=32 block=1 eventTime=174565.798760 scheduled=1 when=174565.796892 stimOnset=174565.798760 flipTimestamp=174565.798769 missed=-0.003195
+174565798760: CBV3_TRIAL_META label=trialMeta context=main_trial trial=32 block=1 eventTime=174565.798760 isChange=1 magnitudeDeg=45.00 direction=-1 label=M45p0 changeQuad=1 startOriDeg=146.250000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174567744293: CBV3_FLIP label=S1 context=main_trial trial=32 block=1 eventTime=174567.744293 scheduled=1 when=174567.738295 stimOnset=174567.744293 flipTimestamp=174567.744311 missed=0.000159
+174568345867: CBV3_FLIP label=ISI context=main_trial trial=32 block=1 eventTime=174568.345867 scheduled=1 when=174568.340752 stimOnset=174568.345867 flipTimestamp=174568.345883 missed=-0.000725
+174568493394: CBV3_FLIP label=S2 context=main_trial trial=32 block=1 eventTime=174568.493394 scheduled=1 when=174568.491853 stimOnset=174568.493394 flipTimestamp=174568.493409 missed=-0.004299
+174569094627: CBV3_FLIP label=Gap context=main_trial trial=32 block=1 eventTime=174569.094627 scheduled=1 when=174569.089853 stimOnset=174569.094627 flipTimestamp=174569.094643 missed=-0.001066
+174569295317: CBV3_FLIP label=Q1_PAS context=main_trial trial=32 block=1 eventTime=174569.295317 scheduled=1 when=174569.290666 stimOnset=174569.295317 flipTimestamp=174569.295333 missed=-0.001189
+174569679638: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=32 block=1 eventTime=174569.679638 pas=2 keyCode=87 rtMs=384.321
+174569687419: CBV3_FLIP label=Q2_Loc context=main_trial trial=32 block=1 eventTime=174569.687419 scheduled=1 when=174569.685325 stimOnset=174569.687419 flipTimestamp=174569.687429 missed=-0.001644
+174569967607: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=32 block=1 eventTime=174569.967607 loc=1 keyCode=103 rtMs=280.188
+174569974276: CBV3_FLIP label=ITI context=main_trial trial=32 block=1 eventTime=174569.974276 scheduled=1 when=174569.973417 stimOnset=174569.974276 flipTimestamp=174569.974286 missed=-0.006784
+B01 032/040 | RUN 032/240 | CHG 45.00deg TGT=TL | PAS=2  LOC=TL OK | SEEING     
+174570981938: CBV3_FLIP label=FixOn context=main_trial trial=33 block=1 eventTime=174570.981938 scheduled=1 when=174570.980444 stimOnset=174570.981938 flipTimestamp=174570.981949 missed=-0.003399
+174570981938: CBV3_TRIAL_META label=trialMeta context=main_trial trial=33 block=1 eventTime=174570.981938 isChange=1 magnitudeDeg=90.00 direction=1 label=M90p0 changeQuad=2 startOriDeg=22.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174572308779: CBV3_FLIP label=S1 context=main_trial trial=33 block=1 eventTime=174572.308779 scheduled=1 when=174572.304159 stimOnset=174572.308779 flipTimestamp=174572.308794 missed=-0.001219
+174572911011: CBV3_FLIP label=ISI context=main_trial trial=33 block=1 eventTime=174572.911011 scheduled=1 when=174572.905238 stimOnset=174572.911011 flipTimestamp=174572.911055 missed=-0.000067
+174573061638: CBV3_FLIP label=S2 context=main_trial trial=33 block=1 eventTime=174573.061638 scheduled=1 when=174573.056998 stimOnset=174573.061638 flipTimestamp=174573.061654 missed=-0.001199
+174573663867: CBV3_FLIP label=Gap context=main_trial trial=33 block=1 eventTime=174573.663867 scheduled=1 when=174573.658097 stimOnset=174573.663867 flipTimestamp=174573.663883 missed=-0.000070
+174573864552: CBV3_FLIP label=Q1_PAS context=main_trial trial=33 block=1 eventTime=174573.864552 scheduled=1 when=174573.859906 stimOnset=174573.864552 flipTimestamp=174573.864574 missed=-0.001193
+174574271533: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=33 block=1 eventTime=174574.271533 pas=3 keyCode=69 rtMs=406.981
+174574278498: CBV3_FLIP label=Q2_Loc context=main_trial trial=33 block=1 eventTime=174574.278498 scheduled=1 when=174574.276572 stimOnset=174574.278498 flipTimestamp=174574.278516 missed=-0.004827
+174574623610: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=33 block=1 eventTime=174574.623610 loc=2 keyCode=105 rtMs=345.112
+174574630118: CBV3_FLIP label=ITI context=main_trial trial=33 block=1 eventTime=174574.630118 scheduled=1 when=174574.628654 stimOnset=174574.630118 flipTimestamp=174574.630133 missed=-0.000416
+B01 033/040 | RUN 033/240 | CHG 90.00deg TGT=TR | PAS=3  LOC=TR OK | SEEING     
+174575638548: CBV3_FLIP label=FixOn context=main_trial trial=34 block=1 eventTime=174575.638548 scheduled=1 when=174575.636562 stimOnset=174575.638548 flipTimestamp=174575.638558 missed=-0.002631
+174575638548: CBV3_TRIAL_META label=trialMeta context=main_trial trial=34 block=1 eventTime=174575.638548 isChange=1 magnitudeDeg=45.00 direction=-1 label=M45p0 changeQuad=3 startOriDeg=168.750000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174576908188: CBV3_FLIP label=S1 context=main_trial trial=34 block=1 eventTime=174576.908188 scheduled=1 when=174576.902374 stimOnset=174576.908188 flipTimestamp=174576.908204 missed=-0.000025
+174577509291: CBV3_FLIP label=ISI context=main_trial trial=34 block=1 eventTime=174577.509291 scheduled=1 when=174577.504647 stimOnset=174577.509291 flipTimestamp=174577.509306 missed=-0.001196
+174577656727: CBV3_FLIP label=S2 context=main_trial trial=34 block=1 eventTime=174577.656727 scheduled=1 when=174577.655277 stimOnset=174577.656727 flipTimestamp=174577.656742 missed=-0.004390
+174578257893: CBV3_FLIP label=Gap context=main_trial trial=34 block=1 eventTime=174578.257893 scheduled=1 when=174578.253186 stimOnset=174578.257893 flipTimestamp=174578.257910 missed=-0.001133
+174578456216: CBV3_FLIP label=Q1_PAS context=main_trial trial=34 block=1 eventTime=174578.456216 scheduled=1 when=174578.453932 stimOnset=174578.456216 flipTimestamp=174578.456253 missed=-0.003555
+174579855518: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=34 block=1 eventTime=174579.855518 pas=2 keyCode=87 rtMs=1399.302
+174579862353: CBV3_FLIP label=Q2_Loc context=main_trial trial=34 block=1 eventTime=174579.862353 scheduled=1 when=174579.860694 stimOnset=174579.862353 flipTimestamp=174579.862366 missed=-0.005344
+174580047489: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=34 block=1 eventTime=174580.047489 loc=3 keyCode=97 rtMs=185.136
+174580053995: CBV3_FLIP label=ITI context=main_trial trial=34 block=1 eventTime=174580.053995 scheduled=1 when=174580.053171 stimOnset=174580.053995 flipTimestamp=174580.054004 missed=-0.001895
+B01 034/040 | RUN 034/240 | CHG 45.00deg TGT=BL | PAS=2  LOC=BL OK | SEEING     
+174581062220: CBV3_FLIP label=FixOn context=main_trial trial=35 block=1 eventTime=174581.062220 scheduled=1 when=174581.060555 stimOnset=174581.062220 flipTimestamp=174581.062234 missed=-0.002836
+174581062220: CBV3_TRIAL_META label=trialMeta context=main_trial trial=35 block=1 eventTime=174581.062220 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174582647662: CBV3_FLIP label=S1 context=main_trial trial=35 block=1 eventTime=174582.647662 scheduled=1 when=174582.643045 stimOnset=174582.647662 flipTimestamp=174582.647677 missed=-0.001223
+174583248545: CBV3_FLIP label=ISI context=main_trial trial=35 block=1 eventTime=174583.248545 scheduled=1 when=174583.244121 stimOnset=174583.248545 flipTimestamp=174583.248561 missed=-0.001416
+174583395951: CBV3_FLIP label=S2 context=main_trial trial=35 block=1 eventTime=174583.395951 scheduled=1 when=174583.394531 stimOnset=174583.395951 flipTimestamp=174583.395967 missed=-0.004420
+174583998216: CBV3_FLIP label=Gap context=main_trial trial=35 block=1 eventTime=174583.998216 scheduled=1 when=174583.992410 stimOnset=174583.998216 flipTimestamp=174583.998232 missed=-0.000034
+174584198767: CBV3_FLIP label=Q1_PAS context=main_trial trial=35 block=1 eventTime=174584.198767 scheduled=1 when=174584.194255 stimOnset=174584.198767 flipTimestamp=174584.198784 missed=-0.001327
+174584287491: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=35 block=1 eventTime=174584.287491 pas=1 keyCode=81 rtMs=88.724
+174584294005: CBV3_FLIP label=Q2_Loc context=main_trial trial=35 block=1 eventTime=174584.294005 scheduled=1 when=174584.292685 stimOnset=174584.294005 flipTimestamp=174584.294016 missed=-0.006535
+174584527568: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=35 block=1 eventTime=174584.527568 loc=1 keyCode=103 rtMs=233.563
+174584534005: CBV3_FLIP label=ITI context=main_trial trial=35 block=1 eventTime=174584.534005 scheduled=1 when=174584.532917 stimOnset=174584.534005 flipTimestamp=174584.534016 missed=-0.003589
+B01 035/040 | RUN 035/240 | NCH       -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174585541739: CBV3_FLIP label=FixOn context=main_trial trial=36 block=1 eventTime=174585.541739 scheduled=1 when=174585.540318 stimOnset=174585.541739 flipTimestamp=174585.541749 missed=-0.003328
+174585541739: CBV3_TRIAL_META label=trialMeta context=main_trial trial=36 block=1 eventTime=174585.541739 isChange=1 magnitudeDeg=22.50 direction=1 label=M22p5 changeQuad=4 startOriDeg=22.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174587187019: CBV3_FLIP label=S1 context=main_trial trial=36 block=1 eventTime=174587.187019 scheduled=1 when=174587.180958 stimOnset=174587.187019 flipTimestamp=174587.187034 missed=0.000221
+174587788038: CBV3_FLIP label=ISI context=main_trial trial=36 block=1 eventTime=174587.788038 scheduled=1 when=174587.783478 stimOnset=174587.788038 flipTimestamp=174587.788054 missed=-0.001279
+174587936417: CBV3_FLIP label=S2 context=main_trial trial=36 block=1 eventTime=174587.936417 scheduled=1 when=174587.934025 stimOnset=174587.936417 flipTimestamp=174587.936434 missed=-0.003447
+174588537281: CBV3_FLIP label=Gap context=main_trial trial=36 block=1 eventTime=174588.537281 scheduled=1 when=174588.532876 stimOnset=174588.537281 flipTimestamp=174588.537296 missed=-0.001435
+174588738222: CBV3_FLIP label=Q1_PAS context=main_trial trial=36 block=1 eventTime=174588.738222 scheduled=1 when=174588.733320 stimOnset=174588.738222 flipTimestamp=174588.738237 missed=-0.000938
+174589231490: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=36 block=1 eventTime=174589.231490 pas=2 keyCode=87 rtMs=493.269
+174589238529: CBV3_FLIP label=Q2_Loc context=main_trial trial=36 block=1 eventTime=174589.238529 scheduled=1 when=174589.236703 stimOnset=174589.238529 flipTimestamp=174589.238541 missed=-0.001886
+174589535509: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=36 block=1 eventTime=174589.535509 loc=4 keyCode=99 rtMs=296.980
+174589542316: CBV3_FLIP label=ITI context=main_trial trial=36 block=1 eventTime=174589.542316 scheduled=1 when=174589.540437 stimOnset=174589.542316 flipTimestamp=174589.542325 missed=-0.006539
+B01 036/040 | RUN 036/240 | CHG 22.50deg TGT=BR | PAS=2  LOC=BR OK | SEEING     
+174590549257: CBV3_FLIP label=FixOn context=main_trial trial=37 block=1 eventTime=174590.549257 scheduled=1 when=174590.547963 stimOnset=174590.549257 flipTimestamp=174590.549268 missed=-0.004119
+174590549257: CBV3_TRIAL_META label=trialMeta context=main_trial trial=37 block=1 eventTime=174590.549257 isChange=0 magnitudeDeg=0.00 direction=0 label=NCH changeQuad=0 startOriDeg=NA S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174591734068: CBV3_FLIP label=S1 context=main_trial trial=37 block=1 eventTime=174591.734068 scheduled=1 when=174591.729663 stimOnset=174591.734068 flipTimestamp=174591.734084 missed=-0.001434
+174592335113: CBV3_FLIP label=ISI context=main_trial trial=37 block=1 eventTime=174592.335113 scheduled=1 when=174592.330527 stimOnset=174592.335113 flipTimestamp=174592.335128 missed=-0.001254
+174592485834: CBV3_FLIP label=S2 context=main_trial trial=37 block=1 eventTime=174592.485834 scheduled=1 when=174592.481100 stimOnset=174592.485834 flipTimestamp=174592.485852 missed=-0.001105
+174593088039: CBV3_FLIP label=Gap context=main_trial trial=37 block=1 eventTime=174593.088039 scheduled=1 when=174593.082294 stimOnset=174593.088039 flipTimestamp=174593.088060 missed=-0.000094
+174593288558: CBV3_FLIP label=Q1_PAS context=main_trial trial=37 block=1 eventTime=174593.288558 scheduled=1 when=174593.284078 stimOnset=174593.288558 flipTimestamp=174593.288574 missed=-0.001359
+174593663531: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=37 block=1 eventTime=174593.663530 pas=1 keyCode=81 rtMs=374.972
+174593670962: CBV3_FLIP label=Q2_Loc context=main_trial trial=37 block=1 eventTime=174593.670962 scheduled=1 when=174593.669088 stimOnset=174593.670962 flipTimestamp=174593.670972 missed=-0.003000
+174594095524: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=37 block=1 eventTime=174594.095524 loc=1 keyCode=103 rtMs=424.561
+174594101767: CBV3_FLIP label=ITI context=main_trial trial=37 block=1 eventTime=174594.101767 scheduled=1 when=174594.100933 stimOnset=174594.101767 flipTimestamp=174594.101778 missed=-0.004653
+B01 037/040 | RUN 037/240 | NCH       -- TGT=-- | PAS=1  LOC=TL -- | CR         
+174595109666: CBV3_FLIP label=FixOn context=main_trial trial=38 block=1 eventTime=174595.109666 scheduled=1 when=174595.108137 stimOnset=174595.109666 flipTimestamp=174595.109676 missed=-0.003161
+174595109666: CBV3_TRIAL_META label=trialMeta context=main_trial trial=38 block=1 eventTime=174595.109666 isChange=1 magnitudeDeg=11.25 direction=-1 label=M11p25 changeQuad=4 startOriDeg=78.750000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174596562948: CBV3_FLIP label=S1 context=main_trial trial=38 block=1 eventTime=174596.562948 scheduled=1 when=174596.557018 stimOnset=174596.562948 flipTimestamp=174596.562963 missed=0.000090
+174597164343: CBV3_FLIP label=ISI context=main_trial trial=38 block=1 eventTime=174597.164343 scheduled=1 when=174597.159407 stimOnset=174597.164343 flipTimestamp=174597.164358 missed=-0.000903
+174597314988: CBV3_FLIP label=S2 context=main_trial trial=38 block=1 eventTime=174597.314988 scheduled=1 when=174597.310329 stimOnset=174597.314988 flipTimestamp=174597.315005 missed=-0.001181
+174597917346: CBV3_FLIP label=Gap context=main_trial trial=38 block=1 eventTime=174597.917346 scheduled=1 when=174597.911447 stimOnset=174597.917346 flipTimestamp=174597.917362 missed=0.000059
+174598117929: CBV3_FLIP label=Q1_PAS context=main_trial trial=38 block=1 eventTime=174598.117929 scheduled=1 when=174598.113385 stimOnset=174598.117929 flipTimestamp=174598.117945 missed=-0.001295
+174598287528: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=38 block=1 eventTime=174598.287528 pas=1 keyCode=81 rtMs=169.599
+174598293782: CBV3_FLIP label=Q2_Loc context=main_trial trial=38 block=1 eventTime=174598.293782 scheduled=1 when=174598.292421 stimOnset=174598.293782 flipTimestamp=174598.293792 missed=-0.000999
+174598511481: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=38 block=1 eventTime=174598.511481 loc=1 keyCode=103 rtMs=217.699
+174598518642: CBV3_FLIP label=ITI context=main_trial trial=38 block=1 eventTime=174598.518642 scheduled=1 when=174598.516659 stimOnset=174598.518642 flipTimestamp=174598.518651 missed=-0.002045
+B01 038/040 | RUN 038/240 | CHG 11.25deg TGT=BR | PAS=1  LOC=TL X  | BLIND      
+174599526271: CBV3_FLIP label=FixOn context=main_trial trial=39 block=1 eventTime=174599.526271 scheduled=1 when=174599.524357 stimOnset=174599.526271 flipTimestamp=174599.526283 missed=-0.003432
+174599526271: CBV3_TRIAL_META label=trialMeta context=main_trial trial=39 block=1 eventTime=174599.526271 isChange=1 magnitudeDeg=22.50 direction=1 label=M22p5 changeQuad=3 startOriDeg=67.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174601071413: CBV3_FLIP label=S1 context=main_trial trial=39 block=1 eventTime=174601.071413 scheduled=1 when=174601.065386 stimOnset=174601.071413 flipTimestamp=174601.071429 missed=0.000188
+174601672427: CBV3_FLIP label=ISI context=main_trial trial=39 block=1 eventTime=174601.672427 scheduled=1 when=174601.667872 stimOnset=174601.672427 flipTimestamp=174601.672447 missed=-0.001285
+174601822748: CBV3_FLIP label=S2 context=main_trial trial=39 block=1 eventTime=174601.822748 scheduled=1 when=174601.818413 stimOnset=174601.822748 flipTimestamp=174601.822767 missed=-0.001505
+174602423879: CBV3_FLIP label=Gap context=main_trial trial=39 block=1 eventTime=174602.423879 scheduled=1 when=174602.419207 stimOnset=174602.423879 flipTimestamp=174602.423900 missed=-0.001168
+174602624393: CBV3_FLIP label=Q1_PAS context=main_trial trial=39 block=1 eventTime=174602.624393 scheduled=1 when=174602.619918 stimOnset=174602.624393 flipTimestamp=174602.624411 missed=-0.001365
+174605887585: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=39 block=1 eventTime=174605.887585 pas=2 keyCode=87 rtMs=3263.192
+174605894298: CBV3_FLIP label=Q2_Loc context=main_trial trial=39 block=1 eventTime=174605.894298 scheduled=1 when=174605.892469 stimOnset=174605.894298 flipTimestamp=174605.894308 missed=-0.001860
+174607919418: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=39 block=1 eventTime=174607.919418 loc=2 keyCode=105 rtMs=2025.120
+174607926787: CBV3_FLIP label=ITI context=main_trial trial=39 block=1 eventTime=174607.926787 scheduled=1 when=174607.925065 stimOnset=174607.926787 flipTimestamp=174607.926796 missed=-0.004649
+B01 039/040 | RUN 039/240 | CHG 22.50deg TGT=BL | PAS=2  LOC=TR X  | SENSING    
+174608934827: CBV3_FLIP label=FixOn context=main_trial trial=40 block=1 eventTime=174608.934827 scheduled=1 when=174608.932774 stimOnset=174608.934827 flipTimestamp=174608.934838 missed=-0.003021
+174608934827: CBV3_TRIAL_META label=trialMeta context=main_trial trial=40 block=1 eventTime=174608.934827 isChange=1 magnitudeDeg=33.75 direction=1 label=M33p75 changeQuad=3 startOriDeg=22.500000 S1Frames=72 ISIFrames=18 S2Frames=72 gapFrames=24
+174609977655: CBV3_FLIP label=S1 context=main_trial trial=40 block=1 eventTime=174609.977655 scheduled=1 when=174609.973417 stimOnset=174609.977655 flipTimestamp=174609.977671 missed=-0.001601
+174610579009: CBV3_FLIP label=ISI context=main_trial trial=40 block=1 eventTime=174610.579009 scheduled=1 when=174610.574114 stimOnset=174610.579009 flipTimestamp=174610.579024 missed=-0.000945
+174610727986: CBV3_FLIP label=S2 context=main_trial trial=40 block=1 eventTime=174610.727986 scheduled=1 when=174610.724995 stimOnset=174610.727986 flipTimestamp=174610.728002 missed=-0.002848
+174611330776: CBV3_FLIP label=Gap context=main_trial trial=40 block=1 eventTime=174611.330776 scheduled=1 when=174611.324445 stimOnset=174611.330776 flipTimestamp=174611.330791 missed=0.000491
+174611532508: CBV3_FLIP label=Q1_PAS context=main_trial trial=40 block=1 eventTime=174611.532508 scheduled=1 when=174611.526815 stimOnset=174611.532508 flipTimestamp=174611.532525 missed=-0.000146
+174612079547: CBV3_PAS_RESP label=Q1_PAS context=main_trial trial=40 block=1 eventTime=174612.079547 pas=3 keyCode=69 rtMs=547.039
+174612087285: CBV3_FLIP label=Q2_Loc context=main_trial trial=40 block=1 eventTime=174612.087285 scheduled=1 when=174612.085289 stimOnset=174612.087285 flipTimestamp=174612.087296 missed=-0.005811
+174612367493: CBV3_LOC_RESP label=Q2_Loc context=main_trial trial=40 block=1 eventTime=174612.367493 loc=3 keyCode=97 rtMs=280.208
+174612373868: CBV3_FLIP label=ITI context=main_trial trial=40 block=1 eventTime=174612.373868 scheduled=1 when=174612.372482 stimOnset=174612.373868 flipTimestamp=174612.373881 missed=-0.007058
+B01 040/040 | RUN 040/240 | CHG 33.75deg TGT=BL | PAS=3  LOC=BL OK | SEEING     
+
+=================== BLOCK 01/06 COMPLETE ===================
+Progress: 40/240 trials | elapsed main task: 03:38
+Outcomes block: BLIND=3 SENSING=2 SEEING=25 | CR=7 FA=3
+Outcomes cumul: BLIND=3 SENSING=2 SEEING=25 | CR=7 FA=3
+PAS block [1 2 3 4]: [10 15 10 5] | cumulative: [10 15 10 5]
+Median RT block/cumulative: PAS=520ms/520ms | LOC=281ms/281ms
+
+Cumulative change outcomes by magnitude:
+  Magnitude |   N | Blind | Sensing | Seeing | Aware | LocAcc | MeanPAS
+     11.25 |   5 |     3 |       1 |      1 | 40.0% |  20.0% |    1.40
+     22.50 |   5 |     0 |       1 |      4 | 100.0% |  80.0% |    2.60
+     33.75 |   5 |     0 |       0 |      5 | 100.0% | 100.0% |    2.40
+     45.00 |   5 |     0 |       0 |      5 | 100.0% | 100.0% |    3.00
+     67.50 |   5 |     0 |       0 |      5 | 100.0% | 100.0% |    3.00
+     90.00 |   5 |     0 |       0 |      5 | 100.0% | 100.0% |    2.80
+
+Localisation block [TL TR BL BR]: [18 10 6 6] | PAS1: [10 0 0 0]
+Localisation cumul [TL TR BL BR]: [18 10 6 6] | PAS1: [10 0 0 0]
+Missing block/cumulative: PAS=0/0 LOC=0/0
+Critical >1 ms block [S1 ISI S2 GAP]: [0 0 0 0] | cumulative: [0 0 0 0]
+EEG/trigger: ON | main attempts=400 enabled=400 errors=0
+Checkpoint: OK (40 rows)
+============================================================
+174613503695: CBV3_FLIP label=block_break_grey context=block_break trial=NA block=1 eventTime=174613.503695 scheduled=0 when=NA stimOnset=174613.503695 flipTimestamp=174613.503705 missed=-0.006365
+174618581900: CBV3_RUN_ABORT label=runAbort context=experiment_abort trial=NA block=NA eventTime=174618.581900 status=user_abort
+Saved Tobii Stage 3 data to:
+C:\Users\hrl310\Documents\MATLAB\data\CB_4xGratings_v3_Orientation_TEST_Tobii_20260814_155928
 
 
-ans = 
+PTB-INFO: There are still 26 textures, offscreen windows or proxy windows open. Screen('CloseAll') will auto-close them.
+PTB-INFO: This may be fine for studies where you only use a few textures or windows, but a large number of open
+PTB-INFO: textures or offscreen windows can be an indication that you forgot to dispose no longer needed items
+PTB-INFO: via a proper call to Screen('Close', [windowOrTextureIndex]); , e.g., at the end of each trial. These
+PTB-INFO: stale objects linger around and can consume significant memory ressources, causing degraded performance,
+PTB-INFO: timing trouble (if the system has to resort to disk paging) and ultimately out of memory conditions or
+PTB-INFO: crashes. Please check your code. (Screen('Close') is a quick way to release all textures and offscreen windows)
 
-  struct with fields:
 
-                               participantID: 'LUKE01'
-                                    dataPath: 'C:\Users\hrl310\Documents\EEGData_HL\'
-                                      outDir: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315'
-                                     plotDir: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ERP_ROI_Plots'
-                                  logTxtFile: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.txt'
-                                  logCsvFile: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreprocessingLog_20260811_121315.csv'
-                                     bdfPath: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01.bdf'
-                                  fullRunCsv: 'C:\Users\hrl310\Documents\EEGData_HL\CB_4xGratings_LUKE01_FullRun_20260714_151017.csv'
-                          nPracticeTriggered: 20
-                              nMainTriggered: 600
-                     practiceTriggerAuditCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PracticePlus100TriggerAudit.csv'
-                         mainTriggerAuditCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_MainTriggerAudit.csv'
-                    bdfEventCodeInventoryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BdfEventCodeInventory.csv'
-                                         cfg: [1×1 struct]
-                          componentsToRemove: [1 2]
-                   autoICAComponentsToRemove: [1 2]
-               providedICAComponentsToRemove: [1×0 double]
-                 manualICAComponentsToRemove: []
-                    autoICASelectionTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_AutoICASelectionTable.csv'
-                     icaComponentDecisionCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_ICAComponentsToRemove.csv'
-                     flaggedBadScalpChannels: {2×1 cell}
-               flaggedBadScalpChannelIndices: [20 26]
-                    nFlaggedBadScalpChannels: 2
-             flatlineFlaggedBadScalpChannels: {0×1 cell}
-       flatlineFlaggedBadScalpChannelIndices: [1×0 double]
-            nFlatlineFlaggedBadScalpChannels: 0
-            lineNoiseFlaggedBadScalpChannels: {19×1 cell}
-      lineNoiseFlaggedBadScalpChannelIndices: [11 15 21 24 25 27 28 30 32 33 37 39 42 45 52 53 58 61 64]
-           nLineNoiseFlaggedBadScalpChannels: 19
-          correlationFlaggedBadScalpChannels: {2×1 cell}
-    correlationFlaggedBadScalpChannelIndices: [20 26]
-         nCorrelationFlaggedBadScalpChannels: 2
-                     badChannelCheckTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BadChannelDecisionTable.csv'
-                   badChannelCheckSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_BadChannelDecisionSummary.csv'
-                     badChannelDecisionTable: [64×11 table]
-                    initialChannelQcTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_InitialChannelQC_Table.csv'
-                  initialChannelQcSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_InitialChannelQC_Summary.csv'
-                      preIcaCorrelationQcCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_PreIcaCorrelationQC_Table.csv'
-                  additionalBadScalpChannels: {0×1 cell}
-                         maxBadScalpChannels: 6
-                          badChannelsRemoved: 1
-                     badChannelsInterpolated: 1
-                         interpolationMethod: 'spherical'
-                        finalMontageRestored: 1
-                         lineNoiseQCTableCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Table.csv'
-                       lineNoiseQCSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Summary.csv'
-                          lineNoiseQCPlotDir: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_LineNoiseQC_Plots'
-                              runLineNoiseQC: 1
-                           lineNoiseQCStatus: 'OK'
-                  cleanRawDataConsoleLogFile: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_CleanRawDataDiagnosticConsoleLog.txt'
-                    nGoodScalpChannelsForICA: 62
-                     goodScalpChannelsForICA: {62×1 cell}
-                          icaPcaDimRequested: []
-                          icaPcaDimAutomatic: 61
-                               icaPcaDimUsed: 61
-                            nIcaChannelsUsed: 62
-                               icaElapsedSec: 248.4079
-                               icaElapsedMin: 4.1401
-                          cleanContinuousSet: 'LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed.set'
-                finalContinuousChannelLabels: {72×1 cell}
-                          codedContinuousSet: 'LUKE01_ds512_bp0p1to20_avgref_ICs1to2Removed_S1S2coded.set'
-                                  s1EpochSet: 'LUKE01_ERP_S1locked_m200to1400_S1base.set'
-                                  s2EpochSet: 'LUKE01_ERP_S2locked_m900to800_S1base.set'
-                                  s1CleanSet: 'LUKE01_ERP_S1locked_m200to1400_S1base_ARclean.set'
-                                  s2CleanSet: 'LUKE01_ERP_S2locked_m900to800_S1base_ARclean.set'
-                              countsBeforeAR: [5×3 table]
-                               countsAfterAR: [5×3 table]
-                              finalQcSummary: [1×23 table]
-                           finalQcSummaryCsv: 'C:\Users\hrl310\Documents\EEGData_HL\LUKE01_Preproc_20260811_121315\LUKE01_FinalQCSummary.csv'
-                                  plotReport: [1×1 struct]
-                          runExtraFinalPlots: 1
-                       extraFinalPlotOutputs: [1×1 struct]
 
+INFO: PTB's Screen('Flip', 10) command seems to have missed the requested stimulus presentation deadline
+INFO: a total of 61 times out of a total of 10599 flips during this session.
+
+INFO: This number is fairly accurate (and indicative of real timing problems in your own code or your system)
+INFO: if you provided requested stimulus onset times with the 'when' argument of Screen('Flip', window [, when]);
+INFO: If you called Screen('Flip', window); without the 'when' argument, this count is more of a ''mild'' indicator
+INFO: of timing behaviour than a hard reliable measurement. Large numbers may indicate problems and should at least
+INFO: deserve your closer attention. Cfe. 'help SyncTrouble', the FAQ section at www.psychtoolbox.org and the
+INFO: examples in the PDF presentation in PsychDocumentation/Psychtoolbox3-Slides.pdf for more info and timing tips.
+
+
+RUN ABORTED BY USER | stage=break after block 1 | completed=40/240 | checkpoint=OK (40 rows)
 >> 
