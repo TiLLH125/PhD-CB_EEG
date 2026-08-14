@@ -5,8 +5,9 @@
 % - Fixed timing: Fix -> S1(600 ms) -> ISI(150 ms) -> S2(600 ms) -> Gap(200 ms)
 % - Questions: Q1 PAS clarity (1-4) -> Q2 forced localisation (4AFC)
 % - No QUEST+: orientation-change magnitude is fixed by trial.
-% - Main run: 600 trials, 456 change trials balanced across 22.5, 45, 67.5, and 90 deg
-%   (114 change trials per magnitude) plus 144 no-change catch trials.
+% - Full run: 600 trials, 480 change trials balanced across 11.25, 22.5,
+%   33.75, and 90 deg (120 change trials per magnitude), plus 120
+%   no-change catch trials.
 
 
 
@@ -32,7 +33,7 @@ KbName('UnifyKeyNames');
 %% ------------------------- USER CONFIG -------------------------
 cfg = struct();
 cfg.outputPrefix = 'CB_4xGratings_v3_Orientation';
-cfg.protocolVersion = 'Orientation_PASLOC_v1';
+cfg.protocolVersion = 'Orientation_PASLOC_v2';
 cfg.questionOrder = 'PAS>Localisation';
 cfg.awarenessRule = 'PAS1=no_awareness;PAS2-4=awareness';
 cfg.eegQuestionTriggerScheme = 'Q1_PAS_30-34;Q2_Localisation_50-54';
@@ -166,7 +167,15 @@ cfg.practice.enable = true;
 
 % Global practice settings
 cfg.practice.feedbackWaitForSpace = true;   % lock feedback until SPACE
-cfg.practice.logToCommandWindow   = true;
+
+% ---- Compact operator monitoring (participant-facing screens are unchanged) ----
+cfg.operatorLog = struct();
+cfg.operatorLog.enable = true;
+cfg.operatorLog.practiceTrials = true;
+cfg.operatorLog.mainTrials = true;
+cfg.operatorLog.practiceSummaries = true;
+cfg.operatorLog.blockSummaries = true;
+cfg.operatorLog.criticalMissThresholdSec = 0.001;
 
 % ---------- Practice Block 1 (with feedback; wider range / anchoring) ----------
 cfg.practice1.enable    = true;
@@ -216,9 +225,9 @@ cfg.practice1Criteria.minEasySee     = 0.40;
 % ---- Fixed orientation-magnitude run profiles ----
 cfg.profiles = struct();
 cfg.profiles.full = struct( ...
-    'changeMagnitudesDeg', [22.5 45 67.5 90], ...
-    'changeCounts', [114 114 114 114], ...
-    'noChangeTrials', 144, ...
+    'changeMagnitudesDeg', [11.25 22.5 33.75 90], ...
+    'changeCounts', [120 120 120 120], ...
+    'noChangeTrials', 120, ...
     'trialsPerBlock', 50);
 cfg.profiles.pilotBroad = struct( ...
     'changeMagnitudesDeg', [11.25 22.5 33.75 45 67.5 90], ...
@@ -242,8 +251,7 @@ cfg.photodiodeTest = struct( ...
     'rectPx', []);
 
 % Custom debug profile; totals apply across the complete debug run.
-cfg.debug.trialLog = false;
-cfg.debug.logHeaderEachBlock = true;
+cfg.debug.verboseTrialLog = false; % optional raw technical line; normally leave off
 cfg.debug.quickRunMagnitudesDeg  = [22.5 45 67.5 90];
 cfg.debug.quickRunChangeCounts   = [4 4 4 4];
 cfg.debug.quickRunNoChangeTrials = 4;
@@ -398,12 +406,14 @@ black = 0;
 
 window = [];
 cleanupObj = []; %#ok<NASGU> % remains empty only if OpenWindow fails before onCleanup is created
+operatorStage = 'initialisation';
 
 %% ------------ FAILSAFE LOGGING ------------ %%
 outDir = fullfile(pwd, 'data');
 if ~exist(outDir,'dir'), mkdir(outDir); end
 timestamp = char(datetime('now','Format','yyyyMMdd_HHmmss'));
 outFile = fullfile(outDir, sprintf('%s_%s_FullRun_%s.csv', cfg.outputPrefix, cfg.participantID, timestamp));
+fprintf('Behaviour/checkpoint CSV: %s\n', outFile);
 
 cfg.trigger = initSerialTrigger(cfg.eeg);
 
@@ -450,6 +460,7 @@ try
     cfg.loggedFlip = @loggedFlip;
     cfg.emitTrigger = @emitTrigger;
     cfg.emitTobii = @emitTobiiMessage;
+    cfg.setOperatorStage = @setOperatorStage;
 
     triggerLog = struct( ...
         'idx', {}, ...
@@ -521,10 +532,10 @@ try
     fprintf('ISI_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.ISI_frames, cfg.ISI_frames * ifi * 1000, 1/ifi);
     fprintf('S2_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.S2_frames, cfg.S2_frames * ifi * 1000, 1/ifi);
     fprintf('Gap_frames: %d (~%.0f ms at %.1f Hz)\n', cfg.gap_frames, cfg.gap_frames * ifi * 1000, 1/ifi);
-    if cfg.debug.trialLog
-        fprintf('Trial logging: ON\n\n');
+    if cfg.operatorLog.enable
+        fprintf('Compact operator monitoring: ON\n\n');
     else
-        fprintf('Trial logging: OFF\n\n');
+        fprintf('Compact operator monitoring: OFF\n\n');
     end
 
     topPriorityLevel = MaxPriority(window);
@@ -597,18 +608,21 @@ try
     %% ------------------------- INSTRUCTIONS SCREEN -------------------------
 
     if ~cfg.photodiodeTest.enable
+        setOperatorStage('initial instructions');
         showInstructionScreen(window, windowRect, cfg);
     end
 
     %% ------------------------- TRIAL OVERVIEW SCREEN -----------------------
 
     if ~cfg.photodiodeTest.enable
+        setOperatorStage('trial overview');
         showTrialOverviewScreen(window, windowRect, cfg);
     end
 
     %% ------------------------- PRACTICE ENTRY SCREEN -----------------------
 
     if isfield(cfg,'practice') && cfg.practice.enable
+        setOperatorStage('Practice Block 1 instructions');
         showPractice1Intro(window, windowRect, cfg);
     end
 
@@ -624,22 +638,25 @@ try
 
     if isfield(cfg,'practice') && cfg.practice.enable
         if isfield(cfg,'practice1') && cfg.practice1.enable
+            setOperatorStage('Practice Block 1 begin screen');
             showPractice1BeginScreen(window, windowRect, bg, black, cfg);
             practice1Summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, ...
                 xCentre, yCentre, ifi, cfg, bg, black, cfg.practice1);
             practice1Summary.classification = classifyPractice1(practice1Summary, cfg);
-            printPracticeSummary(practice1Summary, 'Practice Block 1');
+            printPracticeSummary(practice1Summary, 'Practice Block 1', cfg);
             practiceFlow.block1.summary = practice1Summary;
             practiceFlow.block1.result  = 'completed';
         end
 
         if isfield(cfg,'practice2') && cfg.practice2.enable
+            setOperatorStage('Practice Block 2 instructions');
             showPractice2Intro(window, windowRect, cfg);
+            setOperatorStage('Practice Block 2 begin screen');
             showPractice2BeginScreen(window, windowRect, bg, black, cfg);
             practice2Summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, ...
                 xCentre, yCentre, ifi, cfg, bg, black, cfg.practice2);
             practice2Summary.classification = 'not_applicable';
-            printPracticeSummary(practice2Summary, 'Practice Block 2');
+            printPracticeSummary(practice2Summary, 'Practice Block 2', cfg);
             practiceFlow.block2.summary = practice2Summary;
             practiceFlow.block2.result  = 'completed';
         end
@@ -689,6 +706,13 @@ try
     practiceRow.b1_nChange_see       = getFieldOrNaN(practiceFlow.block1.summary, 'nChange_see');
     practiceRow.b1_changeAware       = getFieldOrNaN(practiceFlow.block1.summary, 'changeAwareRate');
     practiceRow.b1_changeSee         = getFieldOrNaN(practiceFlow.block1.summary, 'changeSeeRate');
+    practiceRow.b1_nBlind            = getFieldOrNaN(practiceFlow.block1.summary, 'nBlind');
+    practiceRow.b1_nSensing          = getFieldOrNaN(practiceFlow.block1.summary, 'nSensing');
+    practiceRow.b1_nSeeing           = getFieldOrNaN(practiceFlow.block1.summary, 'nSeeing');
+    practiceRow.b1_outcomeCounts     = getVectorFieldAsString(practiceFlow.block1.summary, 'outcomeCounts', 5);
+    practiceRow.b1_pasCounts         = getVectorFieldAsString(practiceFlow.block1.summary, 'pasCounts', 4);
+    practiceRow.b1_locCounts         = getVectorFieldAsString(practiceFlow.block1.summary, 'locCounts', 4);
+    practiceRow.b1_pas1LocCounts     = getVectorFieldAsString(practiceFlow.block1.summary, 'pas1LocCounts', 4);
     
     % Block 2 summary
     practiceRow.b2_result            = string(practiceFlow.block2.result);
@@ -724,6 +748,13 @@ try
     practiceRow.b2_nChange_see       = getFieldOrNaN(practiceFlow.block2.summary, 'nChange_see');
     practiceRow.b2_changeAware       = getFieldOrNaN(practiceFlow.block2.summary, 'changeAwareRate');
     practiceRow.b2_changeSee         = getFieldOrNaN(practiceFlow.block2.summary, 'changeSeeRate');
+    practiceRow.b2_nBlind            = getFieldOrNaN(practiceFlow.block2.summary, 'nBlind');
+    practiceRow.b2_nSensing          = getFieldOrNaN(practiceFlow.block2.summary, 'nSensing');
+    practiceRow.b2_nSeeing           = getFieldOrNaN(practiceFlow.block2.summary, 'nSeeing');
+    practiceRow.b2_outcomeCounts     = getVectorFieldAsString(practiceFlow.block2.summary, 'outcomeCounts', 5);
+    practiceRow.b2_pasCounts         = getVectorFieldAsString(practiceFlow.block2.summary, 'pasCounts', 4);
+    practiceRow.b2_locCounts         = getVectorFieldAsString(practiceFlow.block2.summary, 'locCounts', 4);
+    practiceRow.b2_pas1LocCounts     = getVectorFieldAsString(practiceFlow.block2.summary, 'pas1LocCounts', 4);
     
     practiceTable = struct2table(practiceRow);
     
@@ -737,14 +768,19 @@ try
     %% ------------------------- MAIN EXPERIMENT ENTRY SCREEN ----------------
 
     if cfg.photodiodeTest.enable
+        setOperatorStage('photodiode setup screen');
         showPhotodiodeTestSetupScreen(window, windowRect, bg, black, cfg);
     else
+        setOperatorStage('main-run instructions');
         showMainExperimentIntroScreen(window, windowRect, cfg);
     end
+    setOperatorStage('main-run begin screen');
     showMainTrialBeginScreen(window, windowRect, bg, black, cfg);
 
     %% ------------------------- RUN MAIN EXPERIMENT -------------------------
     results = repmat(emptyResultRow(), cfg.nTotal, 1);
+    mainRunStart = GetSecs;
+    printOperatorMainBanner(cfg);
 
     for t = 1:cfg.nTotal
         checkAbort(cfg);
@@ -771,6 +807,7 @@ try
         oriS2 = trial.oriS2(:);
 
         blockNum = ceil(t / cfg.trialsPerBlock);
+        setOperatorStage(sprintf('main trial %d/%d stimulus sequence', t, cfg.nTotal));
 
         % ---------------- TIMELINE (scheduled VBL; ESC in ITI/questions/instructions) ----------------
         % Fixation jitter
@@ -826,6 +863,7 @@ try
 
         % ---------------- QUESTIONS ----------------
         % Q1 (PAS clarity)
+        setOperatorStage(sprintf('main trial %d/%d PAS response', t, cfg.nTotal));
         Screen('DrawTexture', window, cfg.qTex.PAS);
         Screen('DrawingFinished', window);
         vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
@@ -845,6 +883,7 @@ try
         end
 
         % Q2 (localisation) - always asked, with wording conditioned on PAS.
+        setOperatorStage(sprintf('main trial %d/%d localisation response', t, cfg.nTotal));
         if ~isnan(pas) && pas == 1
             Screen('DrawTexture', window, cfg.qTex.Loc_pas1);
         else
@@ -879,6 +918,7 @@ try
         trialTotalSec = tTrialEnd - tTrialStart;
 
         % ITI
+        setOperatorStage(sprintf('main trial %d/%d ITI', t, cfg.nTotal));
         % drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
         Screen('FillRect', window, bg);
         Screen('DrawingFinished', window);
@@ -1010,16 +1050,21 @@ try
         results(t).track2_frozenFrames = NaN;
         results(t).track3_frozenFrames = NaN;
 
-        trialLogLine(t, cfg, trial, durFrames, locResp, awareFromPAS, locCorrect, pas, outcomeBin);
+        printOperatorMainTrialLine(results(t), cfg);
+        verboseMainTrialLogLine(results(t), cfg);
 
         % End-of-block
         if mod(t, cfg.trialsPerBlock) == 0
-
-            checkpointSave(results, t, outFile, cfg);
+            setOperatorStage(sprintf('block %d checkpoint and operator summary', blockNum));
+            [checkpointOK, checkpointRows] = checkpointSave(results, t, outFile, cfg);
+            printOperatorBlockSummary(results, t, cfg, mainRunStart, ...
+                checkpointOK, checkpointRows, triggerLog);
 
             if t < cfg.nTotal
                 blockJustFinished = t / cfg.trialsPerBlock;
+                setOperatorStage(sprintf('break after block %d', blockJustFinished));
                 showBlockBreakScreen(window, windowRect, bg, black, cfg, blockJustFinished, cfg.nBlocks);
+                setOperatorStage(sprintf('resume before block %d', blockJustFinished + 1));
                 showBlockResumeScreen(window, windowRect, bg, black, cfg);
             end
         end
@@ -1092,6 +1137,7 @@ try
         string(mat2str(cfg.design.balanceSummary.cellTotals)), height(T), 1);
 
     writetable(T, outFile);
+    fprintf('Saved full-run CSV: %s\n', outFile);
 
     T2 = readtable(outFile);   % uses the file you just saved
 
@@ -1265,16 +1311,26 @@ catch ME
     end
 
     lastCompleted = 0;
+    abortCheckpointOK = true;
+    abortCheckpointRows = 0;
     if exist('results','var')
         last = find(~cellfun(@isempty,{results.participantID}), 1, 'last');
         if ~isempty(last)
-            checkpointSave(results, last, outFile, cfg);
+            [abortCheckpointOK, abortCheckpointRows] = checkpointSave(results, last, outFile, cfg);
             lastCompleted = last;
         end
     end
 
     if isUserAbort
-        fprintf('\nExperiment stopped by user. Completed main trials checkpointed: %d.\n', lastCompleted);
+        if lastCompleted == 0
+            checkpointText = 'not applicable (no completed main trials)';
+        elseif abortCheckpointOK
+            checkpointText = sprintf('OK (%d rows)', abortCheckpointRows);
+        else
+            checkpointText = 'FAILED';
+        end
+        fprintf(['\nRUN ABORTED BY USER | stage=%s | completed=%d/%d | ' ...
+            'checkpoint=%s\n'], operatorStage, lastCompleted, cfg.nTotal, checkpointText);
         return;
     end
 
@@ -1356,6 +1412,10 @@ end
         triggerLog(triggerN).sendDurationMs = 1000 * (sendEnd - sendStart);
         triggerLog(triggerN).enabled = didEnable;
         triggerLog(triggerN).error = string(errMsg);
+    end
+
+    function setOperatorStage(stageText)
+        operatorStage = char(string(stageText));
     end
 
 
@@ -1796,38 +1856,40 @@ function result = classifyPractice1(summary, cfg)
     end
 end
 
-function printPracticeSummary(summary, label)
+function printPracticeSummary(summary, label, cfg)
 
     if nargin < 2 || isempty(label)
         label = 'Practice';
     end
-
-    fprintf('\n=== %s Summary ===\n', label);
-
-    if isfield(summary,'nTrials')
-        fprintf('nTrials=%d', summary.nTrials);
-        if isfield(summary,'nSTD') && isfield(summary,'nNCH') && isfield(summary,'nEASY')
-            fprintf('  (STD=%d, NCH=%d, EASY=%d)', summary.nSTD, summary.nNCH, summary.nEASY);
-        end
-        fprintf('\n');
+    if nargin < 3 || ~operatorLogSectionEnabled(cfg, 'practiceSummaries')
+        return;
     end
 
-    % Helper for pretty printing NaN-safe values
-    fprintf('StdAware=%s | StdSee=%s | FA(NCH)=%s | CR(NCH)=%s | EasyAware=%s | EasySee=%s | ChangeAware=%s | ChangeSee=%s | MissingPAS=%s | MissingLoc=%s\n', ...
-        fmtRate(getFieldOrNaN(summary,'stdAwareRate')), ...
-        fmtRate(getFieldOrNaN(summary,'stdSeeRate')), ...
-        fmtRate(getFieldOrNaN(summary,'faRateNCH')), ...
-        fmtRate(getFieldOrNaN(summary,'crRateNCH')), ...
-        fmtRate(getFieldOrNaN(summary,'easyAwareRate')), ...
-        fmtRate(getFieldOrNaN(summary,'easySeeRate')), ...
-        fmtRate(getFieldOrNaN(summary,'changeAwareRate')), ...
-        fmtRate(getFieldOrNaN(summary,'changeSeeRate')), ...
+    outcomeCounts = getVectorFieldOrDefault(summary, 'outcomeCounts', 5, NaN);
+    pasCounts = getVectorFieldOrDefault(summary, 'pasCounts', 4, NaN);
+    locCounts = getVectorFieldOrDefault(summary, 'locCounts', 4, NaN);
+    pas1LocCounts = getVectorFieldOrDefault(summary, 'pas1LocCounts', 4, NaN);
+
+    fprintf('\n================ %s SUMMARY ================\n', upper(label));
+    fprintf('Trials: %s | STD=%s EASY=%s NCH=%s\n', ...
+        numToStrOrNA(getFieldOrNaN(summary,'nTrials')), ...
+        numToStrOrNA(getFieldOrNaN(summary,'nSTD')), ...
+        numToStrOrNA(getFieldOrNaN(summary,'nEASY')), ...
+        numToStrOrNA(getFieldOrNaN(summary,'nNCH')));
+    fprintf('Change outcomes: BLIND=%s SENSING=%s SEEING=%s\n', ...
+        numToStrOrNA(outcomeCounts(1)), numToStrOrNA(outcomeCounts(2)), ...
+        numToStrOrNA(outcomeCounts(3)));
+    fprintf('Catch outcomes : CR=%s FA=%s\n', ...
+        numToStrOrNA(outcomeCounts(4)), numToStrOrNA(outcomeCounts(5)));
+    fprintf('PAS [1 2 3 4] : %s\n', mat2str(pasCounts));
+    fprintf('LOC [1 2 3 4] : %s\n', mat2str(locCounts));
+    fprintf('PAS1 LOC       : %s\n', mat2str(pas1LocCounts));
+    fprintf('Missing        : PAS=%s LOC=%s\n', ...
         numToStrOrNA(getFieldOrNaN(summary,'nMissingPAS')), ...
         numToStrOrNA(getFieldOrNaN(summary,'nMissingLoc')));
-
-    if isfield(summary,'classification')
-        fprintf('classification=%s\n', string(summary.classification));
-    end
+    fprintf('Classification : %s (informational only)\n', ...
+        char(getTextFieldOrDefault(summary, 'classification', 'not_available')));
+    fprintf('============================================================\n');
 end
 
 function v = getFieldOrNaN(s, fieldName)
@@ -1849,12 +1911,20 @@ function v = getTextFieldOrDefault(s, fieldName, defaultValue)
     end
 end
 
-function s = fmtRate(v)
-    if isnan(v)
-        s = 'NaN';
-    else
-        s = sprintf('%.2f', v);
+function v = getVectorFieldOrDefault(s, fieldName, nValues, defaultValue)
+    v = repmat(defaultValue, 1, nValues);
+    if ~isstruct(s) || ~isfield(s, fieldName) || isempty(s.(fieldName))
+        return;
     end
+    candidate = s.(fieldName);
+    candidate = double(candidate(:))';
+    if numel(candidate) == nValues
+        v = candidate;
+    end
+end
+
+function txt = getVectorFieldAsString(s, fieldName, nValues)
+    txt = string(mat2str(getVectorFieldOrDefault(s, fieldName, nValues, NaN)));
 end
 
 function holdForSecondsWithAbort(tEnd, cfg)
@@ -3093,11 +3163,16 @@ function txt = mExceptionText(ME)
 end
 
 
-function checkpointSave(results, t, outFile, cfg)
+function [ok, nSaved] = checkpointSave(results, t, outFile, cfg)
+    ok = false;
+    nSaved = 0;
     try
         r = results(1:t);
         r = r(~cellfun(@isempty,{r.participantID}));
-        if isempty(r), return; end
+        if isempty(r)
+            ok = true;
+            return;
+        end
 
         T = struct2table(r);
         T.protocolVersion = repmat(string(cfg.protocolVersion), height(T), 1);
@@ -3122,51 +3197,401 @@ function checkpointSave(results, t, outFile, cfg)
 
         writetable(T, tmpFile);                    % extension is recognised
         movefile(tmpFile, outFile, 'f');
-
-        fprintf('Checkpoint saved (%d trials): %s\n', height(T), outFile);
+        nSaved = height(T);
+        ok = true;
 
     catch saveME
         warning('%s', ['Checkpoint save failed: ' mExceptionText(saveME)]);
     end
 end
 
-function trialLogLine(t, cfg, trial, durFrames, locResp, awareFromPAS, locCorrect, pas, outcomeBin)
+function tf = operatorLogSectionEnabled(cfg, sectionName)
+    tf = isfield(cfg, 'operatorLog') && isstruct(cfg.operatorLog) && ...
+        isfield(cfg.operatorLog, 'enable') && cfg.operatorLog.enable && ...
+        isfield(cfg.operatorLog, sectionName) && cfg.operatorLog.(sectionName);
+end
 
-    if ~isfield(cfg,'debug') || ~isfield(cfg.debug,'trialLog') || ~cfg.debug.trialLog
+function printOperatorMainBanner(cfg)
+    if ~operatorLogSectionEnabled(cfg, 'mainTrials') && ...
+            ~operatorLogSectionEnabled(cfg, 'blockSummaries')
+        return;
+    end
+    fprintf('\n========================= MAIN RUN =========================\n');
+    fprintf('Profile=%s | %d trials | %d blocks x %d | change/no-change per block=%d/%d\n', ...
+        cfg.runProfile, cfg.nTotal, cfg.nBlocks, cfg.trialsPerBlock, ...
+        cfg.trialDial.nChangePerBlock, cfg.trialDial.nNoChangePerBlock);
+    fprintf('Compact fields: block trial | run progress | condition/target | PAS/LOC | outcome\n');
+    fprintf('============================================================\n');
+end
+
+function printOperatorMainTrialLine(result, cfg)
+    if ~operatorLogSectionEnabled(cfg, 'mainTrials')
         return;
     end
 
-    blockNum = ceil(t / cfg.trialsPerBlock);
-
-    if trial.isChange
-        tc = 'CHG';
-        qStr = sprintf('%d', trial.changeQuad);
-        locStr = numToStrOrNA(locCorrect);
+    blockTrial = mod(result.trialNum - 1, cfg.trialsPerBlock) + 1;
+    if result.isChange == 1
+        trialType = 'CHG';
+        magnitudeText = sprintf('%5.2fdeg', result.changeMagnitudeDeg);
+        targetText = quadrantShortLabel(result.changeQuad);
+        correctText = operatorCorrectText(result.locCorrect);
     else
-        tc = 'NCH';
-        qStr = '-';
-        locStr = '-';
+        trialType = 'NCH';
+        magnitudeText = '      --';
+        targetText = '--';
+        correctText = '--';
     end
 
-    if isnan(locResp), locStrResp = '-'; else, locStrResp = sprintf('%d', locResp); end
-    if isnan(pas), pasStr = 'NaN'; else, pasStr = sprintf('%d', pas); end
-    awareStr = numToStrOrNA(awareFromPAS);
+    outcomeText = operatorOutcomeLabel(result);
+    qcText = operatorQCSuffix(result.pas, result.locResp, ...
+        result.missedS1, result.missedISI, result.missedS2, result.missedGap, cfg);
+    fprintf(['B%02d %03d/%03d | RUN %03d/%03d | %-3s %8s TGT=%-2s | ' ...
+        'PAS=%-2s LOC=%-2s %-2s | %-11s%s\n'], ...
+        result.blockNum, blockTrial, cfg.trialsPerBlock, ...
+        result.trialNum, cfg.nTotal, trialType, magnitudeText, targetText, ...
+        operatorResponseText(result.pas), quadrantShortLabel(result.locResp), ...
+        correctText, outcomeText, qcText);
+end
 
-    if strcmp(outcomeBin, 'NoChange')
-        if isnan(awareFromPAS)
-            outcomeStr = 'MISSING';
-        elseif awareFromPAS == 1
-            outcomeStr = 'FA';
+function verboseMainTrialLogLine(result, cfg)
+    if ~isfield(cfg, 'debug') || ~isfield(cfg.debug, 'verboseTrialLog') || ...
+            ~cfg.debug.verboseTrialLog
+        return;
+    end
+    fprintf(['DEBUG MAIN trial=%d block=%d isChange=%d mag=%.4f dir=%+d target=%s ' ...
+        'PAS=%s LOC=%s aware=%s locCorrect=%s missedMs=[%.3f %.3f %.3f %.3f]\n'], ...
+        result.trialNum, result.blockNum, result.isChange, result.changeMagnitudeDeg, ...
+        result.changeDirection, quadrantShortLabel(result.changeQuad), ...
+        numToStrOrNA(result.pas), numToStrOrNA(result.locResp), ...
+        numToStrOrNA(result.awareFromPAS), numToStrOrNA(result.locCorrect), ...
+        1000 * result.missedS1, 1000 * result.missedISI, ...
+        1000 * result.missedS2, 1000 * result.missedGap);
+end
+
+function printOperatorPracticeBanner(pracCfg, nTrials, cfg)
+    if ~operatorLogSectionEnabled(cfg, 'practiceTrials') && ...
+            ~operatorLogSectionEnabled(cfg, 'practiceSummaries')
+        return;
+    end
+    if pracCfg.feedback
+        feedbackText = 'ON';
+    else
+        feedbackText = 'OFF';
+    end
+    fprintf('\n===================== %s =====================\n', upper(pracCfg.name));
+    fprintf('%d trials | STD=%d EASY=%d NCH=%d | feedback=%s\n', ...
+        nTrials, pracCfg.nSTD, pracCfg.nEASY, pracCfg.nNCH, ...
+        feedbackText);
+    fprintf('============================================================\n');
+end
+
+function printOperatorPracticeTrialLine(pracCfg, trialNum, nTrials, trial, ...
+        pas, locResp, locCorrect, outcomeText, missedS1, missedISI, ...
+        missedS2, missedGap, cfg)
+    if ~operatorLogSectionEnabled(cfg, 'practiceTrials')
+        return;
+    end
+
+    practiceNumber = 1 + double(contains(lower(pracCfg.name), '2'));
+    if trial.isChange
+        magnitudeText = sprintf('%5.2fdeg', trial.changeMagnitudeDeg);
+        targetText = quadrantShortLabel(trial.changeQuad);
+        correctText = operatorCorrectText(locCorrect);
+    else
+        magnitudeText = '      --';
+        targetText = '--';
+        correctText = '--';
+    end
+    qcText = operatorQCSuffix(pas, locResp, missedS1, missedISI, ...
+        missedS2, missedGap, cfg);
+    fprintf(['P%d  %02d/%02d | %-4s %8s TGT=%-2s | PAS=%-2s LOC=%-2s %-2s | ' ...
+        '%-11s%s\n'], practiceNumber, trialNum, nTrials, trial.trialType, ...
+        magnitudeText, targetText, operatorResponseText(pas), ...
+        quadrantShortLabel(locResp), correctText, outcomeText, qcText);
+end
+
+function verbosePracticeTrialLogLine(pracCfg, trialNum, trial, pasKey, ...
+        locKey, pas, locResp, awareFromPAS, locCorrect, cfg)
+    if ~isfield(cfg, 'debug') || ~isfield(cfg.debug, 'verboseTrialLog') || ...
+            ~cfg.debug.verboseTrialLog
+        return;
+    end
+    fprintf(['DEBUG PRACTICE block=%s trial=%d type=%s mag=%.4f dir=%+d target=%s ' ...
+        'PAS=%s pasKey=%s LOC=%s locKey=%s aware=%s locCorrect=%s\n'], ...
+        pracCfg.name, trialNum, trial.trialType, trial.changeMagnitudeDeg, ...
+        trial.changeDirection, quadrantShortLabel(trial.changeQuad), ...
+        numToStrOrNA(pas), numToStrOrNA(pasKey), numToStrOrNA(locResp), ...
+        numToStrOrNA(locKey), numToStrOrNA(awareFromPAS), numToStrOrNA(locCorrect));
+end
+
+function printOperatorBlockSummary(results, t, cfg, mainRunStart, ...
+        checkpointOK, checkpointRows, triggerLog)
+    if ~operatorLogSectionEnabled(cfg, 'blockSummaries')
+        return;
+    end
+
+    cumulativeRows = results(1:t);
+    cumulativeRows = cumulativeRows(~cellfun(@isempty, {cumulativeRows.participantID}));
+    blockNumber = ceil(t / cfg.trialsPerBlock);
+    blockRows = cumulativeRows([cumulativeRows.blockNum] == blockNumber);
+    blockOutcomes = countOperatorOutcomes(blockRows);
+    cumulativeOutcomes = countOperatorOutcomes(cumulativeRows);
+    blockPAS = countFieldLevels(blockRows, 'pas', 4);
+    cumulativePAS = countFieldLevels(cumulativeRows, 'pas', 4);
+    blockLoc = countFieldLevels(blockRows, 'locResp', 4);
+    cumulativeLoc = countFieldLevels(cumulativeRows, 'locResp', 4);
+    blockPAS1Loc = countConditionalLoc(blockRows, 1);
+    cumulativePAS1Loc = countConditionalLoc(cumulativeRows, 1);
+    blockMissing = countMissingResponses(blockRows);
+    cumulativeMissing = countMissingResponses(cumulativeRows);
+    blockCritical = countCriticalFlips(blockRows, cfg.operatorLog.criticalMissThresholdSec);
+    cumulativeCritical = countCriticalFlips(cumulativeRows, cfg.operatorLog.criticalMissThresholdSec);
+    elapsedText = formatElapsedTime(max(0, GetSecs - mainRunStart));
+
+    fprintf('\n=================== BLOCK %02d/%02d COMPLETE ===================\n', ...
+        blockNumber, cfg.nBlocks);
+    fprintf('Progress: %d/%d trials | elapsed main task: %s\n', ...
+        numel(cumulativeRows), cfg.nTotal, elapsedText);
+    fprintf('Outcomes block: BLIND=%d SENSING=%d SEEING=%d | CR=%d FA=%d\n', ...
+        blockOutcomes(1), blockOutcomes(2), blockOutcomes(3), ...
+        blockOutcomes(4), blockOutcomes(5));
+    fprintf('Outcomes cumul: BLIND=%d SENSING=%d SEEING=%d | CR=%d FA=%d\n', ...
+        cumulativeOutcomes(1), cumulativeOutcomes(2), cumulativeOutcomes(3), ...
+        cumulativeOutcomes(4), cumulativeOutcomes(5));
+    fprintf('PAS block [1 2 3 4]: %s | cumulative: %s\n', ...
+        mat2str(blockPAS), mat2str(cumulativePAS));
+    fprintf('Median RT block/cumulative: PAS=%s/%s | LOC=%s/%s\n', ...
+        formatMilliseconds(medianFieldMilliseconds(blockRows, 'pasRT')), ...
+        formatMilliseconds(medianFieldMilliseconds(cumulativeRows, 'pasRT')), ...
+        formatMilliseconds(medianFieldMilliseconds(blockRows, 'locRT')), ...
+        formatMilliseconds(medianFieldMilliseconds(cumulativeRows, 'locRT')));
+
+    fprintf('\nCumulative change outcomes by magnitude:\n');
+    fprintf('  Magnitude |   N | Blind | Sensing | Seeing | Aware | LocAcc | MeanPAS\n');
+    for mm = 1:numel(cfg.design.changeMagnitudesDeg)
+        magnitude = cfg.design.changeMagnitudesDeg(mm);
+        isMagnitude = [cumulativeRows.isChange] == 1 & ...
+            abs([cumulativeRows.changeMagnitudeDeg] - magnitude) < 1e-9;
+        magnitudeRows = cumulativeRows(isMagnitude);
+        magnitudeOutcomes = countOperatorOutcomes(magnitudeRows);
+        pasValues = [magnitudeRows.pas];
+        validPAS = isfinite(pasValues) & pasValues >= 1 & pasValues <= 4;
+        locCorrectValues = [magnitudeRows.locCorrect];
+        validLocCorrect = isfinite(locCorrectValues);
+        fprintf('  %8.2f | %3d | %5d | %7d | %6d | %5s | %6s | %7s\n', ...
+            magnitude, numel(magnitudeRows), magnitudeOutcomes(1), ...
+            magnitudeOutcomes(2), magnitudeOutcomes(3), ...
+            formatPercent(sum(pasValues(validPAS) >= 2), sum(validPAS)), ...
+            formatPercent(sum(locCorrectValues(validLocCorrect) == 1), sum(validLocCorrect)), ...
+            formatMeanValue(pasValues(validPAS)));
+    end
+
+    fprintf('\nLocalisation block [TL TR BL BR]: %s | PAS1: %s\n', ...
+        mat2str(blockLoc), mat2str(blockPAS1Loc));
+    fprintf('Localisation cumul [TL TR BL BR]: %s | PAS1: %s\n', ...
+        mat2str(cumulativeLoc), mat2str(cumulativePAS1Loc));
+    fprintf('Missing block/cumulative: PAS=%d/%d LOC=%d/%d\n', ...
+        blockMissing(1), cumulativeMissing(1), blockMissing(2), cumulativeMissing(2));
+    fprintf('Critical >1 ms block [S1 ISI S2 GAP]: %s | cumulative: %s\n', ...
+        mat2str(blockCritical), mat2str(cumulativeCritical));
+
+    if ~cfg.eeg.enable
+        fprintf('EEG/trigger: OFF by configuration\n');
+    else
+        [triggerAttempts, triggerEnabled, triggerErrors] = ...
+            cumulativeMainTriggerStatus(triggerLog, t);
+        fprintf('EEG/trigger: ON | main attempts=%d enabled=%d errors=%d\n', ...
+            triggerAttempts, triggerEnabled, triggerErrors);
+    end
+    if checkpointOK
+        fprintf('Checkpoint: OK (%d rows)\n', checkpointRows);
+    else
+        fprintf('Checkpoint: FAILED\n');
+    end
+    fprintf('============================================================\n');
+end
+
+function label = operatorOutcomeLabel(result)
+    if ~isfinite(result.pas) || result.pas < 1 || result.pas > 4
+        label = 'MISSING_PAS';
+    elseif ~isfinite(result.locResp) || result.locResp < 1 || result.locResp > 4
+        label = 'MISSING_LOC';
+    elseif result.isChange == 1
+        label = upper(char(string(result.outcomeBin)));
+    elseif strcmpi(char(string(result.catchOutcome)), 'CorrectRejection')
+        label = 'CR';
+    elseif strcmpi(char(string(result.catchOutcome)), 'FalseAlarm')
+        label = 'FA';
+    else
+        label = 'MISSING';
+    end
+end
+
+function suffix = operatorQCSuffix(pas, locResp, missedS1, missedISI, ...
+        missedS2, missedGap, cfg)
+    tags = {};
+    if ~isfinite(pas) || pas < 1 || pas > 4
+        tags{end+1} = 'PAS_TIMEOUT';
+    end
+    if ~isfinite(locResp) || locResp < 1 || locResp > 4
+        tags{end+1} = 'LOC_TIMEOUT';
+    end
+    misses = [missedS1 missedISI missedS2 missedGap];
+    labels = {'S1>1ms','ISI>1ms','S2>1ms','GAP>1ms'};
+    threshold = cfg.operatorLog.criticalMissThresholdSec;
+    for ii = 1:numel(misses)
+        if isfinite(misses(ii)) && misses(ii) > threshold
+            tags{end+1} = labels{ii}; %#ok<AGROW>
+        end
+    end
+    if isempty(tags)
+        suffix = '';
+    else
+        suffix = [' | QC:' strjoin(tags, ',')];
+    end
+end
+
+function text = quadrantShortLabel(value)
+    labels = {'TL','TR','BL','BR'};
+    if isnumeric(value) && isscalar(value) && isfinite(value) && ...
+            value >= 1 && value <= 4 && value == round(value)
+        text = labels{round(value)};
+    else
+        text = '--';
+    end
+end
+
+function text = operatorResponseText(value)
+    if isnumeric(value) && isscalar(value) && isfinite(value) && ...
+            value >= 1 && value <= 4 && value == round(value)
+        text = sprintf('%d', round(value));
+    else
+        text = '--';
+    end
+end
+
+function text = operatorCorrectText(value)
+    if isnumeric(value) && isscalar(value) && isfinite(value)
+        if value == 1
+            text = 'OK';
         else
-            outcomeStr = 'CR';
+            text = 'X';
         end
     else
-        outcomeStr = upper(outcomeBin);
+        text = '--';
     end
+end
 
-    fprintf('blk=%02d trl=%03d %s mag=%.2f dir=%+d q=%s dur=%02d | PAS=%s AWARE=%s LOC=%s | loc=%s | %s\n', ...
-        blockNum, t, tc, trial.changeMagnitudeDeg, trial.changeDirection, qStr, durFrames, ...
-        pasStr, awareStr, locStrResp, locStr, outcomeStr);
+function counts = countOperatorOutcomes(rows)
+    counts = zeros(1,5); % blind, sensing, seeing, correct rejection, false alarm
+    if isempty(rows), return; end
+    outcomes = string({rows.outcomeBin});
+    catches = string({rows.catchOutcome});
+    counts(1) = sum(strcmpi(outcomes, 'Blind'));
+    counts(2) = sum(strcmpi(outcomes, 'Sensing'));
+    counts(3) = sum(strcmpi(outcomes, 'Seeing'));
+    counts(4) = sum(strcmpi(catches, 'CorrectRejection'));
+    counts(5) = sum(strcmpi(catches, 'FalseAlarm'));
+end
+
+function counts = countFieldLevels(rows, fieldName, nLevels)
+    counts = zeros(1,nLevels);
+    if isempty(rows), return; end
+    values = [rows.(fieldName)];
+    for level = 1:nLevels
+        counts(level) = sum(values == level);
+    end
+end
+
+function counts = countConditionalLoc(rows, pasLevel)
+    counts = zeros(1,4);
+    if isempty(rows), return; end
+    pasValues = [rows.pas];
+    locValues = [rows.locResp];
+    for level = 1:4
+        counts(level) = sum(pasValues == pasLevel & locValues == level);
+    end
+end
+
+function counts = countMissingResponses(rows)
+    if isempty(rows)
+        counts = [0 0];
+        return;
+    end
+    pasValues = [rows.pas];
+    locValues = [rows.locResp];
+    counts = [sum(~isfinite(pasValues) | pasValues < 1 | pasValues > 4), ...
+        sum(~isfinite(locValues) | locValues < 1 | locValues > 4)];
+end
+
+function counts = countCriticalFlips(rows, thresholdSec)
+    counts = zeros(1,4);
+    if isempty(rows), return; end
+    fields = {'missedS1','missedISI','missedS2','missedGap'};
+    for ii = 1:numel(fields)
+        values = [rows.(fields{ii})];
+        counts(ii) = sum(isfinite(values) & values > thresholdSec);
+    end
+end
+
+function value = medianFieldMilliseconds(rows, fieldName)
+    value = NaN;
+    if isempty(rows), return; end
+    values = 1000 * [rows.(fieldName)];
+    values = values(isfinite(values));
+    if ~isempty(values), value = median(values); end
+end
+
+function text = formatMilliseconds(value)
+    if isfinite(value)
+        text = sprintf('%.0fms', value);
+    else
+        text = '--';
+    end
+end
+
+function text = formatElapsedTime(seconds)
+    totalSeconds = max(0, round(seconds));
+    hours = floor(totalSeconds / 3600);
+    minutes = floor(mod(totalSeconds, 3600) / 60);
+    secondsRemainder = mod(totalSeconds, 60);
+    if hours > 0
+        text = sprintf('%d:%02d:%02d', hours, minutes, secondsRemainder);
+    else
+        text = sprintf('%02d:%02d', minutes, secondsRemainder);
+    end
+end
+
+function text = formatPercent(numerator, denominator)
+    if denominator > 0
+        text = sprintf('%.1f%%', 100 * numerator / denominator);
+    else
+        text = '--';
+    end
+end
+
+function text = formatMeanValue(values)
+    values = values(isfinite(values));
+    if isempty(values)
+        text = '--';
+    else
+        text = sprintf('%.2f', mean(values));
+    end
+end
+
+function [attempts, enabled, errors] = cumulativeMainTriggerStatus(triggerLog, completedTrial)
+    attempts = 0;
+    enabled = 0;
+    errors = 0;
+    if isempty(triggerLog), return; end
+    contexts = string({triggerLog.context});
+    trialNumbers = [triggerLog.trialNum];
+    keep = strcmpi(contexts, 'main_trial') & trialNumbers <= completedTrial;
+    selected = triggerLog(keep);
+    attempts = numel(selected);
+    if isempty(selected), return; end
+    enabled = sum([selected.enabled]);
+    errors = sum(strlength(string({selected.error})) > 0);
 end
 
 function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fixationCoords, xCentre, yCentre, ifi, cfg, bg, black, pracCfg)
@@ -3197,10 +3622,20 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
     m.nNCH = 0;  m.nNCH_validPAS = 0;  m.nNCH_validBehaviour = 0;  m.nNCH_FA = 0;  m.nNCH_CR = 0;
     m.nEASY = 0; m.nEASY_validPAS = 0; m.nEASY_validBehaviour = 0; m.nEASY_aware = 0; m.nEASY_see = 0;
     m.nChange = 0; m.nChange_validPAS = 0; m.nChange_validBehaviour = 0; m.nChange_aware = 0; m.nChange_see = 0;
+    m.nBlind = 0; m.nSensing = 0; m.nSeeing = 0;
+    m.pasCounts = zeros(1,4);
+    m.locCounts = zeros(1,4);
+    m.pas1LocCounts = zeros(1,4);
+
+    printOperatorPracticeBanner(pracCfg, numel(pTrials), cfg);
 
         for p = 1:numel(pTrials)
             trial = pTrials(p);
             checkAbort(cfg);
+            if isfield(cfg, 'setOperatorStage')
+                cfg.setOperatorStage(sprintf('%s trial %d/%d stimulus sequence', ...
+                    pracCfg.name, p, numel(pTrials)));
+            end
     
             % Build practice S1/S2 orientations using the same physical rules as main.
             if trial.isChange
@@ -3229,14 +3664,14 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             drawGratings(window, gratingTex, allRects, oriS1, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS1 = tFixOn + (jitterFrames - 0.5) * ifi;
-            [tS1,  ~, ~, ~]  = cfg.loggedFlip('S1', pracCfg.name, p, NaN, vblTargetS1);
+            [tS1,  ~, ~, missedS1]  = cfg.loggedFlip('S1', pracCfg.name, p, NaN, vblTargetS1);
             if doPracticeTriggers
                 cfg.emitTrigger('s1On', pracCfg.name, p, NaN, cfg.eeg.codes.s1On + pracOff, 'S1', tS1);
             end
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetISI = tS1 + (cfg.S1_frames - 0.5) * ifi;
-            [tISI, ~, ~, ~] = cfg.loggedFlip('ISI', pracCfg.name, p, NaN, vblTargetISI);
+            [tISI, ~, ~, missedISI] = cfg.loggedFlip('ISI', pracCfg.name, p, NaN, vblTargetISI);
             if doPracticeTriggers
                 cfg.emitTrigger('isiOn', pracCfg.name, p, NaN, cfg.eeg.codes.isiOn + pracOff, 'ISI', tISI);
             end
@@ -3244,14 +3679,14 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             drawGratings(window, gratingTex, allRects, oriS2, bg);
             drawFixation(window, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetS2 = tISI + (cfg.ISI_frames - 0.5) * ifi;
-            [tS2,  ~, ~, ~]  = cfg.loggedFlip('S2', pracCfg.name, p, NaN, vblTargetS2);
+            [tS2,  ~, ~, missedS2]  = cfg.loggedFlip('S2', pracCfg.name, p, NaN, vblTargetS2);
             if doPracticeTriggers
                 cfg.emitTrigger('s2On', pracCfg.name, p, NaN, cfg.eeg.codes.s2On + pracOff, 'S2', tS2);
             end
 
             drawFixationOnly(window, bg, fixationCoords, cfg.fix.lineWidthPx, black, xCentre, yCentre);
             vblTargetGap = tS2 + (cfg.S2_frames - 0.5) * ifi;
-            [tGap, ~, ~, ~] = cfg.loggedFlip('Gap', pracCfg.name, p, NaN, vblTargetGap);
+            [tGap, ~, ~, missedGap] = cfg.loggedFlip('Gap', pracCfg.name, p, NaN, vblTargetGap);
             if doPracticeTriggers
                 cfg.emitTrigger('gapOn', pracCfg.name, p, NaN, cfg.eeg.codes.gapOn + pracOff, 'Gap', tGap);
             end
@@ -3259,6 +3694,10 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             % ---- Questions ----
 
             % Q1 (PAS)
+            if isfield(cfg, 'setOperatorStage')
+                cfg.setOperatorStage(sprintf('%s trial %d/%d PAS response', ...
+                    pracCfg.name, p, numel(pTrials)));
+            end
             Screen('DrawTexture', window, cfg.qTex.PAS);
             Screen('DrawingFinished', window);
             vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
@@ -3279,6 +3718,10 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             end
 
             % Q2 (localisation) - always asked, with wording conditioned on PAS.
+            if isfield(cfg, 'setOperatorStage')
+                cfg.setOperatorStage(sprintf('%s trial %d/%d localisation response', ...
+                    pracCfg.name, p, numel(pTrials)));
+            end
             if ~isnan(pas) && pas == 1
                 Screen('DrawTexture', window, cfg.qTex.Loc_pas1);
             else
@@ -3314,6 +3757,34 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             awareFromPAS = NaN;
             if validPAS
                 awareFromPAS = double(pas >= 2);
+                m.pasCounts(pas) = m.pasCounts(pas) + 1;
+            end
+            if validLoc
+                m.locCounts(locResp) = m.locCounts(locResp) + 1;
+                if validPAS && pas == 1
+                    m.pas1LocCounts(locResp) = m.pas1LocCounts(locResp) + 1;
+                end
+            end
+
+            if ~validPAS
+                outcomeStr = 'MISSING_PAS';
+            elseif ~validLoc
+                outcomeStr = 'MISSING_LOC';
+            elseif trial.isChange
+                if awareFromPAS == 0
+                    outcomeStr = 'BLIND';
+                    m.nBlind = m.nBlind + 1;
+                elseif locCorrect == 1
+                    outcomeStr = 'SEEING';
+                    m.nSeeing = m.nSeeing + 1;
+                else
+                    outcomeStr = 'SENSING';
+                    m.nSensing = m.nSensing + 1;
+                end
+            elseif awareFromPAS == 1
+                outcomeStr = 'FA';
+            else
+                outcomeStr = 'CR';
             end
 
             % ---- Practice metrics ----
@@ -3382,43 +3853,12 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
                     end
             end
 
-            if cfg.practice.logToCommandWindow
-                if trial.isChange
-                    qStr = numToStrOrNA(trial.changeQuad);
-                    locStr = numToStrOrNA(locCorrect);
-                else
-                    qStr = '-';
-                    locStr = '-';
-                end
-                if ~validPAS
-                    outcomeStr = 'MISSING_PAS';
-                elseif ~validLoc
-                    outcomeStr = 'MISSING_LOC';
-                elseif trial.isChange
-                    if awareFromPAS == 1 && locCorrect == 1
-                        outcomeStr = 'SEE';
-                    elseif awareFromPAS == 1
-                        outcomeStr = 'SENS';
-                    else
-                        outcomeStr = 'BLIND';
-                    end
-                else
-                    if awareFromPAS == 1
-                        outcomeStr = 'FA';
-                    else
-                        outcomeStr = 'CR';
-                    end
-                end
-
-                fprintf(['PRACTICE %-16s trl=%02d/%02d type=%-4s mag=%5.2f q=%s | ' ...
-                    'PAS=%s AWARE=%s LOC=%s keyCode=%s | loc=%s | %s\n'], ...
-                    pracCfg.name, p, numel(pTrials), trial.trialType, trial.changeMagnitudeDeg, qStr, ...
-                    numToStrOrNA(pas), numToStrOrNA(awareFromPAS), numToStrOrNA(locResp), ...
-                    numToStrOrNA(locKey), locStr, outcomeStr);
-            end
-    
             % ---- Feedback ----
             if pracCfg.feedback
+                if isfield(cfg, 'setOperatorStage')
+                    cfg.setOperatorStage(sprintf('%s trial %d/%d feedback', ...
+                        pracCfg.name, p, numel(pTrials)));
+                end
                 if trial.isChange
                     correctQuadName = quadNames{trial.changeQuad};
                 end
@@ -3472,7 +3912,16 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
             if doPracticeTriggers
                 cfg.emitTrigger('trialEnd', pracCfg.name, p, NaN, cfg.eeg.codes.trialEnd + pracOff, 'ITI', tITI);
             end
+            if isfield(cfg, 'setOperatorStage')
+                cfg.setOperatorStage(sprintf('%s trial %d/%d ITI', ...
+                    pracCfg.name, p, numel(pTrials)));
+            end
             holdForSecondsWithAbort(tITI + cfg.ITI_frames*ifi, cfg);
+            printOperatorPracticeTrialLine(pracCfg, p, numel(pTrials), trial, ...
+                pas, locResp, locCorrect, outcomeStr, missedS1, missedISI, ...
+                missedS2, missedGap, cfg);
+            verbosePracticeTrialLogLine(pracCfg, p, trial, pasKey, locKey, ...
+                pas, locResp, awareFromPAS, locCorrect, cfg);
         end
 
         summary = struct();
@@ -3505,6 +3954,13 @@ function summary = runPracticeBlock(window, windowRect, gratingTex, allRects, fi
 
         summary.nChange_aware = m.nChange_aware;
         summary.nChange_see    = m.nChange_see;
+        summary.nBlind = m.nBlind;
+        summary.nSensing = m.nSensing;
+        summary.nSeeing = m.nSeeing;
+        summary.outcomeCounts = [m.nBlind m.nSensing m.nSeeing m.nNCH_CR m.nNCH_FA];
+        summary.pasCounts = m.pasCounts;
+        summary.locCounts = m.locCounts;
+        summary.pas1LocCounts = m.pas1LocCounts;
 
         summary.stdAwareRate  = safeRate(m.nSTD_aware, m.nSTD_validPAS);
         summary.stdSeeRate    = safeRate(m.nSTD_see, m.nSTD_validBehaviour);
@@ -3845,14 +4301,34 @@ function summary = validateTrialSchedule(trials, cfg)
         'Global quadrant totals are not near-balanced.');
 
     if strcmp(cfg.runProfile,'full')
-        assert(all(blockMagnitudeCounts(:) >= 9 & blockMagnitudeCounts(:) <= 10), ...
-            'Full profile requires 9/10 trials per magnitude per block.');
-        assert(all(blockQuadrantCounts(:) >= 9 & blockQuadrantCounts(:) <= 10), ...
-            'Full profile requires 9/10 change targets per quadrant per block.');
-        assert(all(blockCellCounts(:) >= 2 & blockCellCounts(:) <= 3), ...
-            'Full profile requires 2/3 trials per magnitude-by-quadrant cell per block.');
-        assert(all(cellTotals(:) >= 28 & cellTotals(:) <= 29), ...
-            'Full profile requires 28/29 trials per magnitude-by-quadrant cell overall.');
+        expectedChangePerBlock = cfg.nChange / cfg.nBlocks;
+        expectedNoChangePerBlock = cfg.nCatch / cfg.nBlocks;
+        expectedMagnitudePerBlock = cfg.design.changeCountsPerMagnitude / cfg.nBlocks;
+        expectedQuadrantPerBlock = cfg.nChange / (cfg.nBlocks * nQ);
+        expectedCellsGlobal = cfg.design.changeCountsPerMagnitude(:) / nQ;
+        cellMinimumPerMagnitude = floor(expectedMagnitudePerBlock(:) / nQ);
+        cellMaximumPerMagnitude = ceil(expectedMagnitudePerBlock(:) / nQ);
+
+        assert(expectedChangePerBlock == 40 && expectedNoChangePerBlock == 10, ...
+            'Full profile must resolve to 40 change and 10 no-change trials per block.');
+        assert(all(abs(expectedMagnitudePerBlock-round(expectedMagnitudePerBlock)) < 1e-9), ...
+            'Full-profile magnitude totals must divide evenly across blocks.');
+        assert(abs(expectedQuadrantPerBlock-round(expectedQuadrantPerBlock)) < 1e-9, ...
+            'Full-profile change totals must divide evenly across quadrants and blocks.');
+        assert(all(abs(expectedCellsGlobal-round(expectedCellsGlobal)) < 1e-9), ...
+            'Full-profile magnitude totals must divide evenly across quadrants.');
+        assert(isequal(blockMagnitudeCounts, repmat(expectedMagnitudePerBlock, nB, 1)), ...
+            'Full-profile per-block magnitude counts are incorrect.');
+        assert(all(blockQuadrantCounts(:) == expectedQuadrantPerBlock), ...
+            'Full-profile per-block change-target quadrant counts are incorrect.');
+        for mm = 1:nM
+            mmCells = blockCellCounts(:,mm,:);
+            assert(all(mmCells(:) >= cellMinimumPerMagnitude(mm) & ...
+                mmCells(:) <= cellMaximumPerMagnitude(mm)), ...
+                'Full-profile magnitude-by-quadrant cells are outside their derived bounds.');
+        end
+        assert(isequal(cellTotals, repmat(expectedCellsGlobal, 1, nQ)), ...
+            'Full-profile global magnitude-by-quadrant counts are incorrect.');
     elseif strcmp(cfg.runProfile,'pilotBroad')
         assert(all(blockMagnitudeCounts(:) == 5), ...
             'pilotBroad requires five trials per magnitude per block.');
