@@ -45,12 +45,8 @@ if cfg.debug.scheduleOnly
     if ~isempty(profileOverride), cfg.runProfile = profileOverride; end
 end
 
-if cfg.debug.scheduleOnly
-    cfg.participantID = 'SCHEDULE_TEST';
-else
-    cfg.participantID = input('Enter Participant ID (e.g., S001): ', 's');
-end
-if isempty(cfg.participantID), cfg.participantID = 'UNKNOWN'; end
+cfg.participantID = '';
+cfg.participantInfo = struct();
 
 cfg.debugWindow      = false;     % smaller window
 cfg.visualDebugLevel = 1;
@@ -342,6 +338,21 @@ cfg.stim.changeAngleDeg = NaN;    % per-trial value comes from cfg.design.change
 cfg.fix.sizeDeg      = 0.37;
 cfg.fix.lineWidthDeg = 0.08;
 
+%% ------------------------- PARTICIPANT INFORMATION -------------------------
+% This is the first operator-facing interaction. It runs before schedule
+% generation, participant displays, EEG serial initialisation, or Tobii.
+if cfg.debug.scheduleOnly
+    cfg.participantID = 'SCHEDULE_TEST';
+    cfg.participantInfo = makeScheduleTestParticipantInfo(cfg.participantID);
+else
+    [cfg.participantInfo, participantInfoConfirmed] = collectParticipantInformation(cfg);
+    if ~participantInfoConfirmed
+        fprintf('\nSession cancelled before PTB or hardware initialisation.\n');
+        return;
+    end
+    cfg.participantID = cfg.participantInfo.participantID;
+end
+
 %% ------------------------- RANDOMISATION + SCHEDULE -------------------------
 cfg.randomisation = initialiseRandomisation(cfg.randomSeed);
 trials = buildTrialList(cfg);
@@ -628,6 +639,7 @@ try
 
     %% ------------------------- PRACTICE FLOW (LINEAR) -----------------------------
     practiceFlow = struct();
+    practiceFlow.participantInfo = cfg.participantInfo;
     practiceFlow.protocolVersion = cfg.protocolVersion;
     practiceFlow.runProfile = cfg.runProfile;
     practiceFlow.questionOrder = cfg.questionOrder;
@@ -665,6 +677,12 @@ try
     practiceRow = struct();
 
     practiceRow.participantID = string(cfg.participantID);
+    practiceRow.ageYears = cfg.participantInfo.ageYears;
+    practiceRow.gender = string(cfg.participantInfo.gender);
+    practiceRow.handedness = string(cfg.participantInfo.handedness);
+    practiceRow.visionCorrection = string(cfg.participantInfo.visionCorrection);
+    practiceRow.eligibilityConfirmed = logical(cfg.participantInfo.eligibilityConfirmed);
+    practiceRow.consentConfirmed = logical(cfg.participantInfo.consentConfirmed);
     practiceRow.timestamp     = string(timestamp);
     practiceRow.protocolVersion = string(cfg.protocolVersion);
     practiceRow.runProfile = string(cfg.runProfile);
@@ -1085,6 +1103,7 @@ try
     results = results(~cellfun(@isempty,{results.participantID}));
 
     T = struct2table(results);
+    T = addParticipantInfoColumns(T, cfg);
 
     fprintf('\nMissed flip summary:\n');
     fprintf('S1:  %d\n', sum(T.missedS1 > 0));
@@ -1185,6 +1204,7 @@ try
         
     cal = struct();
     cal.participantID  = cfg.participantID;
+    cal.participantInfo = cfg.participantInfo;
     cal.timestamp      = timestamp;
     cal.protocolVersion = cfg.protocolVersion;
     cal.runProfile = cfg.runProfile;
@@ -1488,6 +1508,225 @@ end
 end
 
 %% ========================= LOCAL FUNCTIONS =========================
+
+function [participantInfo, confirmed] = collectParticipantInformation(cfg)
+% Compact modal operator form. It is deliberately completed and closed
+% before PsychDefaultSetup, OpenWindow, EEG serial, or Tobii initialisation.
+
+    participantInfo = struct();
+    confirmed = false;
+    fig = [];
+
+    try
+        formWidth = 560;
+        formHeight = 500;
+        monitorPositions = get(groot, 'MonitorPositions');
+        primaryMonitor = monitorPositions(1,:);
+        formLeft = primaryMonitor(1) + round((primaryMonitor(3) - formWidth) / 2);
+        formBottom = primaryMonitor(2) + round((primaryMonitor(4) - formHeight) / 2);
+
+        fig = uifigure( ...
+            'Name', 'Participant information', ...
+            'Position', [formLeft formBottom formWidth formHeight], ...
+            'Resize', 'off', ...
+            'WindowStyle', 'modal', ...
+            'Color', [0.96 0.96 0.96], ...
+            'CloseRequestFcn', @cancelSession);
+
+        grid = uigridlayout(fig, [10 2]);
+        grid.RowHeight = {44, 30, 38, 38, 38, 38, 38, 44, 44, 48};
+        grid.ColumnWidth = {165, '1x'};
+        grid.Padding = [24 20 24 20];
+        grid.RowSpacing = 6;
+        grid.ColumnSpacing = 14;
+
+        titleLabel = uilabel(grid, ...
+            'Text', 'Participant information', ...
+            'FontSize', 20, ...
+            'FontWeight', 'bold', ...
+            'HorizontalAlignment', 'center');
+        titleLabel.Layout.Row = 1;
+        titleLabel.Layout.Column = [1 2];
+
+        profileLabel = uilabel(grid, ...
+            'Text', sprintf('Profile: %s    Protocol: %s', ...
+                cfg.runProfile, cfg.protocolVersion), ...
+            'FontSize', 12, ...
+            'FontColor', [0.30 0.30 0.30], ...
+            'HorizontalAlignment', 'center');
+        profileLabel.Layout.Row = 2;
+        profileLabel.Layout.Column = [1 2];
+
+        makeFormLabel(grid, 'Participant ID', 3);
+        pidField = uieditfield(grid, 'text', ...
+            'Placeholder', 'e.g., S001', ...
+            'FontSize', 14);
+        pidField.Layout.Row = 3;
+        pidField.Layout.Column = 2;
+
+        makeFormLabel(grid, 'Age', 4);
+        ageField = uieditfield(grid, 'text', ...
+            'Placeholder', 'e.g., 24', ...
+            'FontSize', 14);
+        ageField.Layout.Row = 4;
+        ageField.Layout.Column = 2;
+
+        makeFormLabel(grid, 'Gender', 5);
+        genderField = uidropdown(grid, ...
+            'Items', {'Select...', 'Woman', 'Man', 'Non-binary', ...
+                'Another identity', 'Prefer not to say'}, ...
+            'Value', 'Select...', ...
+            'FontSize', 14);
+        genderField.Layout.Row = 5;
+        genderField.Layout.Column = 2;
+
+        makeFormLabel(grid, 'Handedness', 6);
+        handednessField = uidropdown(grid, ...
+            'Items', {'Select...', 'Right', 'Left', ...
+                'Ambidextrous/Mixed', 'Prefer not to say'}, ...
+            'Value', 'Select...', ...
+            'FontSize', 14);
+        handednessField.Layout.Row = 6;
+        handednessField.Layout.Column = 2;
+
+        makeFormLabel(grid, 'Vision correction', 7);
+        visionField = uidropdown(grid, ...
+            'Items', {'Select...', 'None', 'Glasses', 'Contact lenses', 'Other'}, ...
+            'Value', 'Select...', ...
+            'FontSize', 14);
+        visionField.Layout.Row = 7;
+        visionField.Layout.Column = 2;
+
+        eligibilityField = uicheckbox(grid, ...
+            'Text', 'Eligibility confirmed', ...
+            'Value', false, ...
+            'FontSize', 14);
+        eligibilityField.Layout.Row = 8;
+        eligibilityField.Layout.Column = [1 2];
+
+        consentField = uicheckbox(grid, ...
+            'Text', 'Consent confirmed', ...
+            'Value', false, ...
+            'FontSize', 14);
+        consentField.Layout.Row = 9;
+        consentField.Layout.Column = [1 2];
+
+        buttonGrid = uigridlayout(grid, [1 3]);
+        buttonGrid.Layout.Row = 10;
+        buttonGrid.Layout.Column = [1 2];
+        buttonGrid.ColumnWidth = {'1x', 120, 120};
+        buttonGrid.Padding = [0 4 0 0];
+        buttonGrid.ColumnSpacing = 12;
+
+        cancelButton = uibutton(buttonGrid, 'push', ...
+            'Text', 'Cancel', ...
+            'FontSize', 14, ...
+            'ButtonPushedFcn', @cancelSession);
+        cancelButton.Layout.Column = 2;
+
+        startButton = uibutton(buttonGrid, 'push', ...
+            'Text', 'Start session', ...
+            'FontSize', 14, ...
+            'FontWeight', 'bold', ...
+            'ButtonPushedFcn', @submitSession);
+        startButton.Layout.Column = 3;
+
+        drawnow;
+        uiwait(fig);
+
+        if isvalid(fig)
+            delete(fig);
+        end
+
+    catch ME
+        if ~isempty(fig) && isvalid(fig)
+            delete(fig);
+        end
+        rethrow(ME);
+    end
+
+    function submitSession(~, ~)
+        participantID = upper(strtrim(char(pidField.Value)));
+        ageText = strtrim(char(ageField.Value));
+        ageYears = str2double(ageText);
+
+        if isempty(participantID)
+            uialert(fig, 'Enter a participant ID.', 'Participant information required');
+            return;
+        end
+        if isempty(regexp(participantID, '^[A-Z0-9_-]+$', 'once'))
+            uialert(fig, ...
+                'Participant ID may contain only letters, numbers, underscores, and hyphens.', ...
+                'Invalid participant ID');
+            return;
+        end
+        if isempty(ageText) || ~isfinite(ageYears) || ageYears <= 0 || ...
+                abs(ageYears - round(ageYears)) > 1e-9
+            uialert(fig, 'Enter age as a whole number.', 'Invalid age');
+            return;
+        end
+        if strcmp(genderField.Value, 'Select...')
+            uialert(fig, 'Select a gender response.', 'Participant information required');
+            return;
+        end
+        if strcmp(handednessField.Value, 'Select...')
+            uialert(fig, 'Select a handedness response.', 'Participant information required');
+            return;
+        end
+        if strcmp(visionField.Value, 'Select...')
+            uialert(fig, 'Select a vision-correction response.', 'Participant information required');
+            return;
+        end
+        if ~eligibilityField.Value
+            uialert(fig, 'Confirm participant eligibility before starting.', ...
+                'Eligibility not confirmed');
+            return;
+        end
+        if ~consentField.Value
+            uialert(fig, 'Confirm participant consent before starting.', ...
+                'Consent not confirmed');
+            return;
+        end
+
+        participantInfo = struct( ...
+            'participantID', participantID, ...
+            'ageYears', round(ageYears), ...
+            'gender', char(genderField.Value), ...
+            'handedness', char(handednessField.Value), ...
+            'visionCorrection', char(visionField.Value), ...
+            'eligibilityConfirmed', logical(eligibilityField.Value), ...
+            'consentConfirmed', logical(consentField.Value));
+        confirmed = true;
+        uiresume(fig);
+    end
+
+    function cancelSession(~, ~)
+        confirmed = false;
+        if ~isempty(fig) && isvalid(fig)
+            uiresume(fig);
+        end
+    end
+end
+
+function label = makeFormLabel(parentGrid, textValue, rowNumber)
+    label = uilabel(parentGrid, ...
+        'Text', textValue, ...
+        'FontSize', 14, ...
+        'HorizontalAlignment', 'right');
+    label.Layout.Row = rowNumber;
+    label.Layout.Column = 1;
+end
+
+function participantInfo = makeScheduleTestParticipantInfo(participantID)
+    participantInfo = struct( ...
+        'participantID', participantID, ...
+        'ageYears', NaN, ...
+        'gender', 'not_applicable', ...
+        'handedness', 'not_applicable', ...
+        'visionCorrection', 'not_applicable', ...
+        'eligibilityConfirmed', false, ...
+        'consentConfirmed', false);
+end
 
 function assets = resolveAndValidateInstructionAssets(assets)
 % Resolve full-screen instruction PNGs relative to this script and fail
@@ -3011,6 +3250,7 @@ end
 function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary = struct();
     cfgSummary.participantID = cfg.participantID;
+    cfgSummary.participantInfo = cfg.participantInfo;
     cfgSummary.protocolVersion = cfg.protocolVersion;
     cfgSummary.runProfile = cfg.runProfile;
     cfgSummary.randomisation = cfg.randomisation;
@@ -3162,6 +3402,18 @@ function txt = mExceptionText(ME)
     end
 end
 
+function T = addParticipantInfoColumns(T, cfg)
+% Apply identical participant metadata to final and checkpoint tables.
+    nRows = height(T);
+    info = cfg.participantInfo;
+    T.ageYears = repmat(double(info.ageYears), nRows, 1);
+    T.gender = repmat(string(info.gender), nRows, 1);
+    T.handedness = repmat(string(info.handedness), nRows, 1);
+    T.visionCorrection = repmat(string(info.visionCorrection), nRows, 1);
+    T.eligibilityConfirmed = repmat(logical(info.eligibilityConfirmed), nRows, 1);
+    T.consentConfirmed = repmat(logical(info.consentConfirmed), nRows, 1);
+end
+
 
 function [ok, nSaved] = checkpointSave(results, t, outFile, cfg)
     ok = false;
@@ -3175,6 +3427,7 @@ function [ok, nSaved] = checkpointSave(results, t, outFile, cfg)
         end
 
         T = struct2table(r);
+        T = addParticipantInfoColumns(T, cfg);
         T.protocolVersion = repmat(string(cfg.protocolVersion), height(T), 1);
         T.runProfile = repmat(string(cfg.runProfile), height(T), 1);
         T.questionOrder = repmat(string(cfg.questionOrder), height(T), 1);
