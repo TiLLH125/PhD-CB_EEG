@@ -290,7 +290,6 @@ cfg.design.changeCountsPerMagnitude = activeProfile.changeCounts(:)';
 cfg.nChange = sum(cfg.design.changeCountsPerMagnitude);
 cfg.nCatch = activeProfile.noChangeTrials;
 cfg.nTotal = cfg.nChange + cfg.nCatch;
-cfg.calib.maxTrials = cfg.nTotal;  % retained name for output compatibility
 cfg.trialsPerBlock = activeProfile.trialsPerBlock;
 cfg.nBlocks = cfg.nTotal / cfg.trialsPerBlock;
 cfg.trialDial.applyPerBlock = true;
@@ -309,12 +308,6 @@ assert(numel(cfg.design.changeMagnitudesDeg) == numel(cfg.design.changeCountsPer
 assert(sum(cfg.design.changeCountsPerMagnitude) == cfg.nChange, ...
     'Magnitude-specific change counts must sum to nChange.');
 
-if all(cfg.design.changeCountsPerMagnitude == cfg.design.changeCountsPerMagnitude(1))
-    cfg.nChangePerMagnitude = cfg.design.changeCountsPerMagnitude(1);
-else
-    cfg.nChangePerMagnitude = NaN;  % legacy scalar is undefined for unequal magnitude counts
-end
-
 % Timing (seconds)
 cfg.fixJitterRangeSec = [1.00 2.00];  % fixation before S1
 cfg.S1_sec            = 0.600;
@@ -324,6 +317,11 @@ cfg.postS2Gap_sec     = 0.200;         % gap between S2 and Q1
 cfg.ITI_sec           = 1.00;          % after the final localisation response
 cfg.maxRespSec        = 30.00;         % failsafe
 
+% Automatic completion screen. It remains visible until all enabled output
+% streams have saved and this minimum duration has elapsed.
+cfg.completion = struct();
+cfg.completion.minDisplaySec = 15.00;
+
 % Grating/mask appearance (visual-angle locked; converted to px at runtime)
 cfg.stim.squareSizeDeg  = 3.5;
 cfg.stim.spacingDeg     = 2.3;   % per-axis offset; gives 2.2 deg radial eccentricity
@@ -332,7 +330,6 @@ cfg.stim.contrast       = 0.8;
 cfg.stim.backgroundGrey = 0.5;
 cfg.stim.gaborSigmaFrac = 0.40;
 cfg.stim.allowedOri = 0:11.25:168.75;
-cfg.stim.changeAngleDeg = NaN;    % per-trial value comes from cfg.design.changeMagnitudesDeg
 
 % Fixation (visual-angle locked; converted to px at runtime)
 cfg.fix.sizeDeg      = 0.37;
@@ -360,6 +357,7 @@ cfg.design.balanceSummary = validateTrialSchedule(trials, cfg);
 cfg.randomisation.stateAfterSchedule = rng;
 if cfg.debug.scheduleOnly
     printTrialBalanceSummary(cfg.design.balanceSummary, cfg);
+    runFullRunSchemaSelfTest(cfg, trials);
     nStress = str2double(getenv('CB_ORIENTATION_SCHEDULE_ITERATIONS'));
     if ~isfinite(nStress) || nStress < 1, nStress = 1; end
     runScheduleStressTest(cfg, round(nStress));
@@ -610,7 +608,7 @@ try
     printTrialBalanceSummary(cfg.design.balanceSummary, cfg);
 
     %% ------------------------- START TOBII RECORDING ----------------------
-    % Record the full visible session: instructions, overview, practice, main trials, breaks, and end screen.
+    % Record the visible task through the onset of the completion screen.
     tobii = startTobiiRecording(tobii, cfg, windowRect, ifi, timestamp);
     emitTobiiMessage('RUN_START', 'runStart', 'experiment', NaN, NaN, GetSecs, ...
         sprintf('participantID=%s timestamp=%s protocolVersion=%s runProfile=%s randomSeed=%u screen=%d res=%dx%d hz=%.3f nTotal=%d trialsPerBlock=%d eegEnabled=%d magnitudesDeg=%s magnitudeCounts=%s questionOrder=%s awarenessRule=%s eegQuestionTriggerScheme=%s S1ms=%.0f ISIms=%.0f S2ms=%.0f gapMs=%.0f', ...
@@ -805,20 +803,6 @@ try
 
         trial = trials(t);
 
-        % Fixed timing. durFrames is retained as a legacy logging alias for S1 duration.
-        durFrames = cfg.S1_frames;
-        s1Frames = cfg.S1_frames;
-        s2Frames = cfg.S2_frames;
-        selectedPBlind = NaN;
-        selectedPSensing = NaN;
-        selectedPSeeing = NaN;
-        selectedPAware = NaN;
-        selectedPLocGivenAware = NaN;
-        posteriorEntropyBits = NaN;
-        trackName = char(string(trial.staircase));
-        trackTargetOutcome = 'fixedMagnitude';
-        trackTargetProb = NaN;
-
         % S1/S2 orientations and direction were precomputed and validated before PTB opened.
         changeMagnitudeDeg = trial.changeMagnitudeDeg;
         oriS1 = trial.oriS1(:);
@@ -841,7 +825,7 @@ try
         tTrialStart = tFixOn;
         emitTobiiMessage('TRIAL_META', 'trialMeta', 'main_trial', t, blockNum, tTrialStart, ...
             sprintf('isChange=%d magnitudeDeg=%.2f direction=%d label=%s changeQuad=%d startOriDeg=%s S1Frames=%d ISIFrames=%d S2Frames=%d gapFrames=%d', ...
-            trial.isChange, changeMagnitudeDeg, trial.changeDirection, char(string(trial.staircase)), ...
+            trial.isChange, changeMagnitudeDeg, trial.changeDirection, char(string(trial.magnitudeLabel)), ...
             trial.changeQuad, numToStrOrNA(trial.changeStartOri), cfg.S1_frames, cfg.ISI_frames, cfg.S2_frames, cfg.gap_frames));
 
         drawGratings(window, gratingTex, allRects, oriS1, bg);
@@ -885,18 +869,18 @@ try
         Screen('DrawTexture', window, cfg.qTex.PAS);
         Screen('DrawingFinished', window);
         vblTargetQ1 = tGap + (cfg.gap_frames - 0.5) * ifi;
-        [tQ1, ~, ~, missedQ1] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, blockNum, vblTargetQ1);
+        [tPAS, ~, ~, missedPAS] = cfg.loggedFlip('Q1_PAS', 'main_trial', t, blockNum, vblTargetQ1);
         if cfg.eeg.markerPolicy.markMainTrials
-            emitTrigger('q1On', 'main_trial', t, blockNum, cfg.eeg.codes.q1On, 'Q1_PAS', tQ1);
+            emitTrigger('q1On', 'main_trial', t, blockNum, cfg.eeg.codes.q1On, 'Q1_PAS', tPAS);
         end
         [pasKey, pasTime] = waitForKeyQueue(cfg.keys.pas, cfg.keys.escape, cfg.maxRespSec, cfg);
-        pasRT = pasTime - tQ1;
+        pasRT = pasTime - tPAS;
         pas = keyToMappedValue(pasKey, cfg.keys.pas, cfg.keys.pasValues);
         emitTobiiMessage('PAS_RESP', 'Q1_PAS', 'main_trial', t, blockNum, pasTime, ...
             sprintf('pas=%s keyCode=%s rtMs=%.3f', numToStrOrNA(pas), numToStrOrNA(pasKey), pasRT * 1000));
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
             if ~isnan(pas) && pas >= 1 && pas <= 4
-                emitTrigger('pasResponse', 'main_trial', t, blockNum, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tQ1);
+                emitTrigger('pasResponse', 'main_trial', t, blockNum, cfg.eeg.codes.pasBase + pas, 'Q1_PAS', tPAS);
             end
         end
 
@@ -909,19 +893,19 @@ try
         end
         Screen('DrawingFinished', window);
         vblTargetQ2 = GetSecs + 0.5 * ifi;
-        [tQ2, ~, ~, missedQ2] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, blockNum, vblTargetQ2);
+        [tLoc, ~, ~, missedLoc] = cfg.loggedFlip('Q2_Loc', 'main_trial', t, blockNum, vblTargetQ2);
         if cfg.eeg.markerPolicy.markMainTrials
-            emitTrigger('q2On', 'main_trial', t, blockNum, cfg.eeg.codes.q2On, 'Q2_Loc', tQ2);
+            emitTrigger('q2On', 'main_trial', t, blockNum, cfg.eeg.codes.q2On, 'Q2_Loc', tLoc);
         end
 
         [locKey, locTime] = waitForKeyQueue(cfg.keys.quad, cfg.keys.escape, cfg.maxRespSec, cfg);
-        locRT = locTime - tQ2;
+        locRT = locTime - tLoc;
         locResp = keyToMappedValue(locKey, cfg.keys.quad, cfg.keys.quadValues);
         emitTobiiMessage('LOC_RESP', 'Q2_Loc', 'main_trial', t, blockNum, locTime, ...
             sprintf('loc=%s keyCode=%s rtMs=%.3f', numToStrOrNA(locResp), numToStrOrNA(locKey), locRT * 1000));
         if cfg.eeg.markerPolicy.markMainTrials && cfg.eeg.markerPolicy.markResponses
             if ~isnan(locResp) && locResp >= 1 && locResp <= 4
-                emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + locResp, 'Q2_Loc', tQ2);
+                emitTrigger('locResponse', 'main_trial', t, blockNum, cfg.eeg.codes.locBase + locResp, 'Q2_Loc', tLoc);
             end
         end
 
@@ -952,11 +936,9 @@ try
         validLoc = ~isnan(locResp) && locResp >= 1 && locResp <= 4;
         validBehaviouralTrial = double(validPAS && validLoc);
         awareFromPAS = NaN;
-        derivedDetectionFromPAS = NaN;
         catchOutcome = '';
         if validPAS
             awareFromPAS = double(pas >= 2);
-            derivedDetectionFromPAS = awareFromPAS;
         end
 
         if ~validPAS
@@ -986,33 +968,11 @@ try
         results(t).blockNum = ceil(t / cfg.trialsPerBlock);
 
         results(t).isChange = trial.isChange;
-        results(t).staircase = trial.staircase;
         results(t).changeQuad = trial.changeQuad;
         results(t).changeDirection = trial.changeDirection;
         results(t).changeStartOri = trial.changeStartOri;
 
-        results(t).durFrames = durFrames;
-        results(t).durSec = durFrames * ifi;
-        results(t).s1Frames = s1Frames;
-        results(t).s1Sec = s1Frames * ifi;
-        results(t).isiFrames = cfg.ISI_frames;
-        results(t).isiSec = cfg.ISI_frames * ifi;
-        results(t).s2Frames = s2Frames;
-        results(t).s2Sec = s2Frames * ifi;
-        results(t).gapFrames = cfg.gap_frames;
-        results(t).gapSec = cfg.gap_frames * ifi;
-        results(t).changeAngleDeg = changeMagnitudeDeg;
         results(t).changeMagnitudeDeg = changeMagnitudeDeg;
-
-        results(t).trackName = trackName;
-        results(t).trackTargetOutcome = trackTargetOutcome;
-        results(t).trackTargetProb = trackTargetProb;
-        results(t).selectedPBlind = selectedPBlind;
-        results(t).selectedPSensing = selectedPSensing;
-        results(t).selectedPSeeing = selectedPSeeing;
-        results(t).selectedPAware = selectedPAware;
-        results(t).selectedPLocGivenAware = selectedPLocGivenAware;
-        results(t).posteriorEntropyBits = posteriorEntropyBits;
 
         results(t).oriS1 = sprintf('%.2f,%.2f,%.2f,%.2f', oriS1(1),oriS1(2),oriS1(3),oriS1(4));
         results(t).oriS2 = sprintf('%.2f,%.2f,%.2f,%.2f', oriS2(1),oriS2(2),oriS2(3),oriS2(4));
@@ -1024,22 +984,17 @@ try
         results(t).actualS1Frames = (tISI - tS1) / ifi;
         results(t).actualISIFrames = (tS2 - tISI) / ifi;
         results(t).actualS2Frames = (tGap - tS2) / ifi;
-        results(t).actualGapFrames = (tQ1 - tGap) / ifi;
+        results(t).actualGapFrames = (tPAS - tGap) / ifi;
         results(t).missedFixOn = missedFixOn;
         results(t).missedS1  = missedS1;
         results(t).missedISI = missedISI;
         results(t).missedS2  = missedS2;
         results(t).missedGap = missedGap;
-        % Positional fields follow Q1 PAS, Q2 localisation.
-        results(t).missedQ1  = missedQ1;
-        results(t).missedQ2  = missedQ2;
-        results(t).missedPAS = missedQ1;
-        results(t).missedLoc = missedQ2;
+        results(t).missedPAS = missedPAS;
+        results(t).missedLoc = missedLoc;
         results(t).missedITI = missedITI;
-        results(t).tQ1 = tQ1;
-        results(t).tQ2 = tQ2;
-        results(t).tPAS = tQ1;
-        results(t).tLoc = tQ2;
+        results(t).tPAS = tPAS;
+        results(t).tLoc = tLoc;
 
         results(t).locResp = locResp;
         results(t).locRT = locRT;
@@ -1052,21 +1007,10 @@ try
 
 
         results(t).awareFromPAS = awareFromPAS;
-        results(t).derivedDetectionFromPAS = derivedDetectionFromPAS;
         results(t).validBehaviouralTrial = validBehaviouralTrial;
         results(t).locCorrect = locCorrect;
         results(t).outcomeBin = outcomeBin;
         results(t).catchOutcome = catchOutcome;
-
-        results(t).track1_xCurrent = NaN;
-        results(t).track2_xCurrent = NaN;
-        results(t).track3_xCurrent = NaN;
-        results(t).track1_frozen   = NaN;
-        results(t).track2_frozen   = NaN;
-        results(t).track3_frozen   = NaN;
-        results(t).track1_frozenFrames = NaN;
-        results(t).track2_frozenFrames = NaN;
-        results(t).track3_frozenFrames = NaN;
 
         printOperatorMainTrialLine(results(t), cfg);
         verboseMainTrialLogLine(results(t), cfg);
@@ -1074,7 +1018,8 @@ try
         % End-of-block
         if mod(t, cfg.trialsPerBlock) == 0
             setOperatorStage(sprintf('block %d checkpoint and operator summary', blockNum));
-            [checkpointOK, checkpointRows] = checkpointSave(results, t, outFile, cfg);
+            [checkpointOK, checkpointRows] = checkpointSave( ...
+                results, t, outFile, cfg, timestamp, ifi);
             printOperatorBlockSummary(results, t, cfg, mainRunStart, ...
                 checkpointOK, checkpointRows, triggerLog);
 
@@ -1086,6 +1031,33 @@ try
                 showBlockResumeScreen(window, windowRect, bg, black, cfg);
             end
         end
+    end
+
+    %% ------------------------- COMPLETION + FINALISATION ------------------
+    % The final block checkpoint and operator summary have completed before
+    % this point. Keep this static participant screen visible while every
+    % enabled final output stream is saved.
+    setOperatorStage('completion screen');
+    drawCompletionScreen(window, bg, black, cfg);
+    [completionOnset, ~, ~, ~] = cfg.loggedFlip( ...
+        'experiment_end', 'experiment_end', NaN, NaN, NaN);
+
+    setOperatorStage('finalising and saving');
+    fprintf('\n============================================================\n');
+    fprintf('FINALISING AND SAVING...\n');
+    fprintf('The participant completion screen will close automatically.\n');
+    fprintf('============================================================\n');
+
+    emitTobiiMessage('RUN_END', 'runEnd', 'experiment_end', ...
+        NaN, NaN, completionOnset, 'status=complete');
+    tobiiSaveRequired = cfg.tobii.enable && ...
+        (cfg.tobii.saveMat || cfg.tobii.saveGazeCSV);
+    tobii = stopAndSaveTobii(tobii, cfg, outDir, ...
+        cfg.participantID, timestamp, 'complete');
+    if tobiiSaveRequired && ...
+            (~isfield(tobii, 'saved') || ~tobii.saved)
+        error('CB_4xGratings_v3_Orientation:FinalTobiiSaveFailed', ...
+            'Required Tobii output did not save successfully during finalisation.');
     end
 
     %% ------------ FINAL FIXED-DESIGN SUMMARY -----------------
@@ -1102,8 +1074,7 @@ try
     %% ------------------------- SAVE -------------------------
     results = results(~cellfun(@isempty,{results.participantID}));
 
-    T = struct2table(results);
-    T = addParticipantInfoColumns(T, cfg);
+    T = buildFullRunTable(results, cfg, timestamp, ifi);
 
     fprintf('\nMissed flip summary:\n');
     fprintf('S1:  %d\n', sum(T.missedS1 > 0));
@@ -1123,39 +1094,7 @@ try
             durFields{ff}, mean(v), min(v), max(v), expLabels{ff});
     end
 
-    % --- Add fixed-design summary values as columns (same value every row) ---
-    T.calibTimestamp = repmat(string(timestamp), height(T), 1);
-    T.fixedS1Frames  = repmat(cfg.S1_frames, height(T), 1);
-    T.fixedISIFrames = repmat(cfg.ISI_frames, height(T), 1);
-    T.fixedS2Frames  = repmat(cfg.S2_frames, height(T), 1);
-    T.fixedGapFrames = repmat(cfg.gap_frames, height(T), 1);
-    T.fixedS1Sec     = repmat(cfg.S1_frames * ifi, height(T), 1);
-    T.fixedISISec    = repmat(cfg.ISI_frames * ifi, height(T), 1);
-    T.fixedS2Sec     = repmat(cfg.S2_frames * ifi, height(T), 1);
-    T.fixedGapSec    = repmat(cfg.gap_frames * ifi, height(T), 1);
-    T.designMagnitudesDeg = repmat(string(mat2str(cfg.design.changeMagnitudesDeg)), height(T), 1);
-    T.changeTrialsPerMagnitude = repmat(cfg.nChangePerMagnitude, height(T), 1);
-    T.changeCountsPerMagnitude = repmat(string(mat2str(cfg.design.changeCountsPerMagnitude)), height(T), 1);
-    T.noChangeTrials = repmat(cfg.nCatch, height(T), 1);
-    T.debugQuickRun = repmat(double(strcmp(cfg.runProfile, 'debugQuick')), height(T), 1);
-    T.questTest100 = zeros(height(T), 1);
-    T.protocolVersion = repmat(string(cfg.protocolVersion), height(T), 1);
-    T.runProfile = repmat(string(cfg.runProfile), height(T), 1);
-    T.questionOrder = repmat(string(cfg.questionOrder), height(T), 1);
-    T.awarenessRule = repmat(string(cfg.awarenessRule), height(T), 1);
-    T.eegQuestionTriggerScheme = repmat(string(cfg.eegQuestionTriggerScheme), height(T), 1);
-    T.randomSeed = repmat(double(cfg.randomisation.seed), height(T), 1);
-    T.blockMagnitudeInventory = strings(height(T),1);
-    T.blockQuadrantInventory = strings(height(T),1);
-    for rr = 1:height(T)
-        bb = T.blockNum(rr);
-        T.blockMagnitudeInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockMagnitudeCounts(bb,:)));
-        T.blockQuadrantInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockQuadrantCounts(bb,:)));
-    end
-    T.globalMagnitudeQuadrantInventory = repmat( ...
-        string(mat2str(cfg.design.balanceSummary.cellTotals)), height(T), 1);
-
-    writetable(T, outFile);
+    writeTableAtomically(T, outFile);
     fprintf('Saved full-run CSV: %s\n', outFile);
 
     T2 = readtable(outFile);   % uses the file you just saved
@@ -1210,7 +1149,6 @@ try
     cal.runProfile = cfg.runProfile;
     cal.design         = cfg.design;
     cal.changeMagnitudesDeg = cfg.design.changeMagnitudesDeg;
-    cal.nChangePerMagnitude = cfg.nChangePerMagnitude;
     cal.changeCountsPerMagnitude = cfg.design.changeCountsPerMagnitude;
     cal.nChange        = cfg.nChange;
     cal.nCatch         = cfg.nCatch;
@@ -1223,7 +1161,6 @@ try
     cal.ISI_sec        = cfg.ISI_frames * ifi;
     cal.S2_sec         = cfg.S2_frames * ifi;
     cal.gap_sec        = cfg.gap_frames * ifi;
-    cal.debugQuickRun  = strcmp(cfg.runProfile, 'debugQuick');
     cal.questionOrder = cfg.questionOrder;
     cal.awarenessRule = cfg.awarenessRule;
     cal.eegQuestionTriggerScheme = cfg.eegQuestionTriggerScheme;
@@ -1235,11 +1172,10 @@ try
     save(calFile, 'cal');
     fprintf('Saved full-run MAT: %s\n', calFile);
 
-    endText = 'You have finished the experiment, well done!\n\nPress any key to exit.';
-    DrawFormattedText(window, endText, 'center', 'center', black, 90);
-    cfg.loggedFlip('experiment_end', 'experiment_end', NaN, NaN, NaN);
-
-    if ~isempty(flipLog)
+    if isempty(flipLog)
+        error('CB_4xGratings_v3_Orientation:FinalFlipLogMissing', ...
+            'The completed run has no flip-log entries to save.');
+    else
         flipLogT = struct2table(flipLog);
 
         flipLogT.missedMs = 1000 * flipLogT.missed;
@@ -1275,7 +1211,10 @@ try
         disp(missedOnly);
     end
 
-    if exist('triggerLog', 'var') && ~isempty(triggerLog)
+    if ~exist('triggerLog', 'var') || isempty(triggerLog)
+        error('CB_4xGratings_v3_Orientation:FinalTriggerLogMissing', ...
+            'The completed run has no trigger-log entries to save.');
+    else
         triggerLogT = struct2table(triggerLog);
 
         fprintf('\nTrigger timing summary:\n');
@@ -1306,9 +1245,14 @@ try
         fprintf('Saved trigger log CSV: %s\n', triggerLogFile);
     end
 
-    emitTobiiMessage('RUN_END', 'runEnd', 'experiment_end', NaN, NaN, GetSecs, 'status=complete');
-    KbStrokeWait;
-    tobii = stopAndSaveTobii(tobii, cfg, outDir, cfg.participantID, timestamp, 'complete');
+    remainingCompletionSec = completionOnset + ...
+        cfg.completion.minDisplaySec - GetSecs;
+    if remainingCompletionSec > 0
+        WaitSecs(remainingCompletionSec);
+    end
+
+    setOperatorStage('session complete');
+    fprintf('\nALL FILES SAVED — SESSION COMPLETE\n');
 
 catch ME
     isUserAbort = strcmp(ME.identifier, 'CB_4xGratings_v3_Orientation:UserAbort');
@@ -1336,7 +1280,8 @@ catch ME
     if exist('results','var')
         last = find(~cellfun(@isempty,{results.participantID}), 1, 'last');
         if ~isempty(last)
-            [abortCheckpointOK, abortCheckpointRows] = checkpointSave(results, last, outFile, cfg);
+            [abortCheckpointOK, abortCheckpointRows] = checkpointSave( ...
+                results, last, outFile, cfg, timestamp, ifi);
             lastCompleted = last;
         end
     end
@@ -2043,6 +1988,22 @@ function showBlockResumeScreen(window, windowRect, bg, black, cfg)
     showPressSpaceToBeginScreen(window, windowRect, bg, black, cfg, 'block_resume');
 end
 
+function drawCompletionScreen(window, bg, black, cfg)
+% Static participant-facing screen shown while final outputs are saved.
+    tcfg = cfg.display.text;
+    Screen('FillRect', window, bg);
+    Screen('TextStyle', window, 0);
+    Screen('TextSize', window, tcfg.bodySize);
+    endText = [ ...
+        'Well done!\n\n' ...
+        'You have finished the experiment.\n\n' ...
+        'Thank you for your time.\n\n' ...
+        'Please remain seated and wait for the researcher''s instructions ' ...
+        'before moving or getting up.'];
+    DrawFormattedText(window, endText, 'center', 'center', black, ...
+        tcfg.bodyWrap, [], [], tcfg.bodyLineSpacing);
+end
+
 function result = classifyPractice1(summary, cfg)
 
     crit = cfg.practice1Criteria;
@@ -2229,8 +2190,7 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
         'changeQuad', NaN, ...
         'changeStartOri', NaN, ...
         'changeDirection', 0, ...
-        'changeMagnitudeDeg', NaN, ...
-        'staircase', 'P');
+        'changeMagnitudeDeg', NaN);
 
     nTotal = pracCfg.nTrials;
     pTrials = repmat(trialTemplate, nTotal, 1);
@@ -2249,7 +2209,6 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
         pTrials(k).changeQuad = stdQuads(i);
         pTrials(k).changeDirection = stdDirections(i);
         pTrials(k).changeMagnitudeDeg = magSTD;
-        pTrials(k).staircase = orientationMagnitudeLabel(magSTD);
         k = k + 1;
     end
 
@@ -2260,7 +2219,6 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
         pTrials(k).changeQuad = NaN;
         pTrials(k).changeDirection = 0;
         pTrials(k).changeMagnitudeDeg = 0;
-        pTrials(k).staircase = 'NCH';
         k = k + 1;
     end
 
@@ -2273,7 +2231,6 @@ function pTrials = buildPracticeTrialList(pracCfg, allowedOri)
         pTrials(k).changeQuad = easyQuads(i);
         pTrials(k).changeDirection = easyDirections(i);
         pTrials(k).changeMagnitudeDeg = magEasy;
-        pTrials(k).staircase = orientationMagnitudeLabel(magEasy);
         k = k + 1;
     end
 
@@ -2416,7 +2373,6 @@ function trials = buildTrialList(cfg)
 
     trialTemplate = struct( ...
         'isChange', 0, ...
-        'staircase', 'NCH', ...
         'changeQuad', 0, ...
         'changeStartOri', NaN, ...
         'changeDirection', 0, ...
@@ -2456,7 +2412,6 @@ function trials = buildTrialList(cfg)
                 dirs = dirs(randperm(numel(dirs)));
                 for ii = 1:nCell
                     block(k).isChange = 1;
-                    block(k).staircase = label;
                     block(k).magnitudeLabel = label;
                     block(k).changeMagnitudeDeg = mag;
                     block(k).magnitudeIndex = mm;
@@ -2470,7 +2425,6 @@ function trials = buildTrialList(cfg)
         for i = 1:nCat
             catchIdx = catchIdx + 1;
             block(k).isChange = 0;
-            block(k).staircase = 'NCH';
             block(k).magnitudeLabel = 'NCH';
             block(k).changeMagnitudeDeg = 0;
             block(k).magnitudeIndex = 0;
@@ -2903,37 +2857,30 @@ function r = emptyResultRow()
         'trialNum', NaN, ...
         'blockNum', NaN, ...
         'isChange', NaN, ...
-        'staircase', '', ...
         'changeQuad', NaN, ...
         'changeDirection', NaN, ...
         'changeStartOri', NaN, ...
-        'durFrames', NaN, ...
-        'durSec', NaN, ...
-        's1Frames', NaN, ...
-        's1Sec', NaN, ...
-        'isiFrames', NaN, ...
-        'isiSec', NaN, ...
-        's2Frames', NaN, ...
-        's2Sec', NaN, ...
-        'gapFrames', NaN, ...
-        'gapSec', NaN, ...
-        'changeAngleDeg', NaN, ...
         'changeMagnitudeDeg', NaN, ...
-        'trackName', '', ...
-        'trackTargetOutcome', '', ...
-        'trackTargetProb', NaN, ...
-        'selectedPBlind', NaN, ...
-        'selectedPSensing', NaN, ...
-        'selectedPSeeing', NaN, ...
-        'selectedPAware', NaN, ...
-        'selectedPLocGivenAware', NaN, ...
-        'posteriorEntropyBits', NaN, ...
         'oriS1', '', ...
         'oriS2', '', ...
+        'pas', NaN, ...
+        'pasRT', NaN, ...
+        'locResp', NaN, ...
+        'locRT', NaN, ...
+        'awareFromPAS', NaN, ...
+        'validBehaviouralTrial', NaN, ...
+        'locCorrect', NaN, ...
+        'outcomeBin', '', ...
+        'catchOutcome', '', ...
+        'tTrialStart', NaN, ...
         'tS1', NaN, ...
         'tISI', NaN, ...
         'tS2', NaN, ...
         'tGap', NaN, ...
+        'tPAS', NaN, ...
+        'tLoc', NaN, ...
+        'tTrialEnd', NaN, ...
+        'trialTotalSec', NaN, ...
         'actualS1Frames', NaN, ...
         'actualISIFrames', NaN, ...
         'actualS2Frames', NaN, ...
@@ -2943,37 +2890,9 @@ function r = emptyResultRow()
         'missedISI', NaN, ...
         'missedS2', NaN, ...
         'missedGap', NaN, ...
-        'missedQ1', NaN, ...
-        'missedQ2', NaN, ...
         'missedPAS', NaN, ...
         'missedLoc', NaN, ...
-        'missedITI', NaN, ...
-        'tQ1', NaN, ...
-        'tQ2', NaN, ...
-        'tPAS', NaN, ...
-        'tLoc', NaN, ...
-        'locResp', NaN, ...
-        'locRT', NaN, ...
-        'pas', NaN, ...
-        'pasRT', NaN, ...
-        'awareFromPAS', NaN, ...
-        'derivedDetectionFromPAS', NaN, ...
-        'validBehaviouralTrial', NaN, ...
-        'locCorrect', NaN, ...
-        'outcomeBin', '', ...
-        'catchOutcome', '', ...
-        'track1_xCurrent', NaN, ...
-        'track2_xCurrent', NaN, ...
-        'track3_xCurrent', NaN, ...
-        'track1_frozen', NaN, ...
-        'track2_frozen', NaN, ...
-        'track3_frozen', NaN, ...
-        'track1_frozenFrames', NaN, ...
-        'track2_frozenFrames', NaN, ...
-        'track3_frozenFrames', NaN, ...
-        'tTrialStart', NaN, ...
-        'tTrialEnd',   NaN, ...
-        'trialTotalSec', NaN ...
+        'missedITI', NaN ...
     );
 end
 
@@ -3256,7 +3175,6 @@ function cfgSummary = makeTobiiConfigSummary(cfg)
     cfgSummary.randomisation = cfg.randomisation;
     cfgSummary.screenNumber = cfg.screenNumber;
     cfgSummary.debugWindow = cfg.debugWindow;
-    cfgSummary.debugQuickRun = strcmp(cfg.runProfile, 'debugQuick');
     cfgSummary.photodiodeTest = cfg.photodiodeTest;
     cfgSummary.eegEnable = cfg.eeg.enable;
     cfgSummary.nTotal = cfg.nTotal;
@@ -3402,6 +3320,135 @@ function txt = mExceptionText(ME)
     end
 end
 
+function T = buildFullRunTable(results, cfg, timestamp, ifi)
+% Authoritative FullRun schema used for both final and checkpoint CSVs.
+    % AsArray guarantees one-row semantics for a checkpoint containing only
+    % the first completed trial, whose orientation fields are 1-by-4 vectors.
+    T = struct2table(results, 'AsArray', true);
+    T = addParticipantInfoColumns(T, cfg);
+    nRows = height(T);
+
+    % Participant and run metadata.
+    T.sessionTimestamp = repmat(string(timestamp), nRows, 1);
+    T.protocolVersion = repmat(string(cfg.protocolVersion), nRows, 1);
+    T.runProfile = repmat(string(cfg.runProfile), nRows, 1);
+    T.questionOrder = repmat(string(cfg.questionOrder), nRows, 1);
+    T.awarenessRule = repmat(string(cfg.awarenessRule), nRows, 1);
+    T.eegQuestionTriggerScheme = repmat(string(cfg.eegQuestionTriggerScheme), nRows, 1);
+    T.randomSeed = repmat(double(cfg.randomisation.seed), nRows, 1);
+    T.plannedTotalTrials = repmat(cfg.nTotal, nRows, 1);
+    T.plannedBlocks = repmat(cfg.nBlocks, nRows, 1);
+    T.trialsPerBlock = repmat(cfg.trialsPerBlock, nRows, 1);
+    T.plannedChangeTrials = repmat(cfg.nChange, nRows, 1);
+    T.plannedNoChangeTrials = repmat(cfg.nCatch, nRows, 1);
+    T.designMagnitudesDeg = repmat( ...
+        string(mat2str(cfg.design.changeMagnitudesDeg)), nRows, 1);
+    T.changeCountsPerMagnitude = repmat( ...
+        string(mat2str(cfg.design.changeCountsPerMagnitude)), nRows, 1);
+    T.fixationJitterRangeSec = repmat( ...
+        string(mat2str(cfg.fixJitterRangeSec)), nRows, 1);
+    T.fixedS1Frames = repmat(cfg.S1_frames, nRows, 1);
+    T.fixedISIFrames = repmat(cfg.ISI_frames, nRows, 1);
+    T.fixedS2Frames = repmat(cfg.S2_frames, nRows, 1);
+    T.fixedGapFrames = repmat(cfg.gap_frames, nRows, 1);
+    T.fixedS1Sec = repmat(cfg.S1_frames * ifi, nRows, 1);
+    T.fixedISISec = repmat(cfg.ISI_frames * ifi, nRows, 1);
+    T.fixedS2Sec = repmat(cfg.S2_frames * ifi, nRows, 1);
+    T.fixedGapSec = repmat(cfg.gap_frames * ifi, nRows, 1);
+    T.itiSec = repmat(cfg.ITI_frames * ifi, nRows, 1);
+    T.maxResponseSec = repmat(cfg.maxRespSec, nRows, 1);
+    T.globalMagnitudeQuadrantInventory = repmat( ...
+        string(mat2str(cfg.design.balanceSummary.cellTotals)), nRows, 1);
+
+    % Block-specific physical-design inventories.
+    T.blockMagnitudeInventory = strings(nRows,1);
+    T.blockQuadrantInventory = strings(nRows,1);
+    for rr = 1:nRows
+        bb = T.blockNum(rr);
+        T.blockMagnitudeInventory(rr) = string( ...
+            mat2str(cfg.design.balanceSummary.blockMagnitudeCounts(bb,:)));
+        T.blockQuadrantInventory(rr) = string( ...
+            mat2str(cfg.design.balanceSummary.blockQuadrantCounts(bb,:)));
+    end
+
+    participantAndRun = { ...
+        'participantID', 'ageYears', 'gender', 'handedness', ...
+        'visionCorrection', 'eligibilityConfirmed', 'consentConfirmed', ...
+        'sessionTimestamp', 'protocolVersion', 'runProfile', ...
+        'questionOrder', 'awarenessRule', 'eegQuestionTriggerScheme', ...
+        'randomSeed', 'plannedTotalTrials', 'plannedBlocks', ...
+        'trialsPerBlock', 'plannedChangeTrials', 'plannedNoChangeTrials', ...
+        'designMagnitudesDeg', 'changeCountsPerMagnitude', ...
+        'fixationJitterRangeSec', 'fixedS1Frames', 'fixedISIFrames', ...
+        'fixedS2Frames', 'fixedGapFrames', 'fixedS1Sec', 'fixedISISec', ...
+        'fixedS2Sec', 'fixedGapSec', 'itiSec', 'maxResponseSec', ...
+        'globalMagnitudeQuadrantInventory'};
+    trialAndPhysical = { ...
+        'trialNum', 'blockNum', 'isChange', 'changeMagnitudeDeg', ...
+        'changeQuad', 'changeDirection', 'changeStartOri', ...
+        'blockMagnitudeInventory', 'blockQuadrantInventory'};
+    orientations = {'oriS1', 'oriS2'};
+    responses = {'pas', 'pasRT', 'locResp', 'locRT'};
+    outcomes = { ...
+        'awareFromPAS', 'validBehaviouralTrial', 'locCorrect', ...
+        'outcomeBin', 'catchOutcome'};
+    timingAndQC = { ...
+        'tTrialStart', 'tS1', 'tISI', 'tS2', 'tGap', 'tPAS', 'tLoc', ...
+        'tTrialEnd', 'trialTotalSec', 'actualS1Frames', ...
+        'actualISIFrames', 'actualS2Frames', 'actualGapFrames', ...
+        'missedFixOn', 'missedS1', 'missedISI', 'missedS2', ...
+        'missedGap', 'missedPAS', 'missedLoc', 'missedITI'};
+    orderedNames = [participantAndRun, trialAndPhysical, orientations, ...
+        responses, outcomes, timingAndQC];
+
+    currentNames = T.Properties.VariableNames;
+    missingNames = setdiff(orderedNames, currentNames, 'stable');
+    extraNames = setdiff(currentNames, orderedNames, 'stable');
+    if ~isempty(missingNames) || ~isempty(extraNames)
+        error('CB_4xGratings_v3_Orientation:FullRunSchemaMismatch', ...
+            'FullRun schema mismatch. Missing=%s Extra=%s', ...
+            strjoin(missingNames, ','), strjoin(extraNames, ','));
+    end
+    T = T(:, orderedNames);
+end
+
+function runFullRunSchemaSelfTest(cfg, trials)
+% Exercise the authoritative final/checkpoint schema without opening PTB.
+    testIfi = 1 / 120;
+    cfg.S1_frames = max(1, round(cfg.S1_sec / testIfi));
+    cfg.ISI_frames = max(1, round(cfg.ISI_sec / testIfi));
+    cfg.S2_frames = max(1, round(cfg.S2_sec / testIfi));
+    cfg.gap_frames = max(0, round(cfg.postS2Gap_sec / testIfi));
+    cfg.ITI_frames = max(0, round(cfg.ITI_sec / testIfi));
+
+    testRows = repmat(emptyResultRow(), 2, 1);
+    for rr = 1:2
+        trial = trials(rr);
+        testRows(rr).participantID = cfg.participantID;
+        testRows(rr).trialNum = rr;
+        testRows(rr).blockNum = 1;
+        testRows(rr).isChange = trial.isChange;
+        testRows(rr).changeMagnitudeDeg = trial.changeMagnitudeDeg;
+        testRows(rr).changeQuad = trial.changeQuad;
+        testRows(rr).changeDirection = trial.changeDirection;
+        testRows(rr).changeStartOri = trial.changeStartOri;
+        testRows(rr).oriS1 = trial.oriS1(:)';
+        testRows(rr).oriS2 = trial.oriS2(:)';
+    end
+
+    finalTable = buildFullRunTable(testRows, cfg, 'SCHEMA_TEST', testIfi);
+    checkpointTable = buildFullRunTable(testRows(1), cfg, 'SCHEMA_TEST', testIfi);
+    assert(isequal(finalTable.Properties.VariableNames, ...
+        checkpointTable.Properties.VariableNames), ...
+        'Final and checkpoint FullRun schemas differ.');
+    assert(strcmp(finalTable.Properties.VariableNames{1}, 'participantID') && ...
+        strcmp(finalTable.Properties.VariableNames{2}, 'ageYears') && ...
+        strcmp(finalTable.Properties.VariableNames{7}, 'consentConfirmed'), ...
+        'Participant demographics are not grouped immediately after participantID.');
+    fprintf('FullRun schema self-test passed: %d identically ordered columns.\n', ...
+        width(finalTable));
+end
+
 function T = addParticipantInfoColumns(T, cfg)
 % Apply identical participant metadata to final and checkpoint tables.
     nRows = height(T);
@@ -3415,7 +3462,7 @@ function T = addParticipantInfoColumns(T, cfg)
 end
 
 
-function [ok, nSaved] = checkpointSave(results, t, outFile, cfg)
+function [ok, nSaved] = checkpointSave(results, t, outFile, cfg, timestamp, ifi)
     ok = false;
     nSaved = 0;
     try
@@ -3426,35 +3473,27 @@ function [ok, nSaved] = checkpointSave(results, t, outFile, cfg)
             return;
         end
 
-        T = struct2table(r);
-        T = addParticipantInfoColumns(T, cfg);
-        T.protocolVersion = repmat(string(cfg.protocolVersion), height(T), 1);
-        T.runProfile = repmat(string(cfg.runProfile), height(T), 1);
-        T.questionOrder = repmat(string(cfg.questionOrder), height(T), 1);
-        T.awarenessRule = repmat(string(cfg.awarenessRule), height(T), 1);
-        T.eegQuestionTriggerScheme = repmat(string(cfg.eegQuestionTriggerScheme), height(T), 1);
-        T.randomSeed = repmat(double(cfg.randomisation.seed), height(T), 1);
-        T.blockMagnitudeInventory = strings(height(T),1);
-        T.blockQuadrantInventory = strings(height(T),1);
-        for rr = 1:height(T)
-            bb = T.blockNum(rr);
-            T.blockMagnitudeInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockMagnitudeCounts(bb,:)));
-            T.blockQuadrantInventory(rr) = string(mat2str(cfg.design.balanceSummary.blockQuadrantCounts(bb,:)));
-        end
-        T.globalMagnitudeQuadrantInventory = repmat( ...
-            string(mat2str(cfg.design.balanceSummary.cellTotals)), height(T), 1);
+        T = buildFullRunTable(r, cfg, timestamp, ifi);
 
-        % Write to temp CSV first, then replace
-        [p,n,e] = fileparts(outFile);              % e should be '.csv'
-        tmpFile = fullfile(p, [n '_tmp' e]);       % e.g. '..._tmp.csv'
-
-        writetable(T, tmpFile);                    % extension is recognised
-        movefile(tmpFile, outFile, 'f');
+        writeTableAtomically(T, outFile);
         nSaved = height(T);
         ok = true;
 
     catch saveME
         warning('%s', ['Checkpoint save failed: ' mExceptionText(saveME)]);
+    end
+end
+
+function writeTableAtomically(T, outFile)
+% Preserve the last valid checkpoint until the replacement CSV is complete.
+    [folderPath, baseName, extension] = fileparts(outFile);
+    tmpFile = fullfile(folderPath, [baseName '_tmp' extension]);
+    writetable(T, tmpFile);
+    [moveOK, moveMessage] = movefile(tmpFile, outFile, 'f');
+    if ~moveOK
+        error('CB_4xGratings_v3_Orientation:AtomicCSVReplaceFailed', ...
+            'Could not replace %s with the completed CSV: %s', ...
+            outFile, moveMessage);
     end
 end
 
