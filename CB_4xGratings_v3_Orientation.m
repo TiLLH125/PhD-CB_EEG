@@ -37,7 +37,7 @@ cfg.protocolVersion = 'Orientation_PASLOC_v2';
 cfg.questionOrder = 'PAS>Localisation';
 cfg.awarenessRule = 'PAS1=no_awareness;PAS2-4=awareness';
 cfg.eegQuestionTriggerScheme = 'Q1_PAS_30-34;Q2_Localisation_50-54';
-cfg.runProfile = 'pilotBroad';  % 'full', 'pilotBroad', 'debugQuick', or 'photodiodeTest'
+cfg.runProfile = 'debugQuick';  % 'full', 'pilotBroad', 'debugQuick', or 'photodiodeTest'
 cfg.randomSeed = [];      % [] = shuffled seed; numeric scalar = reproducible seed
 cfg.debug.scheduleOnly = strcmp(getenv('CB_ORIENTATION_SCHEDULE_ONLY'), '1');
 if cfg.debug.scheduleOnly
@@ -112,7 +112,7 @@ cfg.tobii.enable                  = true;
 cfg.tobii.requireTracker          = true;
 cfg.tobii.trackerProfile          = 'IS4_Large_Peripheral';
 cfg.tobii.tittaRoot               = 'C:\Users\hrl310\Documents\MATLAB\Titta-master\Titta-master';
-cfg.tobii.debugMode               = true;
+cfg.tobii.debugMode               = false;
 cfg.tobii.useAnimatedCalibration  = true;
 cfg.tobii.saveMat                 = true;
 cfg.tobii.saveGazeCSV             = true;
