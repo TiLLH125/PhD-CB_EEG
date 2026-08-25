@@ -56,11 +56,12 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %   - Optional read-only 50 Hz line-noise QC runs on the downsampled data and
 %     the final post-ICA/interpolated ERP continuous data. Results are saved
 %     to CSV and optional plots. This does not apply notch filtering.
-%   - Event matching is v3-aware (ascending within-trial trigger codes):
-%     Main: 11->21->22->23->24->31->41-44->51->61-64->71; practice +100 (111->...->171).
-%     Practice validated from +100 family (S1=121, S2=123, PAS=141-144, Q2=151, LOC=161-164,
-%     trialEnd=171); main trials matched to FullRun CSV from base family only
-%     (S1=21, S2=23, PAS=41-44, Q2=51, LOC=61-64, trialEnd=71). Practice trials are not
+%   - Event matching uses the final ascending within-trial trigger codes:
+%     Main: 11->21->22->23->24->30->31-34->50->51-54->60; practice +100 (111->...->160).
+%     Practice is validated from its +100 family (S1=121, S2=123, PAS=131-134,
+%     Q2=150, LOC=151-154, trialEnd=160); main trials are matched to the FullRun
+%     CSV from the base family only (S1=21, S2=23, PAS=31-34, Q2=50,
+%     LOC=51-54, trialEnd=60). Practice trials are not
 %     skipped positionally anymore.
 % - Optional Stage 16 extra plots (central ROI trial traces, B/S/S overlay,
 %     S2 VAN/LP topomaps) run on AR-clean S1/S2 datasets when plot functions
@@ -200,8 +201,8 @@ addParameter(p, 'LineNoiseNeighbourHz', [45 55], @(x) isnumeric(x) && numel(x) =
 addParameter(p, 'LineNoiseExcludeHz', [49 51], @(x) isnumeric(x) && numel(x) == 2 && x(1) < x(2));
 addParameter(p, 'LineNoiseQCPlot', true, @(x) islogical(x) || isnumeric(x));
 
-% Trial/event config for CB_4xGratings_v3 (ascending within-trial trigger codes)
-% Main: 11->21->22->23->24->31->41-44->51->61-64->71; practice + PracticeTriggerOffset.
+% Trial/event config for the final CB_4xGratings_v3 trigger scheme.
+% Main: 11->21->22->23->24->30->31-34->50->51-54->60; practice + PracticeTriggerOffset.
 % Behavioural metadata (block, track, duration, outcomeBin) comes from FullRun CSV only.
 % NTriggeredPractice is kept as a legacy alias only; it is no longer used to
 % positionally skip trials before behavioural matching.
@@ -215,11 +216,11 @@ addParameter(p, 'ExpectedMainTrials', 600, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'PracticeTriggerOffset', 100, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'MainS1Code', 21, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'MainS2Code', 23, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'MainPASBase', 40, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'MainQ1Code', 31, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'MainQ2Code', 51, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'MainLocBase', 60, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'MainTrialEndCode', 71, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainPASBase', 30, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainQ1Code', 30, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainQ2Code', 50, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainLocBase', 50, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'MainTrialEndCode', 60, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'ValidatePracticeTriggers', true, @(x) islogical(x) || isnumeric(x));
 
 % Epoching/baseline
@@ -2272,10 +2273,10 @@ p = inputParser;
 addParameter(p, 'FamilyName', 'main', @(x) ischar(x) || isstring(x));
 addParameter(p, 'S1Code', 21, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'S2Code', 23, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'PASCodes', 41:44, @(x) isnumeric(x) && isvector(x));
-addParameter(p, 'LocCodes', 61:64, @(x) isnumeric(x) && isvector(x));
-addParameter(p, 'PASBase', 40, @(x) isnumeric(x) && isscalar(x));
-addParameter(p, 'LocBase', 60, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'PASCodes', 31:34, @(x) isnumeric(x) && isvector(x));
+addParameter(p, 'LocCodes', 51:54, @(x) isnumeric(x) && isvector(x));
+addParameter(p, 'PASBase', 30, @(x) isnumeric(x) && isscalar(x));
+addParameter(p, 'LocBase', 50, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'Q1Code', NaN, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'Q2Code', NaN, @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'TrialEndCode', NaN, @(x) isnumeric(x) && isscalar(x));
@@ -2489,14 +2490,15 @@ activeMain = [cfg.MainS1Code, cfg.MainS2Code, cfg.MainQ1Code, ...
     cfg.MainLocBase + (1:4), cfg.MainTrialEndCode];
 activePractice = activeMain + offset;
 
-% Only warn about deprecated codes that are not part of the trigger
-% scheme configured for this run. This prevents valid codes such as the
-% ascending-v3 trial-end code 71 from being mislabelled as legacy metadata
-% and also keeps the warning correct when trigger parameters are overridden.
-legacyMain = setdiff([12, 32, 52:54], activeMain);
-legacyPractice = setdiff([12, 32, 52:54] + offset, activePractice);
+% Only warn about deprecated codes that are not part of the trigger scheme
+% configured for this run. Candidates include the earlier v2/v3 response
+% mappings. setdiff protects codes that were reassigned in the final scheme
+% (for example, 31-34 and 51-54 are now valid response codes).
+legacyMappingCandidates = [12, 31, 32, 41:44, 51:54, 61:64, 71];
+legacyMain = setdiff(legacyMappingCandidates, activeMain);
+legacyPractice = setdiff(legacyMappingCandidates + offset, activePractice);
 legacyMetadata = setdiff([65:69, 70:82, 90:109], ...
-    [activeMain, activePractice]);
+    [activeMain, activePractice, legacyMain, legacyPractice]);
 
 present = unique(eventNums(isfinite(eventNums)));
 foundMain = intersect(present, legacyMain);
