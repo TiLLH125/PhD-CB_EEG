@@ -160,7 +160,7 @@ dataPath = [dataPath filesep];
 end
 
 defaultBdfFile = sprintf('%s.bdf', participantID);
-defaultFullRunPattern = sprintf('CB_4xGratings_%s_FullRun_*.csv', participantID);
+defaultFullRunPattern = sprintf('CB_4xGratings_v3_Orientation_%s_FullRun_*.csv', participantID);
 defaultOutputRoot = dataPath;
 
 isText = @(x) ischar(x) || isstring(x);
