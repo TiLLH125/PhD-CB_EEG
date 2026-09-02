@@ -234,7 +234,7 @@ addParameter(p, 'ArtifactPeakToPeakThresholdUv', 150, @(x) isnumeric(x) && issca
 
 % Manual / automatic ICA
 addParameter(p, 'AutoICAReject', true, @(x) islogical(x) || isnumeric(x));
-addParameter(p, 'AutoICARejectThreshold', 0.90, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
+addParameter(p, 'AutoICARejectThreshold', 0.85, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
 addParameter(p, 'AutoICARejectClasses', {'Eye','Muscle','Channel Noise'}, @(x) iscellstr(x) || isstring(x) || ischar(x));
 addParameter(p, 'ICAReviewLowerThreshold', 0.80, @(x) isnumeric(x) && isscalar(x) && x >= 0 && x <= 1);
 addParameter(p, 'ManualICAReject', false, @(x) islogical(x) || isnumeric(x));
