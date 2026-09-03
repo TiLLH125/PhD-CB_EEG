@@ -12,7 +12,7 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %   5. Run Picard ICA on retained scalp channels with automatic PCA dimension
 %   6. Run ICLabel
 %   7. Automatically reject ICLabel Eye/Muscle/Channel Noise components
-%      at >= 0.90 and log components from 0.80 to < 0.90 for review
+%      at >= 0.85 and log components from 0.80 to < 0.85 for review
 %   8. Create matched ERP-analysis copy: 0.1-20 Hz, same retained channels/reference
 %   9. Transfer ICA weights, remove selected components, interpolate bad
 %      scalp channels, and apply the final scalp average reference
@@ -32,14 +32,25 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %       S1: 201 Blind, 202 Sensing, 203 Seeing, 211 CR, 212 FA
 %       S2: 301 Blind, 302 Sensing, 303 Seeing, 311 CR, 312 FA
 %
-% Example:
-%   dataPath = 'C:\Users\hrl310\Documents\EEGData_HL';
+% Default data layout and automatic participant-folder discovery:
+%   % C:\Users\hrl310\Documents\EEGData_HL\Study1Data\P001CDLL\P001CDLL.bdf
+%   % C:\Users\hrl310\Documents\EEGData_HL\Study1Data\P001CDLL\...
+%   %     CB_4xGratings_v3_Orientation_P001CDLL_FullRun_*.csv
+%   report = CB_EEG_RunFullPreprocessingPipeline_v3;              % interactive ID prompt
+%   report = CB_EEG_RunFullPreprocessingPipeline_v3('P001CDLL');
+%   report = CB_EEG_RunFullPreprocessingPipeline_v3('P001CDLL P002CDLL'); % batch
 %
+% Example using an explicit Study1Data root:
+%   dataRoot = 'C:\Users\hrl310\Documents\EEGData_HL\Study1Data';
+%   report = CB_EEG_RunFullPreprocessingPipeline_v3('P001CDLL', dataRoot);
+%
+% Example using an explicit participant folder:
+%   dataPath = 'C:\Users\hrl310\Documents\EEGData_HL\Study1Data\P001CDLL';
 %   report = CB_EEG_RunFullPreprocessingPipeline_v3( ...
-%       'MAV01', ...
+%       'P001CDLL', ...
 %       dataPath, ...
-%       'BdfFile', 'MAV01.bdf', ...
-%       'FullRunCsv', 'CB_4xGratings_MAV01_FullRun_20260616_160252.csv');
+%       'BdfFile', 'P001CDLL.bdf', ...
+%       'FullRunCsv', 'CB_4xGratings_v3_Orientation_P001CDLL_FullRun_YYYYMMDD_HHMMSS.csv');
 %
 % Notes:
 %   - Before ICA, scalp channels are QC-checked with EEGLAB Clean RawData
@@ -69,8 +80,8 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %     'ExtraPlotVisible', false for silent/batch runs. Disable entirely with
 %     'RunExtraFinalPlots', false.
 %   - The preregistered default ICLabel policy automatically rejects Eye,
-%     Muscle, and Channel Noise components with probability >= 0.90 and
-%     logs non-rejected components from 0.80 to < 0.90 for review. Enable
+%     Muscle, and Channel Noise components with probability >= 0.85 and
+%     logs non-rejected components from 0.80 to < 0.85 for review. Enable
 %     interactive manual removal with 'ManualICAReject', true.
 %   - Positive amplitudes are plotted above zero.
 %   - The script writes both a text diary log and a structured CSV log.
@@ -79,15 +90,16 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 % Parse inputs and config
 % ========================================================================
 
-if nargin < 2 || isempty(dataPath)
-dataPath = 'C:\Users\hrl310\Documents\EEGData_HL';
+dataPathWasExplicit = nargin >= 2 && ~isempty(dataPath);
+if ~dataPathWasExplicit
+    dataPath = 'C:\Users\hrl310\Documents\EEGData_HL\Study1Data';
 end
 
 if nargin < 1 || isempty(participantID)
     idInput = input('Enter participant ID(s), separated by commas or spaces: ', 's');
     participantIDs = localParseParticipantIDs(idInput);
 else
-    participantIDs = {char(participantID)};
+    participantIDs = localParseParticipantIDs(participantID);
 end
 
 if numel(participantIDs) > 1
@@ -110,7 +122,10 @@ if numel(participantIDs) > 1
         fprintf('Starting participant %d of %d: %s\n', i, numel(participantIDs), participantIDs{i});
 
         try
-            thisReport = CB_EEG_RunFullPreprocessingPipeline_v3(participantIDs{i}, dataPath, varargin{:});
+            participantDataPath = localResolveParticipantDataPath( ...
+                dataPath, participantIDs{i}, false, varargin);
+            thisReport = CB_EEG_RunFullPreprocessingPipeline_v3( ...
+                participantIDs{i}, participantDataPath, varargin{:});
             successReports{end+1,1} = thisReport; %#ok<AGROW>
             batchRows = [batchRows; table( ...
                 string(participantIDs{i}), "OK", string(thisReport.outDir), "", "Completed", ...
@@ -127,6 +142,14 @@ if numel(participantIDs) > 1
                 end
                 batchRows = [batchRows; table( ...
                     string(participantIDs{i}), "QC_FAILED", failedOutDir, ...
+                    string(ME.identifier), string(ME.message), ...
+                    'VariableNames', batchRows.Properties.VariableNames)]; %#ok<AGROW>
+                continue;
+            elseif localIsInputFailureIdentifier(ME.identifier)
+                warning('Participant %s has missing/unresolved input and will be skipped: %s', ...
+                    participantIDs{i}, ME.message);
+                batchRows = [batchRows; table( ...
+                    string(participantIDs{i}), "INPUT_FAILED", "", ...
                     string(ME.identifier), string(ME.message), ...
                     'VariableNames', batchRows.Properties.VariableNames)]; %#ok<AGROW>
                 continue;
@@ -154,7 +177,8 @@ end
 
 participantID = participantIDs{1};
 participantID = char(participantID);
-dataPath = char(dataPath);
+dataPath = localResolveParticipantDataPath( ...
+    dataPath, participantID, dataPathWasExplicit, varargin);
 
 if ~strcmp(dataPath(end), filesep)
 dataPath = [dataPath filesep];
@@ -445,14 +469,16 @@ if exist(bdfPath, 'file') ~= 2
     bdfPath = fullfile(dataPath, cfg.BdfFile);
 end
 if exist(bdfPath, 'file') ~= 2
-    error('BDF file not found: %s', cfg.BdfFile);
+    error('CBPreproc:BdfNotFound', 'BDF file not found: %s', bdfPath);
 end
 
 fullRunCsv = cfg.FullRunCsv;
 if isempty(fullRunCsv)
     csvFiles = dir(fullfile(dataPath, cfg.FullRunPattern));
     if isempty(csvFiles)
-        error('No behavioural FullRun CSV found using pattern: %s', fullfile(dataPath, cfg.FullRunPattern));
+        error('CBPreproc:FullRunCsvNotFound', ...
+            'No behavioural FullRun CSV found using pattern: %s', ...
+            fullfile(dataPath, cfg.FullRunPattern));
     end
     [~, newestIdx] = max([csvFiles.datenum]);
     fullRunCsv = fullfile(csvFiles(newestIdx).folder, csvFiles(newestIdx).name);
@@ -461,7 +487,8 @@ else
         fullRunCsv = fullfile(dataPath, fullRunCsv);
     end
     if exist(fullRunCsv, 'file') ~= 2
-        error('Behavioural FullRun CSV not found: %s', cfg.FullRunCsv);
+        error('CBPreproc:FullRunCsvNotFound', ...
+            'Behavioural FullRun CSV not found: %s', fullRunCsv);
     end
 end
 
@@ -3012,6 +3039,56 @@ chanIdx(i) = hit;
 
 
 end
+
+end
+
+
+function participantDataPath = localResolveParticipantDataPath( ...
+    dataPath, participantID, allowDirectPath, overrideArgs)
+
+dataPath = strtrim(char(string(dataPath)));
+participantID = strtrim(char(string(participantID)));
+
+if isempty(dataPath) || exist(dataPath, 'dir') ~= 7
+    error('CBPreproc:DataRootNotFound', ...
+        'Data root or participant folder not found: %s', dataPath);
+end
+
+participantFolder = fullfile(dataPath, participantID);
+if exist(participantFolder, 'dir') == 7
+    participantDataPath = participantFolder;
+    return;
+end
+
+pathWithoutTrailingSeparator = regexprep(dataPath, '[\\/]+$', '');
+[~, suppliedFolderName] = fileparts(pathWithoutTrailingSeparator);
+isNamedParticipantFolder = strcmp(suppliedFolderName, participantID);
+hasLegacyDefaultBdf = exist( ...
+    fullfile(dataPath, sprintf('%s.bdf', participantID)), 'file') == 2;
+hasManualFileOverride = localHasManualFileOverride(overrideArgs);
+
+if allowDirectPath && (isNamedParticipantFolder || ...
+        hasLegacyDefaultBdf || hasManualFileOverride)
+    % An explicitly supplied path may already be the participant folder.
+    % The name/file checks distinguish that case from an explicit data root
+    % whose exact participant child is missing, while retaining legacy use.
+    participantDataPath = dataPath;
+else
+    error('CBPreproc:ParticipantFolderNotFound', ...
+        'Participant folder not found. Expected exact immediate child folder: %s', ...
+        participantFolder);
+end
+
+end
+
+
+function tf = localIsInputFailureIdentifier(identifier)
+
+tf = ismember(string(identifier), [ ...
+    "CBPreproc:DataRootNotFound", ...
+    "CBPreproc:ParticipantFolderNotFound", ...
+    "CBPreproc:BdfNotFound", ...
+    "CBPreproc:FullRunCsvNotFound"]);
 
 end
 
