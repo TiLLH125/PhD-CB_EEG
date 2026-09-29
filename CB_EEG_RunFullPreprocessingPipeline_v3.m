@@ -12,7 +12,8 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %   5. Run Picard ICA on retained scalp channels with automatic PCA dimension
 %   6. Run ICLabel
 %   7. Automatically reject ICLabel Eye/Muscle/Channel Noise components
-%      at >= 0.85 and log components from 0.80 to < 0.85 for review
+%      at >= 0.85 and log components from 0.80 to < 0.85 for review;
+%      optionally pause for blocking manual confirmation in the EEGLAB GUI
 %   8. Create matched ERP-analysis copy: 0.1-20 Hz, same retained channels/reference
 %   9. Transfer ICA weights, remove selected components, interpolate bad
 %      scalp channels, and apply the final scalp average reference
@@ -39,6 +40,8 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %   report = CB_EEG_RunFullPreprocessingPipeline_v3;              % interactive ID prompt
 %   report = CB_EEG_RunFullPreprocessingPipeline_v3('P001CDLL');
 %   report = CB_EEG_RunFullPreprocessingPipeline_v3('P001CDLL P002CDLL'); % batch
+%   report = CB_EEG_RunFullPreprocessingPipeline_v3( ...
+%       'P001CDLL', 'ManualICAReject', true);                      % manual ICA review
 %
 % Example using an explicit Study1Data root:
 %   dataRoot = 'C:\Users\hrl310\Documents\EEGData_HL\Study1Data';
@@ -82,13 +85,25 @@ function report = CB_EEG_RunFullPreprocessingPipeline_v3(participantID, dataPath
 %   - The preregistered default ICLabel policy automatically rejects Eye,
 %     Muscle, and Channel Noise components with probability >= 0.85 and
 %     logs non-rejected components from 0.80 to < 0.85 for review. Enable
-%     interactive manual removal with 'ManualICAReject', true.
+%     blocking red/green EEGLAB component review with 'ManualICAReject', true.
+%     Automatic and explicitly provided components begin red but remain
+%     editable. Confirmed GUI selections become the final removal set. If
+%     the GUI is cancelled, closed, or cannot open, the automatic/provided
+%     selections are retained and preprocessing continues.
 %   - Positive amplitudes are plotted above zero.
 %   - The script writes both a text diary log and a structured CSV log.
 
 % ========================================================================
 % Parse inputs and config
 % ========================================================================
+
+% Permit the concise default-root manual-review form documented above,
+% while retaining the original second positional dataPath argument.
+if nargin >= 2 && (ischar(dataPath) || (isstring(dataPath) && isscalar(dataPath))) && ...
+        strcmpi(strtrim(char(string(dataPath))), 'ManualICAReject')
+    varargin = [{char(string(dataPath))}, varargin];
+    dataPath = [];
+end
 
 dataPathWasExplicit = nargin >= 2 && ~isempty(dataPath);
 if ~dataPathWasExplicit
@@ -780,32 +795,50 @@ if cfg.AutoICAReject
 end
 
 providedComponents = cfg.ComponentsToRemove(:)';
-manualComponents = [];
-
-if cfg.ManualICAReject
-    fprintf('\nOpening component viewer for ICs 1:%d.\n', min(35, size(EEG_ica.icaweights,1)));
-    fprintf('Inspect maps, time courses, and ICLabel classifications.\n\n');
-
-    try
-        pop_selectcomps(EEG_ica, 1:min(35, size(EEG_ica.icaweights,1)));
-    catch ME
-        warning('Could not open pop_selectcomps: %s', ME.message);
-    end
-
-    fprintf('\nAutomatically selected ICs:\n');
-    disp(autoComponents);
-    fprintf('\nICs in the review band (not automatically removed):\n');
-    disp(reviewComponents);
-
-    additionalManualComponents = input('Enter any additional ICs to remove, e.g. [1 2 3], or [] for none: ');
-    manualComponents = additionalManualComponents(:)';
-end
-
-componentsToRemove = unique([autoComponents(:); providedComponents(:); manualComponents(:)])';
-
-if any(componentsToRemove < 1) || any(componentsToRemove > size(EEG_ica.icaweights,1))
+nIcaComponents = size(EEG_ica.icaweights, 1);
+if any(~isfinite(providedComponents)) || ...
+        any(mod(providedComponents, 1) ~= 0) || ...
+        any(providedComponents < 1) || any(providedComponents > nIcaComponents)
     error('ComponentsToRemove contains invalid component indices.');
 end
+
+initialPreselectedComponents = unique([autoComponents(:); providedComponents(:)])';
+componentsToRemove = initialPreselectedComponents;
+manualComponents = [];
+manuallyAcceptedInitialComponents = [];
+autoComponentsAcceptedManually = [];
+manualICASelectionStatus = "NOT_REQUESTED";
+manualICASelectionMessage = "Manual ICA review was not requested.";
+
+if cfg.ManualICAReject
+    fprintf('\nOpening blocking manual ICA component review.\n');
+    fprintf('Red components are initially selected for removal; green components are accepted.\n');
+    fprintf('Click a component to inspect it, change ACCEPT/REJECT, then confirm every page.\n\n');
+
+    [componentsToRemove, manualICASelectionStatus, manualICASelectionMessage] = ...
+        localRunBlockingManualICASelection(EEG_ica, initialPreselectedComponents);
+
+    manualComponents = setdiff(componentsToRemove, initialPreselectedComponents, 'stable');
+    manuallyAcceptedInitialComponents = setdiff( ...
+        initialPreselectedComponents, componentsToRemove, 'stable');
+    autoComponentsAcceptedManually = intersect( ...
+        autoComponents, manuallyAcceptedInitialComponents, 'stable');
+
+    if manualICASelectionStatus ~= "CONFIRMED"
+        warning('%s Using automatic/provided ICA selections.', ...
+            char(manualICASelectionMessage));
+    end
+end
+
+componentsToRemove = unique(componentsToRemove(:))';
+if any(~isfinite(componentsToRemove)) || ...
+        any(mod(componentsToRemove, 1) ~= 0) || ...
+        any(componentsToRemove < 1) || any(componentsToRemove > nIcaComponents)
+    error('ComponentsToRemove contains invalid component indices.');
+end
+
+EEG_ica.reject.gcompreject = false(1, nIcaComponents);
+EEG_ica.reject.gcompreject(componentsToRemove) = true;
 
 componentDecisionTable = table( ...
     string(participantID), ...
@@ -817,8 +850,13 @@ componentDecisionTable = table( ...
     string(mat2str(autoComponents)), ...
     string(mat2str(reviewComponents)), ...
     string(mat2str(providedComponents)), ...
+    string(mat2str(initialPreselectedComponents)), ...
     string(mat2str(manualComponents)), ...
+    string(mat2str(manuallyAcceptedInitialComponents)), ...
+    string(mat2str(autoComponentsAcceptedManually)), ...
     string(mat2str(componentsToRemove)), ...
+    manualICASelectionStatus, ...
+    manualICASelectionMessage, ...
     string(datestr(now)), ...
     'VariableNames', { ...
         'ParticipantID', ...
@@ -830,8 +868,13 @@ componentDecisionTable = table( ...
         'AutoComponents', ...
         'ReviewComponents', ...
         'ProvidedComponentsToRemove', ...
+        'InitialPreselectedComponents', ...
         'ManualComponents', ...
+        'InitialComponentsAcceptedManually', ...
+        'AutoComponentsAcceptedManually', ...
         'FinalComponentsToRemove', ...
+        'ManualICASelectionStatus', ...
+        'ManualICASelectionMessage', ...
         'DecisionTime'});
 
 componentDecisionCsv = fullfile(outDir, sprintf('%s_ICAComponentsToRemove.csv', participantID));
@@ -848,11 +891,31 @@ fprintf('\nICs logged for review (not automatically removed):\n');
 disp(reviewComponents);
 fprintf('\nProvided ComponentsToRemove:\n');
 disp(providedComponents);
-fprintf('\nAdditional manual ICs:\n');
+fprintf('\nInitial components preselected in manual review:\n');
+disp(initialPreselectedComponents);
+fprintf('\nManual ICA selection status: %s\n', char(manualICASelectionStatus));
+fprintf('Manual ICA selection message: %s\n', char(manualICASelectionMessage));
+fprintf('\nComponents manually added:\n');
 disp(manualComponents);
+fprintf('\nInitial components manually accepted again:\n');
+disp(manuallyAcceptedInitialComponents);
+fprintf('\nAutomatic components manually accepted again:\n');
+disp(autoComponentsAcceptedManually);
 fprintf('\nFinal components selected for removal:\n');
 disp(componentsToRemove);
 
+logStep('ica_component_selection', char(manualICASelectionStatus), ...
+    'Manual ICA component-selection result', char(manualICASelectionMessage), componentDecisionCsv);
+logStep('ica_component_selection', 'INFO', ...
+    'Initial ICA components preselected', mat2str(initialPreselectedComponents), componentDecisionCsv);
+logStep('ica_component_selection', 'INFO', ...
+    'ICA components manually added', mat2str(manualComponents), componentDecisionCsv);
+logStep('ica_component_selection', 'INFO', ...
+    'Initial ICA components manually accepted again', ...
+    mat2str(manuallyAcceptedInitialComponents), componentDecisionCsv);
+logStep('ica_component_selection', 'INFO', ...
+    'Automatic ICA components manually accepted again', ...
+    mat2str(autoComponentsAcceptedManually), componentDecisionCsv);
 logStep('ica_component_selection', 'OK', 'ICA components selected for removal', mat2str(componentsToRemove), componentDecisionCsv);
 
 % ====================================================================
@@ -1457,7 +1520,12 @@ report.componentsToRemove = componentsToRemove;
 report.autoICAComponentsToRemove = autoComponents;
 report.icaComponentsFlaggedForReview = reviewComponents;
 report.providedICAComponentsToRemove = providedComponents;
+report.initialPreselectedICAComponents = initialPreselectedComponents;
 report.manualICAComponentsToRemove = manualComponents;
+report.initialICAComponentsAcceptedManually = manuallyAcceptedInitialComponents;
+report.autoICAComponentsAcceptedManually = autoComponentsAcceptedManually;
+report.manualICASelectionStatus = char(manualICASelectionStatus);
+report.manualICASelectionMessage = char(manualICASelectionMessage);
 report.autoICASelectionTableCsv = autoSelectionCsv;
 report.icaComponentsForReviewCsv = reviewSelectionCsv;
 report.icaComponentDecisionCsv = componentDecisionCsv;
@@ -2177,6 +2245,309 @@ autoSelectionTable.ReviewLowerThresholdInclusive = repmat(reviewLowerThreshold, 
 autoSelectionTable.ReviewUpperThresholdExclusive = repmat(rejectThreshold, nIC, 1);
 
 end
+
+
+function [selectedComponents, selectionStatus, selectionMessage] = ...
+    localRunBlockingManualICASelection(EEG, initialComponents)
+
+displayEEG = EEG;
+if size(displayEEG.icawinv, 1) ~= numel(displayEEG.chanlocs)
+    if isempty(displayEEG.icachansind) || ...
+            numel(displayEEG.icachansind) ~= size(displayEEG.icawinv, 1)
+        selectedComponents = unique(initialComponents(:))';
+        selectionStatus = "GUI_FAILED_AUTO_FALLBACK";
+        selectionMessage = ...
+            "ICA channel indices do not match the component-map dimensions; " + ...
+            "the manual selector cannot be displayed safely.";
+        return;
+    end
+    displayEEG = pop_select(displayEEG, ...
+        'channel', displayEEG.icachansind);
+    displayEEG = eeg_checkset(displayEEG);
+end
+
+if size(displayEEG.icawinv, 1) ~= numel(displayEEG.chanlocs)
+    selectedComponents = unique(initialComponents(:))';
+    selectionStatus = "GUI_FAILED_AUTO_FALLBACK";
+    selectionMessage = ...
+        "Component-map channels do not match the display channel locations; " + ...
+        "the manual selector cannot be displayed safely.";
+    return;
+end
+
+nIC = size(displayEEG.icaweights, 1);
+componentsPerPage = 35;
+initialComponents = unique(initialComponents(:))';
+initialMask = false(1, nIC);
+initialMask(initialComponents) = true;
+
+selectedComponents = initialComponents;
+selectionStatus = "GUI_FAILED_AUTO_FALLBACK";
+
+if exist('pop_selectcomps', 'file') ~= 2
+    selectionMessage = "EEGLAB pop_selectcomps was not found on the MATLAB path.";
+    return;
+end
+if ~usejava('awt')
+    selectionMessage = "MATLAB graphics are unavailable for manual ICA review.";
+    return;
+end
+if nIC < 1
+    selectionMessage = "No ICA components were available for manual review.";
+    return;
+end
+
+selectionMask = initialMask;
+nPages = ceil(nIC / componentsPerPage);
+
+try
+    for pageIndex = 1:nPages
+        firstComponent = (pageIndex - 1) * componentsPerPage + 1;
+        lastComponent = min(pageIndex * componentsPerPage, nIC);
+        pageComponents = firstComponent:lastComponent;
+
+        EEGPage = displayEEG;
+        EEGPage.reject.gcompreject = selectionMask;
+        pop_selectcomps(EEGPage, pageComponents);
+        drawnow;
+
+        selectorFig = gcf;
+        if ~isgraphics(selectorFig, 'figure') || ...
+                ~contains(string(get(selectorFig, 'Name')), "Reject components by map")
+            error('CBPreproc:ManualICASelectorNotFound', ...
+                'Could not identify the EEGLAB component-selection window.');
+        end
+
+        set(selectorFig, ...
+            'Tag', 'CBPreprocManualICASelector', ...
+            'Name', sprintf(['Manual ICA review - page %d of %d ', ...
+                '(red = reject, green = accept)'], pageIndex, nPages));
+        setappdata(selectorFig, 'CBPreprocManualICAEEG', displayEEG);
+        setappdata(selectorFig, 'CBPreprocManualICAMask', selectionMask);
+        setappdata(selectorFig, 'CBPreprocManualICADecision', 'WAITING');
+
+        for componentIndex = pageComponents
+            componentButton = findobj(selectorFig, ...
+                'Type', 'uicontrol', 'Tag', sprintf('comp%d', componentIndex));
+            if isempty(componentButton)
+                error('CBPreproc:ManualICAComponentButtonNotFound', ...
+                    'Could not find the selector button for IC %d.', componentIndex);
+            end
+            set(componentButton(1), 'Callback', ...
+                @(src, event) localOpenManualICAComponent( ...
+                src, event, selectorFig, componentIndex));
+        end
+
+        okButton = findobj(selectorFig, ...
+            'Type', 'uicontrol', 'String', 'OK');
+        cancelButton = findobj(selectorFig, ...
+            'Type', 'uicontrol', 'String', 'Cancel');
+        if isempty(okButton) || isempty(cancelButton)
+            error('CBPreproc:ManualICASelectorControlsNotFound', ...
+                'Could not find the OK/Cancel controls in the component selector.');
+        end
+
+        set(okButton(1), ...
+            'String', sprintf('Confirm page %d/%d', pageIndex, nPages), ...
+            'Callback', @(src, event) localFinishManualICAPage( ...
+            src, event, selectorFig, 'CONFIRMED'));
+        set(cancelButton(1), ...
+            'Callback', @(src, event) localFinishManualICAPage( ...
+            src, event, selectorFig, 'CANCELLED'));
+        set(selectorFig, 'CloseRequestFcn', ...
+            @(src, event) localFinishManualICAPage( ...
+            src, event, selectorFig, 'CANCELLED'));
+
+        figure(selectorFig);
+        uiwait(selectorFig);
+
+        if ~isgraphics(selectorFig, 'figure')
+            selectionStatus = "CANCELLED_AUTO_FALLBACK";
+            selectionMessage = "Manual ICA selector was closed; unconfirmed changes were discarded.";
+            selectedComponents = initialComponents;
+            return;
+        end
+
+        pageDecision = string(getappdata( ...
+            selectorFig, 'CBPreprocManualICADecision'));
+        if isappdata(selectorFig, 'CBPreprocManualICAMask')
+            selectionMask = logical(getappdata( ...
+                selectorFig, 'CBPreprocManualICAMask'));
+        end
+        localCloseManualICAPropertyFigures(selectorFig);
+        delete(selectorFig);
+
+        if pageDecision ~= "CONFIRMED"
+            selectionStatus = "CANCELLED_AUTO_FALLBACK";
+            selectionMessage = "Manual ICA review was cancelled; unconfirmed changes were discarded.";
+            selectedComponents = initialComponents;
+            return;
+        end
+    end
+
+    selectedComponents = find(selectionMask);
+    selectionStatus = "CONFIRMED";
+    selectionMessage = string(sprintf( ...
+        'Manual ICA review confirmed across %d page(s).', nPages));
+catch ME
+    localCloseAllManualICAFigures();
+    selectedComponents = initialComponents;
+    selectionStatus = "GUI_FAILED_AUTO_FALLBACK";
+    selectionMessage = string(sprintf( ...
+        'Manual ICA selector failed (%s): %s', ME.identifier, ME.message));
+end
+
+end
+
+
+function localOpenManualICAComponent(componentButton, ~, selectorFig, componentIndex)
+
+if ~isgraphics(selectorFig, 'figure') || ...
+        ~isappdata(selectorFig, 'CBPreprocManualICAEEG') || ...
+        ~isappdata(selectorFig, 'CBPreprocManualICAMask')
+    return;
+end
+
+EEG = getappdata(selectorFig, 'CBPreprocManualICAEEG');
+selectionMask = logical(getappdata(selectorFig, 'CBPreprocManualICAMask'));
+EEG.reject.gcompreject = selectionMask;
+
+try
+    pop_prop(EEG, 0, componentIndex, componentButton, ...
+        {'freqrange', [1 50]});
+    drawnow;
+    propertyFig = gcf;
+    if ~isgraphics(propertyFig, 'figure') || ...
+            ~contains(string(get(propertyFig, 'Name')), "pop_prop() - Component")
+        error('CBPreproc:ManualICAPropertyWindowNotFound', ...
+            'Could not identify the IC %d property window.', componentIndex);
+    end
+
+    set(propertyFig, 'Tag', 'CBPreprocManualICAProperty');
+    setappdata(propertyFig, 'CBPreprocManualICASelector', selectorFig);
+    setappdata(propertyFig, 'CBPreprocManualICAComponentButton', componentButton);
+    setappdata(propertyFig, 'CBPreprocManualICAComponentIndex', componentIndex);
+
+    okButton = findobj(propertyFig, ...
+        'Type', 'uicontrol', 'String', 'OK');
+    if isempty(okButton)
+        error('CBPreproc:ManualICAPropertyOKNotFound', ...
+            'Could not find the OK control for IC %d.', componentIndex);
+    end
+    set(okButton(1), 'Callback', ...
+        @(src, event) localCommitManualICAComponent( ...
+        src, event, propertyFig));
+catch ME
+    errordlg(sprintf('Could not open IC %d properties:\n%s', ...
+        componentIndex, ME.message), 'Manual ICA review');
+end
+
+end
+
+
+function localCommitManualICAComponent(~, ~, propertyFig)
+
+if ~isgraphics(propertyFig, 'figure') || ...
+        ~isappdata(propertyFig, 'CBPreprocManualICASelector')
+    return;
+end
+
+selectorFig = getappdata(propertyFig, 'CBPreprocManualICASelector');
+componentButton = getappdata( ...
+    propertyFig, 'CBPreprocManualICAComponentButton');
+componentIndex = getappdata( ...
+    propertyFig, 'CBPreprocManualICAComponentIndex');
+rejectControl = findobj(propertyFig, 'Tag', 'rejstatus');
+
+if ~isgraphics(selectorFig, 'figure') || isempty(rejectControl)
+    delete(propertyFig);
+    return;
+end
+
+rejectComponent = logical(get(rejectControl(1), 'UserData'));
+selectionMask = logical(getappdata( ...
+    selectorFig, 'CBPreprocManualICAMask'));
+selectionMask(componentIndex) = rejectComponent;
+setappdata(selectorFig, 'CBPreprocManualICAMask', selectionMask);
+
+if isgraphics(componentButton, 'uicontrol')
+    if rejectComponent
+        set(componentButton, 'BackgroundColor', [1 0.6 0.6]);
+    else
+        set(componentButton, 'BackgroundColor', [0.75 1 0.75]);
+    end
+end
+
+delete(propertyFig);
+
+end
+
+
+function localFinishManualICAPage(~, ~, selectorFig, decision)
+
+if ~isgraphics(selectorFig, 'figure')
+    return;
+end
+
+propertyFigures = localFindManualICAPropertyFigures(selectorFig);
+if strcmp(decision, 'CONFIRMED') && ~isempty(propertyFigures)
+    warndlg(['Finish or close every open component-property window before ', ...
+        'confirming this page.'], 'Manual ICA review');
+    return;
+end
+
+if strcmp(decision, 'CANCELLED')
+    localCloseManualICAPropertyFigures(selectorFig);
+end
+setappdata(selectorFig, 'CBPreprocManualICADecision', decision);
+uiresume(selectorFig);
+
+end
+
+
+function propertyFigures = localFindManualICAPropertyFigures(selectorFig)
+
+allPropertyFigures = findall(groot, ...
+    'Type', 'figure', 'Tag', 'CBPreprocManualICAProperty');
+propertyFigures = gobjects(0);
+
+for i = 1:numel(allPropertyFigures)
+    thisFigure = allPropertyFigures(i);
+    if isappdata(thisFigure, 'CBPreprocManualICASelector') && ...
+            isequal(getappdata(thisFigure, ...
+            'CBPreprocManualICASelector'), selectorFig)
+        propertyFigures(end+1) = thisFigure; %#ok<AGROW>
+    end
+end
+
+end
+
+
+function localCloseManualICAPropertyFigures(selectorFig)
+
+propertyFigures = localFindManualICAPropertyFigures(selectorFig);
+for i = 1:numel(propertyFigures)
+    if isgraphics(propertyFigures(i), 'figure')
+        delete(propertyFigures(i));
+    end
+end
+
+end
+
+
+function localCloseAllManualICAFigures()
+
+manualFigures = [ ...
+    findall(groot, 'Type', 'figure', 'Tag', 'CBPreprocManualICAProperty'); ...
+    findall(groot, 'Type', 'figure', 'Tag', 'CBPreprocManualICASelector')];
+for i = 1:numel(manualFigures)
+    if isgraphics(manualFigures(i), 'figure')
+        delete(manualFigures(i));
+    end
+end
+
+end
+
 
 function localCheckIcaTransferCompatibility(EEG_source, EEG_target)
 
